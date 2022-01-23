@@ -1,0 +1,9 @@
+{
+  "siteTitle" : "Test",
+  "jsFiles" : [
+    "/js/something.js"
+  ],
+  "cssFiles" : [
+    "/css/bulma.css"
+  ]
+}
