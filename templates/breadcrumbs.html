@@ -1,0 +1,22 @@
+<nav aria-label="breadcrumbs" class="breadcrumb is-hidden-touch">
+    <ul>
+        {% for crumb in crumbs %}
+        <li>
+            <a href="{{ crumb.url }}">
+                {% if let Some(icon) = crumb.icon %}
+                <span class="icon m-0"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                {% endif %}
+                {{ crumb.title }}
+            </a>
+        </li>
+        {% endfor %}
+        <li class="is-active">
+            <a aria-label="page" href="#">
+                {% if let Some(icon) = last.icon %}
+                <span class="icon m-0"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                {% endif %}
+                {{ last.title }}
+            </a>
+        </li>
+    </ul>
+</nav>

@@ -1,0 +1,67 @@
+<nav aria-label="main navigation" class="navbar is-fixed-top" id="nav-bar" role="navigation">
+    <div class="navbar-brand">
+        {% if let Some(_) = side_menu %}
+        <button class="button navbar-burger is-hidden-tablet ml-0" id="burger-side-menu">
+            <span></span><span></span><span></span>
+        </button>
+        {% endif %}
+        <a class="{% if path.len() <= 1 %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="/">
+            <span class="is-large">{{ site_title }}</span>
+        </a>
+        {% for s in socials %}
+        <a class="navbar-item is-hidden-desktop" href="{{ s.get_url() }}" target="_blank">
+            <span class="icon" style="color: #{{ s.get_color() }};">
+                <em class="mdi mdi-24px mdi-{{ s.get_icon() }}"></em>
+            </span>
+        </a>
+        {% endfor %}
+        <button class="button navbar-burger" id="burger-menu"><span></span><span></span><span></span></button>
+    </div>
+    <div class="navbar-menu" id="main-menu">
+        <div class="navbar-start" id="flex-main-menu">
+            {% for menu_item in main_menu %}
+            {% match menu_item.children %}
+            {% when Some with (children) %}
+            <div class="navbar-item has-dropdown is-hoverable">
+                <a class="{% if path.starts_with(menu_item.url) %}navbar-link is-active{% else %}navbar-link{% endif %}" href="{{ menu_item.url }}" target="_self">
+                    {% if let Some(icon) = menu_item.icon %}
+                    <span class="icon"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                    {% endif %}
+                    <span>{{ menu_item.title }}</span>
+                </a>
+                <div class="navbar-dropdown">
+                    {% for child in children %}
+                    <a class="{% if path.starts_with(child.url) %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="{{ child.url }}" target="_self">
+                        {% if let Some(icon) = child.icon %}
+                        <span class="icon"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                        {% endif %}
+                        <span>{{ child.title }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+            {% when None %}
+            <a class="{% if path.starts_with(menu_item.url) %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="{{ menu_item.url }}" target="{% if menu_item.menu_type == Internal %}_self{% else %}_blank{% endif %}">
+                {% if let Some(icon) = menu_item.icon %}
+                <span class="icon"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                {% endif %}
+                <span>{{ menu_item.title }}</span>
+            </a>
+            {% endmatch %}
+            {% endfor %}
+        </div>
+        <div class="navbar-end">
+            {% for s in socials %}
+            <a class="navbar-item is-hidden-touch" href="{{ s.get_url() }}" target="_blank">
+                <span class="icon" style="color: #{{ s.get_color() }};">
+                <em class="mdi mdi-36px mdi-{{ s.get_icon() }}"></em></span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% if let Some(s) = side_menu %}
+    <div class="is-hidden" id="side-menu-mobile">
+        {{ s|safe }}
+    </div>
+    {% endif %}
+</nav>

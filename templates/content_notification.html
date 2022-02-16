@@ -1,0 +1,8 @@
+<div class="notification tile is-child {{ color }}" id="{{ id }}">
+    {% if let Some(t) = title %}
+    <p class="title">{{ t }}</p>
+    {% endif %}
+    <div class="content is-medium mgb-small">
+        {{ content|safe }}
+    </div>
+</div>

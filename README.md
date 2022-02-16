@@ -16,6 +16,12 @@ for [fast Dragon Ball Z characters](https://www.cbr.com/dragon-ball-fastest-char
 [Vados](https://dragonball.fandom.com/wiki/Vados). As it turns out she can also easily destroy and recreate planets,
 which is kind of what this project does as well.
 
+## Examples
+
+A website where I share my adventures mastering bass playing serves as example. The site itself is hosted
+via [Netlify](https://www.netlify.com/) and can be found [here](https://bass.klijs.tech). The source code for the
+website can be found on [Github](https://github.com/gklijs/vados_bass)
+
 ## License
 
 This project is licensed under MIT license ([LICENSE-MIT](LICENSE-MIT) or (http://opensource.org/licenses/MIT)

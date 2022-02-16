@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html class="has-navbar-fixed-top" lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ title }}</title>
+    <meta property="og:title" content="{{ title }}" />
+    {% if let Some(s) = summary %}
+    <meta property="og:description" content="{{ s }}" />
+    {% endif %}
+    {% for css_link in css_links %}
+    <link href="{{ css_link }}" rel="stylesheet">
+    {% endfor %}
+</head>
+<body>
+{{ navigation|safe }}
+<section class="section {{background_class}}" id="main">
+    <div class="container">
+        {% if let Some(b) = breadcrumbs %}{{ b|safe }}{% endif %}
+        <div class="{% if let Some(_) = side_menu %}tile is-ancestor is-flex-direction-row-reverse{% else %}tile is-ancestor{% endif %}">
+            <div class="tile is-9 is-vertical" data-document="index" id="main-content">
+                <div class="tile is-parent">
+                    {{ main_content|safe }}
+                </div>
+                <div class="tile is-horizontal">
+                    <div class="tile is-vertical is-parent" id="child-tiles-left">
+                        {% for s in left_sub_notifications %}
+                        {{ s|safe}}
+                        {% endfor %}
+                    </div>
+                    <div class="tile is-vertical is-parent" id="child-tiles-right">
+                        {% for s in right_sub_notifications %}
+                        {{ s|safe }}
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <div class="tile is-vertical is-parent">
+                {% if let Some(s) = side_menu %}
+                <div class="tile is-child is-hidden-mobile box p-1" id="side-menu-desktop">
+                    {{ s|safe }}
+                </div>
+                {% endif %}
+                {% for s in side_notifications %}
+                {{ s|safe }}
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+{{ footer|safe }}
+{% for js_link in js_links %}
+<script src="{{ js_link }}"></script>
+{% endfor %}
+</body>
+</html>

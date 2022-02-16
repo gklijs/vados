@@ -1,0 +1,9 @@
+<div class="box p-2" id="main-content-box">
+    <p class="title is-1">{{ title }}</p>
+    {% if let Some(s) = sub_title %}
+    <p class="subtitle is-3">{{ s }}</p>
+    {% endif %}
+    <div class="content is-medium mgb-small">
+        {{ content|safe }}
+    </div>
+</div>
