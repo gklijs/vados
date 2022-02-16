@@ -1,0 +1,19 @@
+<aside class="menu" id="side-menu">
+    <a class="menu-label" href="{{ menu_item.url }}" target="_self">
+        {% if let Some(icon) = menu_item.icon %}
+        <span class="icon"><em class="mdi mdi-18px mdi-{{icon}}"></em></span>
+        {% endif %}
+        {{ menu_item.title }}
+    </a>
+    {% if let Some(children) = menu_item.children %}
+    <ul class="menu-list">
+        {% for child in children %}
+        <li>
+            <a class="{% if child.url == path %}is-active{% endif %}" href="{{ child.url }}" target="_self">
+                {% if let Some(icon) = child.icon %}<span class="icon"><em
+                    class="mdi mdi-18px mdi-{{icon}}"></em></span>{% endif %}{{ child.title|safe }}</a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% endif %}
+</aside>
