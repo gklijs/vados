@@ -25,6 +25,7 @@ pub(crate) struct PageTemplate<'a> {
 pub(crate) struct NavigationTemplate<'a> {
     pub(crate) path: &'a str,
     pub(crate) site_title: &'a str,
+    pub(crate) color: &'a str,
     pub(crate) main_menu: &'a Vec<MenuItem>,
     pub(crate) socials: &'a Vec<SocialItem>,
     pub(crate) side_menu: Option<&'a String>,

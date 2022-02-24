@@ -1,5 +1,5 @@
 use crate::bulma::{default_css_links, default_js_links, vados_js, Color};
-use crate::files::write_file;
+use crate::files::write_raw;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -11,6 +11,7 @@ pub(crate) struct MainConfig {
     pub(crate) css_files: Vec<String>,
     pub(crate) include_default_css: Option<bool>,
     pub(crate) background_class: Option<String>,
+    pub(crate) navbar_color: Option<Color>,
     pub(crate) footer_content: String,
 }
 
@@ -19,6 +20,12 @@ impl MainConfig {
         match self.background_class.as_ref() {
             None => String::from("has-background-light"),
             Some(s) => s.clone(),
+        }
+    }
+    pub(crate) fn get_navbar_color(&self) -> &'static str {
+        match self.navbar_color.as_ref() {
+            None => Color::Warning.to_css_class(),
+            Some(s) => s.to_css_class(),
         }
     }
     pub(crate) fn get_css_links(&self) -> Vec<String> {
@@ -35,7 +42,7 @@ impl MainConfig {
         match self.include_default_js {
             Some(b) if !b => self.js_files.clone(),
             _ => {
-                write_file(destination, default_js_links().get(0).unwrap(), vados_js());
+                write_raw(destination, default_js_links().get(0).unwrap(), vados_js());
                 let mut result = self.js_files.clone();
                 result.append(&mut default_js_links());
                 result

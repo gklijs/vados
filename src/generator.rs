@@ -34,6 +34,6 @@ pub fn generate(source: &str, destination: &str) {
         let page = content_helper.get_page(&navigation, &main_content, &generic_content);
 
         //generating the end html and writing it to file
-        write_html(destination, path, page);
+        write_html(destination, path, &page);
     }
 }
