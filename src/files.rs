@@ -39,13 +39,14 @@ pub(crate) fn get_menu_config(source: &str) -> MenuConfig {
     serde_json::from_reader(file).expect("JSON file menu.json was not well-formatted")
 }
 
-pub(crate) fn write_html(destination: &str, path: &str, contents: String) {
+pub(crate) fn write_html(destination: &str, path: &str, html: &str) {
     let (path, file) = get_html_destination(destination, path);
+    let contents = minifier::html::minify(html);
     fs::create_dir_all(&path).unwrap();
     fs::write(format!("{}/{}", &path, file), contents).expect("Unable to write file");
 }
 
-pub(crate) fn write_file(destination: &str, path: &str, contents: String) {
+pub(crate) fn write_raw(destination: &str, path: &str, contents: &str) {
     let (path, file) = get_destination(destination, path);
     fs::create_dir_all(&path).unwrap();
     fs::write(format!("{}/{}", &path, file), contents).expect("Unable to write file");

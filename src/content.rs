@@ -307,6 +307,7 @@ fn get_navigation(
     NavigationTemplate {
         path,
         site_title: &*main_config.site_title,
+        color: main_config.get_navbar_color(),
         main_menu: &structure.get_main_menu_items(menu_config),
         socials: &menu_config.socials.iter().map(SocialItem::new).collect(),
         side_menu,
