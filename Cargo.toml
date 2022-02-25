@@ -1,6 +1,6 @@
 [package]
 name = "vados"
-version = "0.0.2"
+version = "0.0.3"
 authors = ["Gerard Klijs <g.klijs@gmail.com>"]
 include = ["src/**/*", "templates/**/*", "Cargo.toml"]
 description = "A Html generator, used with Bulma and a certain file structure to generate a static site"
@@ -14,8 +14,13 @@ edition = "2021"
 [dependencies]
 askama = "0.11.0"
 dashmap = "5.1.0"
+fast_image_resize = "0.7.0"
+image = "0.24.1"
 minifier = {version = "0.0.42", features = ["html"] }
 pulldown-cmark = { version = "0.9.1", default-features = false, features = ["simd"] }
 serde = {version = "1.0.135", features = ["derive"]}
 serde_json = "1.0.78"
 walkdir = "2.3.2"
+webp = "0.2.1"
+
+[features]

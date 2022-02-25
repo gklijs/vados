@@ -1,10 +1,11 @@
-use crate::bulma::Color;
+use crate::bulma::{Color, ImageType};
 use crate::config_files::{MainConfig, MenuConfig, Notification, PageConfig};
+use crate::image::ProcessedImage;
 use crate::structure::{Item, SocialItem, Structure};
 use crate::templates::{
     BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate,
-    ExternalNotificationTemplate, FooterTemplate, InternalNotificationTemplate, NavigationTemplate,
-    PageTemplate, SideMenuTemplate,
+    ExternalNotificationTemplate, FooterTemplate, InternalImageTemplate,
+    InternalNotificationTemplate, NavigationTemplate, PageTemplate, SideMenuTemplate,
 };
 use askama::Template;
 use pulldown_cmark::{html, Parser};
@@ -73,7 +74,7 @@ impl ContentHelper<'_> {
         )
     }
     pub(crate) fn get_main_content(&self, source: &str) -> String {
-        get_main_content(source, self.path, &*self.item)
+        get_main_content(source, self.path, &*self.item, self.structure)
     }
     pub(crate) fn get_page(
         &self,
@@ -105,7 +106,11 @@ struct PageHelper<'a> {
     main_content: &'a str,
 }
 
-pub(crate) fn to_content_items(source: &str, dir_path: String) -> ContentItems {
+pub(crate) fn to_content_items(
+    source: &str,
+    dir_path: String,
+    structure: &Structure,
+) -> ContentItems {
     let page_file_string = format!("{}/page.json", &dir_path);
     let page_file_path = Path::new(&page_file_string);
     let page_config = match File::open(page_file_path) {
@@ -127,6 +132,7 @@ pub(crate) fn to_content_items(source: &str, dir_path: String) -> ContentItems {
                     &path,
                     notification.clone(),
                     id,
+                    structure,
                 ))
             }
             Some(result)
@@ -143,6 +149,7 @@ pub(crate) fn to_content_items(source: &str, dir_path: String) -> ContentItems {
                     &path,
                     notification.clone(),
                     id,
+                    structure,
                 ))
             }
             Some(result)
@@ -161,14 +168,19 @@ fn resolve_notification(
     path: &str,
     notification: Notification,
     id: String,
+    structure: &Structure,
 ) -> String {
     let content = get_content(source, path, &*notification.content);
+    let image = notification
+        .image
+        .and_then(|i| structure.process_image(&i, ImageType::Sub));
     match notification.url {
         None => {
             let color = notification.color.unwrap_or(Color::Info).to_css_class();
             ContentNotificationTemplate {
                 title: &notification.title,
                 color,
+                image,
                 content,
                 id,
             }
@@ -182,6 +194,7 @@ fn resolve_notification(
                 sub_title: &None,
                 color,
                 url: &*internal,
+                image,
                 content: Some(content),
                 id,
             }
@@ -194,6 +207,7 @@ fn resolve_notification(
                 title: &notification.title,
                 color,
                 url: &*external,
+                image,
                 content,
                 id,
             }
@@ -203,16 +217,24 @@ fn resolve_notification(
     }
 }
 
-pub(crate) fn items_to_side_notifications(items: Vec<Arc<Item>>) -> Vec<String> {
+pub(crate) fn items_to_side_notifications(
+    items: Vec<Arc<Item>>,
+    structure: &Structure,
+) -> Vec<String> {
     let mut result = vec![];
     for (i, item) in items.iter().enumerate() {
         let id = format!("sub-s-{}", i);
         let color = Color::Info.to_css_class();
+        let image = item
+            .image
+            .as_ref()
+            .and_then(|i| structure.process_image(i, ImageType::Side));
         let notification = InternalNotificationTemplate {
             title: &Some(item.title.clone()),
             sub_title: &item.sub_title,
             color,
             url: &*item.path,
+            image,
             content: None,
             id,
         }
@@ -284,6 +306,22 @@ fn get_footer(source: &str, main_config: &MainConfig) -> String {
     .unwrap()
 }
 
+pub(crate) fn to_internal_image(
+    processed_image: Arc<ProcessedImage>,
+    image_type: ImageType,
+) -> String {
+    InternalImageTemplate {
+        ratio: processed_image.ratio.to_css_class(),
+        title: &*processed_image.title,
+        image_type,
+        src: &*processed_image.src,
+        srcset: &*processed_image.srcset,
+        alt: &*processed_image.alt,
+    }
+    .render()
+    .unwrap()
+}
+
 fn get_side_menu(path: &str, structure: &Structure) -> Option<String> {
     match structure.get_side_menu_items(path) {
         None => None,
@@ -327,10 +365,15 @@ fn get_breadcrumbs(path: &str, structure: &Structure) -> Option<String> {
     })
 }
 
-fn get_main_content(source: &str, path: &str, item: &Item) -> String {
+fn get_main_content(source: &str, path: &str, item: &Item, structure: &Structure) -> String {
+    let image = match &item.image {
+        None => None,
+        Some(i) => structure.process_image(i, ImageType::Main),
+    };
     ContentTemplate {
         title: &*item.title,
         sub_title: &item.sub_title,
+        image,
         content: get_content(source, path, &item.content),
     }
     .render()

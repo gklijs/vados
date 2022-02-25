@@ -3,6 +3,9 @@
     {% if let Some(s) = sub_title %}
     <p class="subtitle is-3">{{ s }}</p>
     {% endif %}
+    {% if let Some(i) = image %}
+    {{ i|safe }}
+    {% endif %}
     <div class="content is-medium mgb-small">
         {{ content|safe }}
     </div>

@@ -1,7 +1,8 @@
+use crate::bulma::ImageType;
 use crate::config_files::{MenuConfig, PageConfig, RawMenuItem, RawSocialItem};
-use crate::content::items_to_side_notifications;
+use crate::content::{items_to_side_notifications, to_internal_image};
+use crate::image::ProcessedImage;
 use crate::structure::SocialItem::{Facebook, Github, LinkedIn, Other, YouTube};
-
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use std::cmp::Ordering;
@@ -23,6 +24,7 @@ pub(crate) struct Item {
     pub(crate) path: String,
     pub(crate) title: String,
     pub(crate) sub_title: Option<String>,
+    pub(crate) image: Option<String>,
     pub(crate) icon: Option<String>,
     pub(crate) summary: Option<String>,
     pub(crate) content: String,
@@ -35,6 +37,7 @@ impl Item {
             path,
             title: page_config.title,
             sub_title: page_config.sub_title,
+            image: page_config.image,
             icon: page_config.icon,
             summary: page_config.summary,
             content: page_config.content,
@@ -67,6 +70,7 @@ impl PartialEq for Item {
 
 #[derive(Debug)]
 pub(crate) struct Structure {
+    image_meta_cache: DashMap<String, Arc<ProcessedImage>>,
     by_path: DashMap<String, Arc<Item>>,
     by_parent: DashMap<String, Vec<Arc<Item>>>,
     left_sub_notifications_cache: DashMap<String, Arc<Vec<String>>>,
@@ -120,8 +124,9 @@ impl RawMenuItem {
 }
 
 impl Structure {
-    pub(crate) fn new() -> Structure {
+    pub(crate) fn new(image_meta_cache: DashMap<String, Arc<ProcessedImage>>) -> Structure {
         Structure {
+            image_meta_cache,
             by_path: DashMap::new(),
             by_parent: DashMap::new(),
             left_sub_notifications_cache: DashMap::new(),
@@ -283,13 +288,25 @@ impl Structure {
             }
         }
         result.reverse();
-        items_to_side_notifications(result)
+        items_to_side_notifications(result, self)
     }
     pub(crate) fn get_menu_item(&self, path: &str) -> MenuItem {
         self.by_path.get(path).unwrap().to_side_menu_item(None)
     }
     pub(crate) fn get_item(&self, path: &str) -> Arc<Item> {
         self.by_path.get(path).unwrap().clone()
+    }
+    pub(crate) fn process_image(
+        &self,
+        image_reference: &str,
+        image_type: ImageType,
+    ) -> Option<String> {
+        if let Some(p) = self.image_meta_cache.get(image_reference) {
+            Some(to_internal_image(p.clone(), image_type))
+        } else {
+            println!("No image was found with reference {}.", image_reference);
+            None
+        }
     }
 }
 

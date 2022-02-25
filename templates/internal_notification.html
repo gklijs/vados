@@ -5,6 +5,9 @@
     {% if let Some(s) = sub_title %}
     <p class="subtitle">{{ s }}</p>
     {% endif %}
+    {% if let Some(i) = image %}
+    {{ i|safe }}
+    {% endif %}
     {% if let Some(c) = content %}
     <div class="content is-medium mgb-small">
         {{ c|safe }}

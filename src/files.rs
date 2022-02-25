@@ -1,4 +1,4 @@
-use crate::config_files::{MainConfig, MenuConfig};
+use crate::config_files::{ImageList, MainConfig, MenuConfig};
 use std::fs;
 use std::fs::File;
 use std::path::Path;
@@ -28,15 +28,31 @@ fn get_destination(destination: &str, path: &str) -> (String, String) {
 pub(crate) fn get_main_config(source: &str) -> MainConfig {
     let path = format!("{}/main.json", source);
     let config_file_path = Path::new(&path);
-    let file = File::open(config_file_path).unwrap();
+    let file = File::open(config_file_path).expect("JSON file main.json could not be read");
     serde_json::from_reader(file).expect("JSON file main.json was not well-formatted")
 }
 
 pub(crate) fn get_menu_config(source: &str) -> MenuConfig {
     let path = format!("{}/menu.json", source);
     let config_file_path = Path::new(&path);
-    let file = File::open(config_file_path).unwrap();
+    let file = File::open(config_file_path).expect("JSON file menu.json could not be read");
     serde_json::from_reader(file).expect("JSON file menu.json was not well-formatted")
+}
+
+pub(crate) fn get_image_list(source: &str) -> Option<ImageList> {
+    let path = format!("{}/images.json", source);
+    let config_file_path = Path::new(&path);
+    let file = match File::open(config_file_path) {
+        Ok(f) => f,
+        Err(_) => return None,
+    };
+    match serde_json::from_reader(file) {
+        Ok(list) => Some(list),
+        Err(e) => {
+            println!("JSON file images.json was not well-formatted:\n{}", e);
+            None
+        }
+    }
 }
 
 pub(crate) fn write_html(destination: &str, path: &str, html: &str) {
@@ -46,10 +62,15 @@ pub(crate) fn write_html(destination: &str, path: &str, html: &str) {
     fs::write(format!("{}/{}", &path, file), contents).expect("Unable to write file");
 }
 
-pub(crate) fn write_raw(destination: &str, path: &str, contents: &str) {
+pub(crate) fn write_raw<C: AsRef<[u8]>>(destination: &str, path: &str, contents: C) {
     let (path, file) = get_destination(destination, path);
     fs::create_dir_all(&path).unwrap();
     fs::write(format!("{}/{}", &path, file), contents).expect("Unable to write file");
+}
+
+pub(crate) fn empty(destination: &str, path: &str) -> bool {
+    let full_path = format!("{}/{}", destination, path);
+    !Path::new(&full_path).exists()
 }
 
 pub(crate) fn get_all_directory_paths(source: &str) -> Vec<String> {

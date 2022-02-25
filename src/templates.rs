@@ -1,3 +1,4 @@
+use crate::bulma::ImageType;
 use crate::structure::MenuType::Internal;
 use crate::structure::{MenuItem, SocialItem};
 use askama::Template;
@@ -50,6 +51,7 @@ pub(crate) struct SideMenuTemplate<'a> {
 pub(crate) struct ContentTemplate<'a> {
     pub(crate) title: &'a str,
     pub(crate) sub_title: &'a Option<String>,
+    pub(crate) image: Option<String>,
     pub(crate) content: String,
 }
 
@@ -60,6 +62,7 @@ pub(crate) struct InternalNotificationTemplate<'a> {
     pub(crate) sub_title: &'a Option<String>,
     pub(crate) color: &'a str,
     pub(crate) url: &'a str,
+    pub(crate) image: Option<String>,
     pub(crate) content: Option<String>,
     pub(crate) id: String,
 }
@@ -70,6 +73,7 @@ pub(crate) struct ExternalNotificationTemplate<'a> {
     pub(crate) title: &'a Option<String>,
     pub(crate) color: &'a str,
     pub(crate) url: &'a str,
+    pub(crate) image: Option<String>,
     pub(crate) content: String,
     pub(crate) id: String,
 }
@@ -79,6 +83,7 @@ pub(crate) struct ExternalNotificationTemplate<'a> {
 pub(crate) struct ContentNotificationTemplate<'a> {
     pub(crate) title: &'a Option<String>,
     pub(crate) color: &'a str,
+    pub(crate) image: Option<String>,
     pub(crate) content: String,
     pub(crate) id: String,
 }
@@ -87,4 +92,15 @@ pub(crate) struct ContentNotificationTemplate<'a> {
 #[template(path = "footer.html")]
 pub(crate) struct FooterTemplate<'a> {
     pub(crate) content: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "internal_image.html")]
+pub(crate) struct InternalImageTemplate<'a> {
+    pub(crate) ratio: &'a str,
+    pub(crate) title: &'a str,
+    pub(crate) image_type: ImageType,
+    pub(crate) src: &'a str,
+    pub(crate) srcset: &'a str,
+    pub(crate) alt: &'a str,
 }

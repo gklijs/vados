@@ -56,6 +56,7 @@ impl MainConfig {
 pub(crate) struct PageConfig {
     pub(crate) title: String,
     pub(crate) sub_title: Option<String>,
+    pub(crate) image: Option<String>,
     pub(crate) icon: Option<String>,
     pub(crate) summary: Option<String>,
     pub(crate) content: String,
@@ -70,6 +71,7 @@ impl PageConfig {
         PageConfig {
             title: String::from(last),
             sub_title: None,
+            image: None,
             icon: None,
             summary: None,
             content: format!("<h1>{}</h1>", last),
@@ -108,6 +110,21 @@ pub(crate) struct MenuConfig {
 pub(crate) struct Notification {
     pub(crate) content: String,
     pub(crate) title: Option<String>,
+    pub(crate) image: Option<String>,
     pub(crate) url: Option<String>,
     pub(crate) color: Option<Color>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ImageReference {
+    pub(crate) title: Option<String>,
+    pub(crate) file_name: String,
+    pub(crate) alt_text: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct ImageList {
+    pub(crate) title: Option<String>,
+    pub(crate) list: Vec<ImageReference>,
 }

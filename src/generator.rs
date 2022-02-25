@@ -1,19 +1,29 @@
 extern crate core;
 
 use crate::content::{to_content_items, ContentHelper, GenericContent};
-use crate::files::{get_all_directory_paths, get_main_config, get_menu_config, write_html};
+use crate::files::{
+    get_all_directory_paths, get_image_list, get_main_config, get_menu_config, write_html,
+};
+use crate::image::ImageProcessor;
 use crate::structure::Structure;
 
 /// The core function to call, if the files at the source are valid, the static site will be
 /// generated at the destination location. Please make sure the files and/or directories have the proper ownership.
-pub fn generate(source: &str, destination: &str) {
+pub fn generate(source: &str, img_source: &str, destination: &str) {
     let main_config = get_main_config(source);
     let menu_config = get_menu_config(source);
 
-    let structure = Structure::new();
+    let mut image_processor = ImageProcessor::new(img_source, destination);
+    for directory_path in get_all_directory_paths(img_source) {
+        if let Some(l) = get_image_list(&directory_path) {
+            image_processor.process_list(&directory_path, l.list)
+        }
+    }
+
+    let structure = Structure::new(image_processor.meta_cache);
     let mut all_paths = vec![];
     for directory_path in get_all_directory_paths(source) {
-        let content_items = to_content_items(source, directory_path);
+        let content_items = to_content_items(source, directory_path, &structure);
         let path = content_items.item.path.clone();
         if let Some(notifications) = content_items.left_sub_notifications {
             structure.add_left_sub_notifications(&path, notifications)
