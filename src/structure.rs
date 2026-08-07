@@ -165,15 +165,26 @@ impl Structure {
             if item.url.starts_with("https://") {
                 result.push(item.to_external_item())
             } else {
-                let i = self.by_path.get(&*item.url).unwrap();
-                let children = self.by_parent.get(&*item.url).map(|entry| {
-                    entry
-                        .value()
-                        .iter()
-                        .map(|i| i.to_side_menu_item(None))
-                        .collect()
-                });
-                result.push(i.to_main_menu_item(item.title.clone(), item.icon.clone(), children))
+                match self.by_path.get(&*item.url) {
+                    None => println!(
+                        "Main menu entry with url {} does not match any page; dropping it from the menu.",
+                        item.url
+                    ),
+                    Some(i) => {
+                        let children = self.by_parent.get(&*item.url).map(|entry| {
+                            entry
+                                .value()
+                                .iter()
+                                .map(|i| i.to_side_menu_item(None))
+                                .collect()
+                        });
+                        result.push(i.to_main_menu_item(
+                            item.title.clone(),
+                            item.icon.clone(),
+                            children,
+                        ))
+                    }
+                }
             }
         }
         result
@@ -277,10 +288,18 @@ impl Structure {
         }
     }
     pub(crate) fn get_side_notifications(&self, path: &str) -> Vec<String> {
-        let items = self
-            .by_parent
-            .get(path)
-            .unwrap_or_else(|| self.by_parent.get(&*parent_path(path).unwrap()).unwrap());
+        // Children first, falling back to siblings; see vados.allium's
+        // `side_notification_source`. A childless root page has no parent to
+        // take siblings from either -- per the spec's `siblings: Page with
+        // parent = this.parent`, a page with no parent has no siblings, so
+        // there is nothing to show rather than something to panic over.
+        let own_children = self.by_parent.get(path);
+        let items = match own_children.or_else(|| {
+            parent_path(path).and_then(|parent| self.by_parent.get(&*parent))
+        }) {
+            Some(items) => items,
+            None => return vec![],
+        };
         let mut result = vec![];
         for item in items.value().iter().rev().take(4) {
             if result.len() < 3 && item.path != path {
@@ -317,6 +336,17 @@ pub enum SocialItem {
     Facebook(String),
     YouTube(String),
     Other(String, String, String),
+}
+
+/// Whether a social link's URL matches one of the providers `SocialItem`
+/// recognises automatically. Kept in sync with `SocialItem::new`'s matching,
+/// so `check` can flag an unrecognised provider missing its required icon
+/// and color before generation would panic on it.
+pub(crate) fn is_recognized_social_provider(url: &str) -> bool {
+    url.starts_with("https://github.com/")
+        || url.starts_with("https://www.linkedin.com/")
+        || url.starts_with("https://www.facebook.com/")
+        || url.starts_with("https://www.youtube.com/")
 }
 
 impl SocialItem {

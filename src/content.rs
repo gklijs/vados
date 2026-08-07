@@ -245,7 +245,31 @@ pub(crate) fn items_to_side_notifications(
     result
 }
 
-fn get_file_path(source: &str, path: &str, reference: &str) -> String {
+/// How a content reference (a page's `content`, a notification's `content`,
+/// or the site's `footerContent`) resolves. Shared between rendering, which
+/// panics on `Unrecognised`, and `check`, which reports it as a finding
+/// instead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ContentKind {
+    MarkdownFile,
+    HtmlFile,
+    InlineHtml,
+    Unrecognised,
+}
+
+pub(crate) fn classify_content_reference(reference: &str) -> ContentKind {
+    if reference.ends_with(".md") {
+        ContentKind::MarkdownFile
+    } else if reference.ends_with(".html") {
+        ContentKind::HtmlFile
+    } else if reference.ends_with('>') {
+        ContentKind::InlineHtml
+    } else {
+        ContentKind::Unrecognised
+    }
+}
+
+pub(crate) fn get_file_path(source: &str, path: &str, reference: &str) -> String {
     if path == "/" {
         format!("{}/{}", source, reference)
     } else {
@@ -286,11 +310,11 @@ fn html_to_content(file_path: &str) -> String {
 
 fn get_content(source: &str, path: &str, reference: &str) -> String {
     let file_path = get_file_path(source, path, reference);
-    match reference {
-        md if md.ends_with(".md") => md_to_content(&file_path),
-        html if html.ends_with(".html") => html_to_content(&file_path),
-        raw if raw.ends_with('>') => String::from(raw),
-        _ => panic!(
+    match classify_content_reference(reference) {
+        ContentKind::MarkdownFile => md_to_content(&file_path),
+        ContentKind::HtmlFile => html_to_content(&file_path),
+        ContentKind::InlineHtml => String::from(reference),
+        ContentKind::Unrecognised => panic!(
             "Can't handle content reference that looks like: {}",
             reference
         ),

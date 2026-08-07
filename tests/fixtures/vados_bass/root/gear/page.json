@@ -1,0 +1,14 @@
+{
+  "title": "Gear",
+  "subTitle": "Something about the equipment I use",
+  "icon": "music-note-outline",
+  "image" : "/gear/office_gear",
+  "content": "gear.md",
+  "leftNotifications" : [
+    {
+      "title" : "Gear",
+      "color" : "Danger",
+      "content" : "gear-intro.md"
+    }
+  ]
+}

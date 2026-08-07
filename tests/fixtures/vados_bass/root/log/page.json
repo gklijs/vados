@@ -1,0 +1,15 @@
+{
+  "title" : "Log",
+  "subTitle" : "logs of each day I practiced bass",
+  "icon": "notebook",
+  "content" : "log.md",
+  "leftNotifications" : [
+    {
+      "title" : "SBL Academy",
+      "color" : "Black",
+      "image" : "/log/sbl_level2",
+      "content" : "sbl.md"
+    }
+  ],
+  "order" : 2022
+}

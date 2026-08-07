@@ -1,0 +1,1340 @@
+-- allium: 3
+-- vados.allium
+--
+-- Vados: a static site generator that turns a directory tree of content into a
+-- Bulma-styled HTML site.
+--
+-- Scope:
+--   The whole generator, at domain level. One maintainer authors a source tree
+--   and an image tree and runs the tool from the command line. The tool has two
+--   subcommands: `generate` reads the trees and publishes a site, `check` reads
+--   the same trees and reports every problem it can find without writing
+--   anything.
+--
+-- Includes:
+--   - The command line: the `generate` and `check` subcommands
+--   - Pre-flight validation: findings, their severity, and the check outcome
+--   - Site-wide configuration (title, footer, extra CSS/JS, background, navbar)
+--   - The Bulma design commitment: semantic colours, aspect-ratio classes and
+--     the default Bulma/Material-Design-icon stylesheets are first-class here,
+--     because the project is built around Bulma (see README)
+--   - Content structure: one page per source directory, page hierarchy,
+--     sibling display order
+--   - Menus and navigation: main menu with dropdowns, side menu, breadcrumbs,
+--     social links with provider auto-detection
+--   - Notifications: configured left/right notifications, subtree inheritance,
+--     and auto-generated side notifications
+--   - Images: aspect-ratio matching, centre cropping, responsive variant set,
+--     and the Main/Sub/Side placement distinction
+--   - Page assembly and publication
+--
+-- Excludes (implementation, deliberately not modelled):
+--   - The template engine and the individual template files / their markup
+--   - Concurrency, shared ownership and the caching data structures
+--   - JSON parsing mechanics (main.json, menu.json, page.json and images.json
+--     are named only as the surfaces the maintainer authors)
+--   - Directory walking and path string manipulation
+--   - Image decoding/resizing/encoding libraries, the resampling filter,
+--     alpha premultiplication and WebP encoding quality
+--   - CSS class name spelling (`is-primary`, `is-16by9`, ...). The Color and
+--     ImageRatio enumerations are domain; their class names are not
+--   - HTML minification of the produced output
+--   - Pixel breakpoints and the `sizes`/`decoding`/`loading` attribute values.
+--     The Main/Sub/Side placement distinction is domain; the pixels are not
+
+------------------------------------------------------------
+-- External Entities
+------------------------------------------------------------
+
+-- The single maintainer who authors the source tree and runs the generator.
+-- This is a solo project: there is exactly one operator and no roles.
+external entity Maintainer {}
+
+-- Someone reading the published site. Modelled only so the shape of a
+-- published page can be stated as a boundary.
+external entity Visitor {}
+
+------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+-- How a piece of content is referred to from configuration. One of: a path to
+-- a Markdown file, a path to an HTML file, or a literal HTML fragment
+-- (recognised by ending in a closing tag). A reference matching none of the
+-- three is `unrecognised`: it is retained rather than rejected on the spot, so
+-- that a check run can report it as a finding alongside everything else.
+value ContentReference {
+    reference: String
+    kind: ContentKind
+
+    -- Markdown is converted to HTML; HTML files and inline HTML are used
+    -- as written.
+    --
+    -- Two failure modes are deliberately treated differently, and the
+    -- asymmetry is intentional rather than an oversight:
+    --
+    --   - A reference matching none of the three recognised forms is an
+    --     authoring mistake. The maintainer wrote something that cannot mean
+    --     anything, so the run fails loudly rather than quietly publishing a
+    --     page with a hole in it. A check run reports it as an error instead
+    --     of failing, which is the same judgement expressed without aborting.
+    --   - A reference of a recognised form whose file is not there is
+    --     ordinary: files get renamed, moved or deleted while a site is being
+    --     edited. The content resolves to empty, a warning is reported, and
+    --     the rest of the site still publishes.
+    html: resolve_content(reference, kind)
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+-- Bulma's semantic colour palette. Used for the navbar and for notifications.
+-- NOTE: the Rust implementation spells the success value `Succes`. That is a
+-- typo and the correct spelling is used here; the code should be corrected
+-- rather than the spec matching the mistake.
+enum Color {
+    white | black | light | dark | primary | link | info | success | warning | danger
+}
+
+-- The standard aspect ratios an image can be cropped to. Every source image is
+-- matched to the closest of these.
+enum ImageRatio {
+    `1:1` | `5:4` | `4:3` | `3:2` | `5:3` | `16:9` | `2:1` | `3:1` |
+    `4:5` | `3:4` | `2:3` | `3:5` | `9:16` | `1:2` | `1:3`
+}
+
+-- Where an image sits on a page. Placement determines loading priority and
+-- display size: a hero image is fetched eagerly and shown large, notification
+-- images are deferred and shown smaller.
+enum ImagePlacement { main | sub | side }
+
+enum ContentKind { markdown_file | html_file | inline_html | unrecognised }
+
+-- What the maintainer asked the tool to do. A generate run publishes a site; a
+-- check run reads the same trees, reports what is wrong and writes nothing.
+enum RunMode { generate | check }
+
+-- Whether a finding fails the check. Fixed policy: see Finding.severity.
+enum FindingSeverity { error | warning }
+
+-- What kind of problem a check run found. Every kind names one authoring
+-- mistake the maintainer can act on.
+enum FindingKind {
+    -- Something in the source or image tree could not be read as what it
+    -- claims to be. Reported by whatever reads the tree, not derived.
+    site_config_unreadable
+    menu_unreadable
+    page_config_unreadable
+    images_manifest_unreadable
+
+    -- Content references.
+    unrecognised_content_reference
+    missing_content_file
+
+    -- Menus and social links.
+    external_menu_link_without_title
+    unresolved_menu_link
+    unrecognised_social_link_incomplete
+
+    -- Images.
+    duplicate_image_reference
+    image_without_alternative_text
+    unknown_page_image_reference
+    unknown_notification_image_reference
+    missing_image_source_file
+
+    -- Notifications.
+    dead_internal_notification_link
+}
+
+enum MenuLinkKind { internal | external }
+
+enum NotificationKind { plain | internal | external }
+
+enum NotificationSide { left | right }
+
+-- Social providers recognised from their URL. Recognised providers get a
+-- canonical icon and brand colour; anything else must supply its own.
+enum SocialProvider { github | linked_in | facebook | youtube | other }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+-- One invocation of the tool. A batch process: it is requested once, reads the
+-- source and image trees, and ends either with a published site or with a
+-- report of what is wrong.
+--
+-- Both subcommands are the same run up to the point where the structure is
+-- known. Discovery is shared wholesale: site configuration, menu links, social
+-- links, pages, notifications and images are declared identically whatever the
+-- mode. Only after `structure_built` do the two diverge: a generate run
+-- assembles and publishes, a check run evaluates the structure it just built
+-- and reports.
+entity GenerationRun {
+    mode: RunMode
+    source_location: String
+    image_source_location: String
+
+    -- Only a generate run has somewhere to put a site. A check run produces no
+    -- output, so it is given no destination at all; see CheckRunHasNoDestination.
+    destination: String?
+
+    status: requested | configured | structure_built | published | checked
+
+    transitions status {
+        requested -> configured
+        configured -> structure_built
+        structure_built -> published
+        structure_built -> checked
+        terminal: published, checked
+    }
+
+    site_config: SiteConfig with run = this
+    pages: Page with run = this
+    main_menu_links: MenuLink with run = this
+    social_links: SocialLink with run = this
+
+    -- Every notification declared anywhere beneath the source root, reachable
+    -- without walking the page tree.
+    notifications: Notification with page.run = this
+
+    -- The images this run declares. This is the set the destination is
+    -- brought into line with: variants left at the destination by earlier
+    -- runs, for images that are not in this set, are no longer owned.
+    images: SiteImage with run = this
+
+    -- Only entries that resolve reach the published site. An internal entry
+    -- naming a path with no page is reported and dropped, not fatal.
+    published_main_menu_links: main_menu_links where resolves
+
+    -- Everything a check run found. A run collects findings; it never stops at
+    -- one. The outcome is a count, not a first failure.
+    findings: Finding with run = this
+    errors: findings where severity = error
+    warnings: findings where severity = warning
+    error_count: errors.count
+    warning_count: warnings.count
+
+    -- The check passes exactly when nothing error-severity was found. Warnings
+    -- are reported and counted but never change this.
+    check_passed: error_count = 0
+}
+
+-- Site-wide configuration, authored as main.json at the source root.
+entity SiteConfig {
+    run: GenerationRun
+    site_title: String
+    footer_content: ContentReference
+
+    extra_css_files: List<String>
+    extra_js_files: List<String>
+    include_default_css: Boolean?
+    include_default_js: Boolean?
+
+    background_class: String?
+    navbar_color: Color?
+
+    -- Defaults apply when the maintainer says nothing.
+    default_css_included: include_default_css ?? true
+    default_js_included: include_default_js ?? true
+    background: background_class ?? config.default_background_class
+    navbar: navbar_color ?? config.default_navbar_color
+
+    -- The default stylesheets are the Bulma stylesheet and a Material Design
+    -- icon font; the default script supplies the burger-menu and side-menu
+    -- toggling behaviour. Maintainer-supplied files come first.
+    css_links: if default_css_included:
+                   concat(extra_css_files, config.default_css_links)
+               else: extra_css_files
+    js_links: if default_js_included:
+                  concat(extra_js_files, config.default_js_links)
+              else: extra_js_files
+}
+
+-- One page of the site. Every directory under the source root is one page;
+-- directory nesting is page nesting. The source root is the page at "/".
+entity Page {
+    run: GenerationRun
+    path: String
+    parent: Page?
+    title: String
+    content: ContentReference
+    sub_title: String?
+    icon: String?
+    summary: String?
+    image_reference: String?
+    order: Integer?
+    status: discovered | published
+
+    transitions status {
+        discovered -> published
+        terminal: published
+    }
+
+    is_root: parent = null
+    children: Page with parent = this
+
+    -- Includes this page itself; the pages under the same parent.
+    siblings: Page with parent = this.parent
+
+    notifications: Notification with page = this
+    own_left_notifications: notifications where side = left
+    own_right_notifications: notifications where side = right
+
+    -- The page's hero image, if it names one that was declared and rendered.
+    main_image: SiteImage with reference_key = this.image_reference and run = this.run
+    main_image_placement: config.hero_image_placement
+
+    -- Number of path segments. The root and top-level pages both count as 1,
+    -- "/a/b" as 2, and so on.
+    depth: segment_count(path)
+
+    -- Sibling display order: pages with an explicit order come first, in
+    -- ascending order; pages without one come last; ties break alphabetically
+    -- by title.
+    precedes(other):
+        if order != null and other.order = null: true
+        else if order = null and other.order != null: false
+        else if order != null and other.order != null and order != other.order: order < other.order
+        else: title < other.title
+
+    ordered_children: in_display_order(children)
+    ordered_siblings: in_display_order(siblings)
+
+    -- Notifications configured on a page apply to that page and to everything
+    -- beneath it: a descendant with none of its own shows the nearest
+    -- ancestor's. Left and right inherit independently.
+    effective_left_notifications:
+        if own_left_notifications.count > 0: own_left_notifications
+        else: parent?.effective_left_notifications ?? {}
+    effective_right_notifications:
+        if own_right_notifications.count > 0: own_right_notifications
+        else: parent?.effective_right_notifications ?? {}
+
+    -- Separately from configured notifications, every page advertises a few
+    -- neighbouring pages: its own children when it has any, otherwise its
+    -- siblings. Taken from the end of display order, never including itself.
+    --
+    -- Children-first is deliberate, not a fallback ordering that happens to
+    -- exist. A page that has a section beneath it points readers down into
+    -- that section, because that is where the site continues. Only a childless
+    -- page, having nothing below it to offer, points sideways at its peers.
+    side_notification_source: if children.count > 0: ordered_children else: ordered_siblings
+    side_notification_pages:
+        last_excluding(side_notification_source, this, config.max_side_notifications)
+    side_notification_image_placement: config.side_notification_image_placement
+    side_notification_color: config.side_notification_color
+
+    -- Breadcrumbs appear once a page is nested far enough to be worth
+    -- retracing: the ancestor chain from the root down to, but not including,
+    -- this page. The site root is deliberately the first crumb, so the trail
+    -- always reaches all the way back to the site index rather than stopping
+    -- at whichever ancestor happens to be within the depth threshold.
+    shows_breadcrumbs: depth >= config.breadcrumb_min_depth
+    breadcrumb_trail: ancestor_chain(this)
+
+    -- The side menu offers in-section navigation on deeply nested pages. It is
+    -- rooted at this page when it has children, otherwise at its parent.
+    side_menu_root: if children.count > 0: this else: parent
+    shows_side_menu:
+        depth >= config.side_menu_min_depth
+        and (children.count > 0 or depth > config.side_menu_min_depth)
+
+    -- Where the page lands on the published site: the root page becomes the
+    -- site index, "/foo/bar" becomes "foo/bar".
+    output_location: page_output_location(path)
+}
+
+-- A notification the maintainer attached to a page, in the left or right
+-- column. Notifications are inherited by the page's whole subtree.
+entity Notification {
+    page: Page
+    side: NotificationSide
+    position: Integer
+    content: ContentReference
+    title: String?
+    image_reference: String?
+    url: String?
+    given_color: Color?
+
+    -- A notification with no link is plain; one linking within the site is
+    -- internal; anything else points off-site. Classified once, from the url.
+    kind: NotificationKind
+
+    -- An internal notification points at a path within this site. Unlike a main
+    -- menu entry, a notification is published whether or not its target exists:
+    -- the link is rendered as written and a dead one simply ships.
+    target: Page with path = this.url and run = this.page.run
+
+    -- An internal notification naming a path that is not a page of this site.
+    -- The link still ships, but the maintainer is told, whichever command they
+    -- ran. This is the single place the two commands agree on what a dead link
+    -- is; they differ only in the shape of the report. A check run records a
+    -- warning-severity Finding it can carry to the end and count; a generate
+    -- run, which collects nothing, reports it as it passes.
+    links_nowhere: kind = internal and target = null
+
+    default_color:
+        if kind = plain: config.plain_notification_color
+        else: config.linked_notification_color
+    color: given_color ?? default_color
+
+    image: SiteImage with reference_key = this.image_reference and run = this.page.run
+    image_placement: config.notification_image_placement
+}
+
+-- An entry in the site-wide main menu, authored as menu.json at the source
+-- root.
+entity MenuLink {
+    run: GenerationRun
+    position: Integer
+    url: String
+    given_title: String?
+    given_icon: String?
+
+    -- An entry pointing off-site is external; anything else names a path
+    -- within this site. Classified once, from the url.
+    kind: MenuLinkKind
+
+    -- Internal entries point at a page of this site.
+    target: Page with path = this.url and run = this.run
+
+    -- Whether the entry can be rendered at all. An external entry always can;
+    -- an internal one only when the path it names is a page of this site.
+    --
+    -- An internal entry naming a path with no page is a typo in menu.json, not
+    -- a reason to abandon the run. It is reported to the maintainer and left
+    -- out of the published menu; everything else about the run is unaffected.
+    -- The published menu therefore only ever contains entries that resolve.
+    resolves: kind = external or target != null
+
+    -- An internal entry takes its title and icon from the page it points at
+    -- unless the maintainer overrode them. An external entry has no page to
+    -- fall back on, so it must supply its own title.
+    title: given_title ?? target?.title
+    icon: given_icon ?? target?.icon
+
+    -- An internal entry also offers its target's direct children as a dropdown.
+    dropdown: target?.ordered_children ?? {}
+}
+
+-- A link to the maintainer's presence on another site, rendered site-wide.
+entity SocialLink {
+    run: GenerationRun
+    position: Integer
+    url: String
+    given_icon: String?
+    given_brand_color: String?
+
+    -- Recognised from the url. Classified once, on registration.
+    provider: SocialProvider
+
+    -- Recognised providers carry a canonical icon and brand colour. Note this
+    -- is a brand colour, not a Bulma semantic Color.
+    icon: if provider = other: given_icon else: canonical_icon(provider)
+    brand_color: if provider = other: given_brand_color else: canonical_brand_color(provider)
+}
+
+-- An image the maintainer listed for publication, authored as images.json in a
+-- directory of the image tree. It is published as a set of responsively sized
+-- variants that the site can choose between.
+entity SiteImage {
+    run: GenerationRun
+
+    -- How pages and notifications refer to this image.
+    reference_key: String
+    source_file: String
+    alt_text: String
+    given_title: String?
+    status: declared | rendered | unavailable
+
+    transitions status {
+        declared -> rendered
+        declared -> unavailable
+        terminal: rendered, unavailable
+    }
+
+    source_width: Integer when status = rendered
+    source_height: Integer when status = rendered
+
+    -- The closest standard ratio to the source image's own proportions. The
+    -- image is centre-cropped to it.
+    ratio: ImageRatio when status = rendered
+
+    title: given_title ?? base_name(source_file)
+
+    -- The variants published for this image: the standard widths that fit
+    -- within the cropped image, or the image's own width when it is smaller
+    -- than every standard width.
+    variant_widths: widths_up_to(config.responsive_widths, source_width)
+
+    -- The widest published variant is what a client falls back to when it
+    -- cannot choose from the set.
+    fallback_width: variant_widths.first
+}
+
+-- One problem a check run found. A finding is a record, not an exception: it is
+-- collected and carried to the end of the run, so that finding one thing wrong
+-- never prevents finding the next.
+entity Finding {
+    run: GenerationRun
+    kind: FindingKind
+
+    -- Where the maintainer should look: a file path, a page path or a url.
+    location: String
+
+    -- The offending value, where naming it helps: the reference key, the image
+    -- reference, or the content reference that could not be understood.
+    detail: String?
+
+    -- Severity is fixed policy, not something a site configures. A finding is an
+    -- error when it breaks an invariant this spec states, or when a real
+    -- generate run would abort on it; the two agree in spirit. Everything a
+    -- generate run tolerates by skipping or degrading and carrying on is a
+    -- warning.
+    severity:
+        if kind in config.error_finding_kinds: config.failing_severity
+        else: config.tolerated_severity
+}
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+config {
+    -- Bulma defaults applied when the maintainer configures nothing.
+    default_navbar_color: Color = warning
+    default_background_class: String = "has-background-light"
+    default_css_links: List<String> = [
+        "https://cdn.jsdelivr.net/npm/@mdi/font@6.5.95/css/materialdesignicons.min.css",
+        "https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"
+    ]
+    default_js_links: List<String> = [ "/js/vados.js" ]
+
+    -- Notification colouring.
+    plain_notification_color: Color = info
+    linked_notification_color: Color = link
+    side_notification_color: Color = info
+
+    -- Navigation thresholds, in path segments.
+    breadcrumb_min_depth: Integer = 2
+    side_menu_min_depth: Integer = 3
+
+    -- How many neighbouring pages a page advertises.
+    max_side_notifications: Integer = 3
+
+    -- Where each kind of image sits, which fixes its loading priority and
+    -- display size. Fixed policy rather than something a site can change.
+    hero_image_placement: ImagePlacement = main
+    notification_image_placement: ImagePlacement = sub
+    side_notification_image_placement: ImagePlacement = side
+
+    -- Responsive variant widths, widest first.
+    responsive_widths: List<Integer> = [ 1972, 1479, 986, 632, 425, 318, 159 ]
+
+    -- Which findings fail a check. Fixed policy rather than something a site
+    -- can change: each of these either breaks an invariant this spec states, or
+    -- is a condition a real generate run cannot get past. Every other kind is a
+    -- warning, because generation tolerates it by skipping or degrading.
+    error_finding_kinds: Set<FindingKind> = {
+        site_config_unreadable,
+        menu_unreadable,
+        page_config_unreadable,
+        unrecognised_content_reference,
+        external_menu_link_without_title,
+        unrecognised_social_link_incomplete,
+        duplicate_image_reference,
+        image_without_alternative_text
+    }
+
+    -- The two severities themselves. Neither is adjustable; they are named here
+    -- so that the classification above has somewhere to land.
+    failing_severity: FindingSeverity = error
+    tolerated_severity: FindingSeverity = warning
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- Starting a run -----------------------------------------------------------
+
+rule BeginGeneration {
+    when: GenerateRequested(source, image_source, destination)
+    ensures: GenerationRun.created(
+        mode: generate,
+        source_location: source,
+        image_source_location: image_source,
+        destination: destination,
+        status: requested
+    )
+}
+
+-- A check run is begun exactly like a generate run, minus the destination.
+-- Everything up to the point where the structure is known is the same work.
+rule BeginCheck {
+    when: CheckRequested(source, image_source)
+    ensures: GenerationRun.created(
+        mode: check,
+        source_location: source,
+        image_source_location: image_source,
+        status: requested
+    )
+}
+
+rule AdoptSiteConfiguration {
+    when: SiteConfigurationDeclared(
+        run, site_title, footer_content,
+        extra_css_files, extra_js_files,
+        include_default_css?, include_default_js?,
+        background_class?, navbar_color?
+    )
+    requires: run.status = requested
+    ensures:
+        SiteConfig.created(
+            run: run,
+            site_title: site_title,
+            footer_content: footer_content,
+            extra_css_files: extra_css_files,
+            extra_js_files: extra_js_files,
+            include_default_css: include_default_css,
+            include_default_js: include_default_js,
+            background_class: background_class,
+            navbar_color: navbar_color
+        )
+        run.status = configured
+}
+
+-- The generator ships its own script for the burger menu and side menu
+-- toggles. When the default script is in use it is published alongside the
+-- site so pages can link to it.
+rule PublishDefaultBehaviourScript {
+    when: site_config: SiteConfig.created
+    requires: site_config.run.mode = generate
+    requires: site_config.default_js_included
+    ensures: ScriptAssetPublished(
+        run: site_config.run,
+        location: config.default_js_links.first
+    )
+}
+
+-- Menus --------------------------------------------------------------------
+
+rule RegisterMainMenuLink {
+    when: MainMenuLinkDeclared(run, position, url, title?, icon?)
+    requires: run.status = configured
+    ensures: MenuLink.created(
+        run: run,
+        position: position,
+        url: url,
+        kind: menu_link_kind_of(url),
+        given_title: title,
+        given_icon: icon
+    )
+}
+
+rule RegisterSocialLink {
+    when: SocialLinkDeclared(run, position, url, icon?, brand_color?)
+    requires: run.status = configured
+    ensures: SocialLink.created(
+        run: run,
+        position: position,
+        url: url,
+        provider: social_provider_of(url),
+        given_icon: icon,
+        given_brand_color: brand_color
+    )
+}
+
+-- Content structure --------------------------------------------------------
+
+-- Every directory under the source root becomes a page. A directory without a
+-- page.json still becomes a page: it is titled after the directory and its
+-- content is a bare heading.
+rule DiscoverPage {
+    when: PageDeclared(
+        run, path, title?, sub_title?, image?, icon?, summary?, content?, order?
+    )
+    requires: run.status = configured
+    let parent = Page{run: run, path: parent_path(path)}
+    ensures: Page.created(
+        run: run,
+        path: path,
+        parent: parent,
+        title: title ?? directory_name(path),
+        content: content ?? default_page_content(path),
+        sub_title: sub_title,
+        image_reference: image,
+        icon: icon,
+        summary: summary,
+        order: order,
+        status: discovered
+    )
+}
+
+rule AttachNotification {
+    when: PageNotificationDeclared(
+        page, side, position, content, title?, image?, url?, color?
+    )
+    requires: page.status = discovered
+    ensures: Notification.created(
+        page: page,
+        side: side,
+        position: position,
+        content: content,
+        kind: notification_kind_of(url),
+        title: title,
+        image_reference: image,
+        url: url,
+        given_color: color
+    )
+}
+
+rule CompleteSourceScan {
+    when: SourceScanCompleted(run)
+    requires: run.status = configured
+    ensures: run.status = structure_built
+}
+
+-- Images -------------------------------------------------------------------
+
+rule DeclareImage {
+    when: ImageDeclared(run, reference_key, source_file, alt_text, title?)
+    requires: run.status = configured
+    ensures: SiteImage.created(
+        run: run,
+        reference_key: reference_key,
+        source_file: source_file,
+        alt_text: alt_text,
+        given_title: title,
+        status: declared
+    )
+}
+
+-- A declared image is cropped to the closest standard aspect ratio and
+-- published as a set of responsively sized variants.
+rule RenderImageVariants {
+    when: image: SiteImage.created
+    requires: image.run.mode = generate
+    requires: image.status = declared
+    requires: source_readable(image.source_file)
+    let width = source_width_of(image.source_file)
+    let height = source_height_of(image.source_file)
+    ensures:
+        image.source_width = width
+        image.source_height = height
+        image.ratio = best_fitting_ratio(width, height)
+        image.status = rendered
+        ImageVariantsPublished(
+            run: image.run,
+            image: image,
+            widths: widths_up_to(config.responsive_widths, width)
+        )
+
+    @guidance
+        -- Variants are content-addressed by image and width, so a variant that
+        -- is already present at the destination is reused rather than
+        -- regenerated. This makes repeat runs cheap.
+}
+
+-- An image that cannot be read is skipped: the run continues and pages that
+-- referred to it are published without it.
+--
+-- This is deliberate. A single corrupt, truncated or unsupported file must not
+-- stop the rest of the site from reaching the destination; the page that named
+-- it simply publishes without its image. The image is left in a distinct
+-- `unavailable` state rather than being discarded, so the failure is visible
+-- and reportable instead of looking like an image that was never declared.
+--
+-- This runs in both modes, unlike RenderImageVariants. Asking whether a file is
+-- there is cheap and reads no image bytes, so a check run asks it too and
+-- reports what it learns; decoding, cropping and resizing are generate-only.
+rule SkipUnreadableImage {
+    when: image: SiteImage.created
+    requires: image.status = declared
+    requires: not source_readable(image.source_file)
+    ensures: image.status = unavailable
+}
+
+-- Publication --------------------------------------------------------------
+
+-- Nothing can be assembled until the whole structure is known, because a page
+-- shows its neighbours, its ancestors and the site-wide menus.
+rule PublishSite {
+    when: site: GenerationRun.status transitions_to structure_built
+    requires: site.mode = generate
+    ensures:
+        for page in site.pages:
+            PageAssemblyRequested(page: page)
+        for link in site.main_menu_links where not link.resolves:
+            MainMenuLinkDropped(run: site, link: link, url: link.url)
+
+        -- A notification pointing at a path with no page. Unlike a dropped menu
+        -- entry, the link is still published exactly as written: the maintainer
+        -- is told about it, not protected from it. Reported here rather than
+        -- collected, because a generate run keeps no findings.
+        for n in site.notifications where n.links_nowhere:
+            DeadNotificationLinkDetected(run: site, notification: n, url: n.url)
+
+        site.status = published
+}
+
+-- Variants already at the destination are reused rather than regenerated, so
+-- the destination accumulates output across runs. Once the run knows the full
+-- set of images the maintainer declared, anything at the destination belonging
+-- to an image that is no longer declared is removed, so the published site
+-- carries exactly the images it claims to and nothing more.
+rule PruneOrphanedImageVariants {
+    when: site: GenerationRun.status transitions_to published
+    ensures: OrphanedVariantsPruned(run: site, declared_images: site.images)
+}
+
+-- A page is assembled from its own title, subtitle, summary, content and hero
+-- image, plus the site-wide navigation, its breadcrumbs and side menu where
+-- they apply, its inherited notifications, its side notifications, the
+-- site-wide footer, and the resolved stylesheet and script lists.
+rule PublishPage {
+    when: PageAssemblyRequested(page)
+    requires: page.status = discovered
+    ensures:
+        page.status = published
+        PagePublished(page: page, location: page.output_location)
+}
+
+-- Checking -----------------------------------------------------------------
+
+-- Something in the tree could not be read as what it claims to be: main.json,
+-- menu.json, a page.json or an images.json. Whatever reads the tree reports it
+-- rather than raising it, so reading carries on with the rest of the tree and
+-- the maintainer learns about every unreadable file at once.
+rule RecordSourceProblem {
+    when: SourceProblemDetected(run, kind, location, detail?)
+    requires: run.mode = check
+
+    -- Unreadable site configuration is the one problem that could strand the
+    -- run before discovery even starts, leaving the maintainer told about that
+    -- single file and nothing else. The run carries on without site
+    -- configuration instead, so the rest of the tree is still walked and still
+    -- reported on. Everything downstream copes with a run that has none.
+    --
+    -- Carrying on is deliberate, and the partial report it produces is the
+    -- point rather than a shortcoming. Finding everything in one pass matters
+    -- more than stopping at the first problem, and that holds for the very
+    -- first file as much as for any other: a report saying only "main.json is
+    -- unreadable" costs the maintainer a whole extra round trip before they
+    -- learn anything about the rest of the tree. What cannot be checked without
+    -- site configuration -- the title, footer and navbar -- is simply not
+    -- checked; everything else still is.
+    let stranded = kind = site_config_unreadable and run.status = requested
+
+    ensures:
+        Finding.created(
+            run: run,
+            kind: kind,
+            location: location,
+            detail: detail
+        )
+        if stranded:
+            run.status = configured
+}
+
+-- The check pass. It runs once the whole structure is known, for the same
+-- reason generation waits: a menu entry, a page image and a notification link
+-- can only be resolved against pages and images that have all been declared.
+--
+-- Every clause below is asserted together. There is no order between them and
+-- no clause can prevent another from being evaluated, which is the whole point:
+-- a check reports everything wrong with the tree, not the first thing wrong.
+-- Nothing here writes to a destination; the run ends at `checked`, never
+-- `published`.
+rule RunStructuralChecks {
+    when: run: GenerationRun.status transitions_to structure_built
+    requires: run.mode = check
+
+    let footer = run.site_config?.footer_content
+
+    ensures:
+        -- Errors: each of these either breaks a stated invariant or is a
+        -- condition a real generate run would abort on.
+
+        for l in run.main_menu_links where l.kind = external and l.given_title = null:
+            Finding.created(
+                run: run,
+                kind: external_menu_link_without_title,
+                location: l.url
+            )
+
+        for s in run.social_links
+            where s.provider = other and (s.given_icon = null or s.given_brand_color = null):
+            Finding.created(
+                run: run,
+                kind: unrecognised_social_link_incomplete,
+                location: s.url
+            )
+
+        for p in run.pages where p.content.kind = unrecognised:
+            Finding.created(
+                run: run,
+                kind: unrecognised_content_reference,
+                location: p.path,
+                detail: p.content.reference
+            )
+
+        for n in run.notifications where n.content.kind = unrecognised:
+            Finding.created(
+                run: run,
+                kind: unrecognised_content_reference,
+                location: n.page.path,
+                detail: n.content.reference
+            )
+
+        if footer != null and footer.kind = unrecognised:
+            Finding.created(
+                run: run,
+                kind: unrecognised_content_reference,
+                location: run.source_location,
+                detail: footer.reference
+            )
+
+        -- Two images claiming the same reference key: the later silently
+        -- displaces the earlier, so pages get an image nobody meant to give
+        -- them. Both sides of the collision are reported.
+        for i in run.images
+            where run.images.any(o => o != i and o.reference_key = i.reference_key):
+            Finding.created(
+                run: run,
+                kind: duplicate_image_reference,
+                location: i.source_file,
+                detail: i.reference_key
+            )
+
+        for i in run.images where i.alt_text = "":
+            Finding.created(
+                run: run,
+                kind: image_without_alternative_text,
+                location: i.source_file,
+                detail: i.reference_key
+            )
+
+        -- Warnings: each of these is something generation already tolerates by
+        -- dropping or degrading, so it is reported but does not fail the check.
+
+        for l in run.main_menu_links where not l.resolves:
+            Finding.created(
+                run: run,
+                kind: unresolved_menu_link,
+                location: l.url
+            )
+
+        for p in run.pages where p.image_reference != null and p.main_image = null:
+            Finding.created(
+                run: run,
+                kind: unknown_page_image_reference,
+                location: p.path,
+                detail: p.image_reference
+            )
+
+        for n in run.notifications where n.image_reference != null and n.image = null:
+            Finding.created(
+                run: run,
+                kind: unknown_notification_image_reference,
+                location: n.page.path,
+                detail: n.image_reference
+            )
+
+        -- A notification pointing at a path with no page. Generation reports
+        -- the same thing about the same notifications, from the same
+        -- Notification.links_nowhere; the difference is only that a check run
+        -- keeps its report, so it becomes a Finding that can be counted and
+        -- listed. The link ships either way.
+        for n in run.notifications where n.links_nowhere:
+            Finding.created(
+                run: run,
+                kind: dead_internal_notification_link,
+                location: n.page.path,
+                detail: n.url
+            )
+
+        for p in run.pages
+            where p.content.kind in {markdown_file, html_file}
+                and not source_readable(p.content.reference):
+            Finding.created(
+                run: run,
+                kind: missing_content_file,
+                location: p.path,
+                detail: p.content.reference
+            )
+
+        for n in run.notifications
+            where n.content.kind in {markdown_file, html_file}
+                and not source_readable(n.content.reference):
+            Finding.created(
+                run: run,
+                kind: missing_content_file,
+                location: n.page.path,
+                detail: n.content.reference
+            )
+
+        if footer != null
+            and footer.kind in {markdown_file, html_file}
+            and not source_readable(footer.reference):
+            Finding.created(
+                run: run,
+                kind: missing_content_file,
+                location: run.source_location,
+                detail: footer.reference
+            )
+
+        for i in run.images where i.status = unavailable:
+            Finding.created(
+                run: run,
+                kind: missing_image_source_file,
+                location: i.source_file,
+                detail: i.reference_key
+            )
+
+        run.status = checked
+
+    @guidance
+        -- Structural only. A check asks whether a file is there, whether a
+        -- reference resolves and whether a declaration is complete. It never
+        -- decodes an image, so it stays cheap enough to run on every save.
+}
+
+-- The outcome of a check is a report, not a site. It carries every finding and
+-- the two counts; whether the check passed follows from the error count alone.
+rule ReportCheckOutcome {
+    when: run: GenerationRun.status transitions_to checked
+    ensures: CheckOutcomeReported(
+        run: run,
+        findings: run.findings,
+        error_count: run.error_count,
+        warning_count: run.warning_count,
+        passed: run.check_passed
+    )
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+-- An external main menu entry has no page to take a title from, so it must
+-- carry one.
+invariant ExternalMenuLinkCarriesTitle {
+    for l in MenuLinks:
+        l.kind = external implies l.given_title != null
+}
+
+-- An internal main menu entry pointing at a path with no page is deliberately
+-- NOT an invariant violation. It is a valid, if unusual, transient state: the
+-- entry is reported and filtered out of the published menu (see
+-- MenuLink.resolves and GenerationRun.published_main_menu_links) rather than
+-- failing the run.
+
+-- Recognised social providers supply their own icon and brand colour; an
+-- unrecognised one must be given both.
+invariant UnrecognisedSocialLinkIsFullyDescribed {
+    for s in SocialLinks:
+        s.provider = other implies s.given_icon != null and s.given_brand_color != null
+}
+
+-- Every image carries alternative text; this is an accessibility commitment,
+-- not a convenience.
+invariant EveryImageHasAlternativeText {
+    for i in SiteImages:
+        i.alt_text != ""
+}
+
+-- Page paths identify pages within a run.
+invariant PagePathIsUnique {
+    for a in Pages:
+        for b in Pages:
+            a != b and a.run = b.run implies a.path != b.path
+}
+
+-- Image references identify images within a run.
+invariant ImageReferenceIsUnique {
+    for a in SiteImages:
+        for b in SiteImages:
+            a != b and a.run = b.run implies a.reference_key != b.reference_key
+}
+
+-- Exactly one page has no parent: the site root.
+invariant SingleRootPage {
+    for a in Pages:
+        for b in Pages:
+            a != b and a.run = b.run and a.is_root implies not b.is_root
+}
+
+-- A page never advertises itself among its side notifications.
+invariant SideNotificationsExcludeSelf {
+    for p in Pages:
+        not (p in p.side_notification_pages)
+}
+
+-- A generate run has somewhere to put the site it builds.
+invariant GenerateRunHasDestination {
+    for r in GenerationRuns:
+        r.mode = generate implies r.destination != null
+}
+
+-- A check run writes nothing, and is not even told where output would go. This
+-- is the structural guarantee behind the promise that a failed check leaves the
+-- destination exactly as it was: there is no destination to partially write.
+invariant CheckRunHasNoDestination {
+    for r in GenerationRuns:
+        r.mode = check implies r.destination = null
+}
+
+-- Findings belong to check runs. Generation reports its own problems as it goes
+-- and does not collect them.
+invariant FindingsBelongToCheckRuns {
+    for f in Findings:
+        f.run.mode = check
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+-- The `generate` subcommand: source tree, image tree, destination.
+surface GeneratorInvocation {
+    facing _: Maintainer
+
+    provides:
+        GenerateRequested(source, image_source, destination)
+
+    @guarantee OneShotRun
+        -- Generation is a batch process. A run reads the source and image
+        -- trees as they are at the moment it starts and publishes a complete
+        -- site; nothing keeps running afterwards.
+}
+
+-- The `check` subcommand: source tree and image tree, and no destination,
+-- because a check produces no output. It is the pre-flight pass the maintainer
+-- runs before generating, and it is meant to be run often.
+surface CheckInvocation {
+    facing _: Maintainer
+
+    provides:
+        CheckRequested(source, image_source)
+
+    @guarantee EveryProblemInOnePass
+        -- A check reports every problem it can see in a single pass. One
+        -- unreadable file, unresolved reference or incomplete declaration never
+        -- stops the check from examining the rest of the tree, so the
+        -- maintainer gets the whole list at once rather than one problem per
+        -- run. This is the reason the command exists.
+
+    @guarantee CheckWritesNothing
+        -- A check never writes anything anywhere, not even partially. It is
+        -- given no destination, so there is nothing for it to write to.
+
+    @guarantee ExitCodeReflectsErrorsOnly
+        -- The command exits non-zero if and only if at least one error-severity
+        -- finding was made. Warnings are always reported, and never affect the
+        -- exit code or whether the check passed.
+
+    @guarantee CheckIsStructuralOnly
+        -- A check resolves references and asks whether files are present. It
+        -- never decodes, crops or resizes an image, and never inspects image
+        -- bytes for any reason.
+}
+
+-- What the maintainer gets back from a check: the whole list, plus the counts
+-- and the verdict.
+surface CheckReport {
+    facing _: Maintainer
+
+    context run: GenerationRun where mode = check and status = checked
+
+    exposes:
+        run.source_location
+        run.image_source_location
+        run.check_passed
+        run.error_count
+        run.warning_count
+
+        for f in run.findings:
+            f.severity
+            f.kind
+            f.location
+            f.detail
+
+    @guarantee WarningsAreReportedButNeverFail
+        -- Warnings are shown with the same prominence as errors and always
+        -- appear in the report. They describe things generation tolerates by
+        -- dropping or degrading, so they never make the check fail.
+}
+
+-- What the maintainer authors in the source tree: main.json and menu.json at
+-- the root, a page.json per content directory, and images.json per image
+-- directory.
+surface SourceTree {
+    facing _: Maintainer
+
+    context run: GenerationRun where status in {requested, configured}
+
+    exposes:
+        run.mode
+        run.source_location
+        run.image_source_location
+        run.destination
+        run.status
+
+    provides:
+        SiteConfigurationDeclared(
+            run, site_title, footer_content,
+            extra_css_files, extra_js_files,
+            include_default_css?, include_default_js?,
+            background_class?, navbar_color?
+        ) when run.status = requested
+
+        MainMenuLinkDeclared(run, position, url, title?, icon?)
+            when run.status = configured
+        SocialLinkDeclared(run, position, url, icon?, brand_color?)
+            when run.status = configured
+        PageDeclared(
+            run, path, title?, sub_title?, image?, icon?, summary?, content?, order?
+        ) when run.status = configured
+        ImageDeclared(run, reference_key, source_file, alt_text, title?)
+            when run.status = configured
+        SourceScanCompleted(run) when run.status = configured
+
+        -- A file that could not be read as what it claims to be. A check run
+        -- takes this as a finding and keeps reading; a generate run cannot get
+        -- past it and stops.
+        SourceProblemDetected(run, kind, location, detail?)
+            when run.mode = check
+
+    @guarantee PageJsonIsOptional
+        -- A content directory with no page.json still becomes a page: it is
+        -- titled after the directory and its content is a bare heading.
+
+    @guarantee DiscoveryIsTheSameInBothModes
+        -- A check run walks exactly the trees a generate run would and declares
+        -- exactly the same things from them. Anything a check reports on is
+        -- something a generate run would have met in the same place.
+}
+
+surface PageNotifications {
+    facing _: Maintainer
+
+    context page: Page where status = discovered
+
+    exposes:
+        page.path
+        page.title
+
+    provides:
+        PageNotificationDeclared(
+            page, side, position, content, title?, image?, url?, color?
+        )
+
+    @guarantee NotificationsCoverTheSubtree
+        -- Notifications declared here apply to this page and to every page
+        -- beneath it that declares none of its own, so a whole section can be
+        -- annotated from one place.
+}
+
+-- What a visitor sees on a published page. A published site is read-only:
+-- there is nothing for a visitor to do.
+surface PublishedPage {
+    facing _: Visitor
+
+    context page: Page where status = published
+
+    let site = page.run.site_config
+
+    exposes:
+        site.site_title
+        site.navbar
+        site.background
+        site.css_links
+        site.js_links
+        site.footer_content.html
+
+        page.title
+        page.sub_title
+        page.summary
+        page.content.html
+
+        page.main_image.title when page.main_image.status = rendered
+        page.main_image.alt_text when page.main_image.status = rendered
+        page.main_image.ratio when page.main_image.status = rendered
+        page.main_image.variant_widths when page.main_image.status = rendered
+        page.main_image.fallback_width when page.main_image.status = rendered
+        page.main_image_placement when page.main_image.status = rendered
+
+        for link in page.run.published_main_menu_links:
+            link.url
+            link.kind
+            link.title
+            link.icon
+            link.dropdown
+
+        for social in page.run.social_links:
+            social.url
+            social.icon
+            social.brand_color
+
+        page.breadcrumb_trail when page.shows_breadcrumbs
+        page.side_menu_root when page.shows_side_menu
+
+        for n in page.effective_left_notifications:
+            n.kind
+            n.title
+            n.content.html
+            n.url
+            n.color
+            n.image
+            n.image_placement
+
+        for n in page.effective_right_notifications:
+            n.kind
+            n.title
+            n.content.html
+            n.url
+            n.color
+            n.image
+            n.image_placement
+
+        for neighbour in page.side_notification_pages:
+            neighbour.path
+            neighbour.title
+            neighbour.sub_title
+            neighbour.main_image
+        page.side_notification_image_placement
+        page.side_notification_color
+
+    @guarantee ImagePlacementDrivesLoading
+        -- A page's hero image is placed as `main` and fetched eagerly; images
+        -- inside notifications are placed as `sub` and images inside side
+        -- notifications as `side`, and both are deferred. Placement also
+        -- determines the display size.
+
+    @guarantee SideNotificationsAreNotConfigurable
+        -- Side notifications are always styled with the side notification
+        -- colour and always advertise neighbouring pages: a page's own
+        -- children when it has any, falling back to its siblings only when it
+        -- is childless. That choice is fixed policy, not a default the
+        -- maintainer can override: unlike left and right notifications, side
+        -- notifications carry no configuration at all.
+
+    @guarantee MainMenuOnlyShowsResolvableEntries
+        -- Every main menu entry a visitor sees can be followed. An internal
+        -- entry naming a path with no page is dropped from the menu and
+        -- reported to the maintainer; the visitor never sees a menu item with
+        -- no title or a link to nowhere.
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+-- PagePathIsUnique and SingleRootPage are stated invariants with no
+-- corresponding check finding, on the reasoning that a directory tree cannot
+-- produce two pages at one path or two roots.
+open question "If pages ever come from anywhere but directories, does check need findings for PagePathIsUnique and SingleRootPage?"

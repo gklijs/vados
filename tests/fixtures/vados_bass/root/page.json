@@ -1,0 +1,19 @@
+{
+  "title" : "Home",
+  "subTitle" : "Introduction to Gerard's bass playing adventures",
+  "content" : "home.md",
+  "leftNotifications" : [
+    {
+      "title" : "Welcome",
+      "color" : "White",
+      "image" : "/gear/amber_stars_horizontal",
+      "content" : "welcome.md"
+    }
+  ],
+  "rightNotifications" : [
+    {
+      "color" : "Warning",
+      "content" : "vados.md"
+    }
+  ]
+}

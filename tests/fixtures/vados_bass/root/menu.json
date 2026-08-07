@@ -1,0 +1,23 @@
+{
+  "mainMenu": [
+    {
+      "url": "/gear"
+    },
+    {
+      "url": "/log"
+    }
+  ],
+  "socials": [
+    {
+      "url": "https://twitter.com/GKlijs",
+      "icon" : "twitter",
+      "color" : "1DA1F2"
+    },
+    {
+      "url": "https://www.linkedin.com/in/%F0%9F%92%BBgerard-klijs%F0%9F%A6%80-416b3744/"
+    },
+    {
+      "url": "https://github.com/gklijs"
+    }
+  ]
+}

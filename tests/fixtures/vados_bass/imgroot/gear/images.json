@@ -1,0 +1,14 @@
+{
+  "list": [
+    {
+      "title": "Office gear",
+      "fileName": "office_gear.jpg",
+      "altText": "Some of the bass gear I have, shown connected. It a Bogart bass guitar 'Amber Stars', an Orange little bass thing amplifier, and an Orange 1x12 cabinet"
+    },
+    {
+      "title": "Amber stars",
+      "fileName": "amber_stars_horizontal.jpeg",
+      "altText": "A bass guitar created by Bogart. I call it 'Amber Stars' it has 5 strings."
+    }
+  ]
+}
