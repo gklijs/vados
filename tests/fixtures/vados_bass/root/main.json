@@ -1,0 +1,12 @@
+{
+  "siteTitle" : "Bass - gklijs",
+  "jsFiles" : [],
+  "cssFiles" : [
+    "/css/main.min.css",
+    "https://cdnjs.cloudflare.com/ajax/libs/MaterialDesign-Webfont/6.5.95/css/materialdesignicons.min.css"
+  ],
+  "includeDefaultCss" : false,
+  "backgroundClass" : "has-background-primary",
+  "navbarColor" : "Info",
+  "footerContent" : "footer.html"
+}

@@ -1,0 +1,39 @@
+{
+  "list": [
+    {
+      "title": "Back to bass",
+      "fileName": "30minutesrocksmith.jpg",
+      "altText": "Picture of the TV after playing Rocksmith for 30 minutes, with the option to play one more song."
+    },
+    {
+      "title": "SBL level 2 overview",
+      "fileName": "sbl_level2.jpg",
+      "altText": "The screen of my current state with SBL, at level 2."
+    },
+    {
+      "title": "SBL level 2 Bass Jump",
+      "fileName": "sbl_bass_jump.jpg",
+      "altText": "Bass Jump shown inside SBL ui."
+    },
+    {
+      "title": "SBL level 2 September Leaves",
+      "fileName": "sbl_september_leaves.jpg",
+      "altText": "September Leaves shown inside SBL ui."
+    },
+    {
+      "title": "SBL level 2 Sledge Hammer",
+      "fileName": "sbl_sledge_hammer.jpg",
+      "altText": "Sledge Hammer shown inside SBL ui."
+    },
+    {
+      "title": "Finished Bass Jump",
+      "fileName": "level2_1_of_3.png",
+      "altText": "Screen just after finishing Bass Jump, the first song to master for the 2nd level."
+    },
+    {
+      "title": "Fretboard Accelerator Book",
+      "fileName": "accelerator_book.jpg",
+      "altText": "Fretboard Accelerator Book on a couch."
+    }
+  ]
+}

@@ -4,7 +4,7 @@ use crate::content::{to_content_items, ContentHelper, GenericContent};
 use crate::files::{
     get_all_directory_paths, get_image_list, get_main_config, get_menu_config, write_html,
 };
-use crate::image::ImageProcessor;
+use crate::image::{prune_orphaned_variants, ImageProcessor};
 use crate::structure::Structure;
 
 /// The core function to call, if the files at the source are valid, the static site will be
@@ -19,6 +19,7 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
             image_processor.process_list(&directory_path, l.list)
         }
     }
+    prune_orphaned_variants(destination, &image_processor.meta_cache);
 
     let structure = Structure::new(image_processor.meta_cache);
     let mut all_paths = vec![];

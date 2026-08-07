@@ -1,4 +1,5 @@
 mod bulma;
+pub mod check;
 mod config_files;
 mod content;
 mod files;
