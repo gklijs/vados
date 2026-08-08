@@ -6,14 +6,19 @@
 --
 -- Scope:
 --   The whole generator, at domain level. One maintainer authors a source tree
---   and an image tree and runs the tool from the command line. The tool has two
---   subcommands: `generate` reads the trees and publishes a site, `check` reads
---   the same trees and reports every problem it can find without writing
---   anything.
+--   and an image tree and runs the tool from the command line. The tool has
+--   three subcommands: `generate` reads the trees and publishes a site,
+--   `check` reads the same trees and reports every problem it can find without
+--   writing anything, and `init` scaffolds a fresh project -- gathering a few
+--   basics and creating a starting source tree, image tree and Netlify
+--   deployment setup -- before there is anything for the other two to read.
 --
 -- Includes:
---   - The command line: the `generate` and `check` subcommands
+--   - The command line: the `generate`, `check` and `init` subcommands
 --   - Pre-flight validation: findings, their severity, and the check outcome
+--   - Project scaffolding: what `init` creates, the basics and social handles
+--     it gathers with their defaults, its refusal to overwrite anything
+--     already there, and its idempotent handling of version control
 --   - Site-wide configuration (title, footer, extra CSS/JS, background, navbar)
 --   - The Bulma design commitment: semantic colours, aspect-ratio classes and
 --     the default Bulma/Material-Design-icon stylesheets are first-class here,
@@ -41,6 +46,17 @@
 --   - HTML minification of the produced output
 --   - Pixel breakpoints and the `sizes`/`decoding`/`loading` attribute values.
 --     The Main/Sub/Side placement distinction is domain; the pixels are not
+--   - The interactive prompt sequence `init` uses to gather basics. Only the
+--     bundle of basics gathered and their defaults are domain, the same way
+--     JSON parsing mechanics are excluded above
+--   - The literal contents of every file `init` creates (netlify.toml,
+--     package.json, the Sass entry file, main.json, menu.json, page.json, the
+--     README) and the exact shell commands a Netlify build runs. Only the
+--     artifact categories and what they are wired from are domain
+--   - Installing Rust, the `vados` binary or npm packages during a Netlify
+--     build
+--   - The `git` invocation and the literal lines a .gitignore ends up with.
+--     Only the choice to initialize-if-absent and merge-if-present is domain
 
 ------------------------------------------------------------
 -- External Entities
@@ -83,6 +99,14 @@ value ContentReference {
     --     edited. The content resolves to empty, a warning is reported, and
     --     the rest of the site still publishes.
     html: resolve_content(reference, kind)
+}
+
+-- One social handle the maintainer gave `init` for a recognised provider.
+-- Turning a handle into the platform's full profile URL is implementation,
+-- the same way JSON parsing mechanics are excluded elsewhere in this spec.
+value SocialHandle {
+    provider: SocialProvider
+    handle: String
 }
 
 ------------------------------------------------------------
@@ -156,7 +180,23 @@ enum NotificationSide { left | right }
 
 -- Social providers recognised from their URL. Recognised providers get a
 -- canonical icon and brand colour; anything else must supply its own.
-enum SocialProvider { github | linked_in | facebook | youtube | other }
+--
+-- `twitter` recognises both the `twitter.com` and `x.com` domains as the same
+-- provider; the rebrand changed the URL, not the identity of the account.
+enum SocialProvider { github | linked_in | facebook | youtube | twitter | other }
+
+-- What `init` would create in the maintainer's current directory. Named so a
+-- conflict can say which artifact is in the way, not just that something is.
+enum ScaffoldArtifactKind {
+    site_config       -- main.json
+    menu_config       -- menu.json
+    home_page         -- page.json for the site root
+    image_tree        -- the image tree's root directory
+    stylesheet_entry  -- the Sass file overriding Bulma's $primary
+    package_manifest  -- package.json and its Sass dev-dependency
+    netlify_config    -- netlify.toml
+    readme            -- README.md
+}
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -499,6 +539,66 @@ entity Finding {
         else: config.tolerated_severity
 }
 
+-- One run of `init`: a short process that turns the maintainer's current
+-- directory into a fresh, deployable vados project. Unlike GenerationRun,
+-- which reads an existing source and image tree, this run creates one -- there
+-- is nothing to read until it has finished, so it is its own lifecycle rather
+-- than a third RunMode. There is deliberately no location field: init always
+-- operates on the maintainer's current directory, never a path it is given.
+entity InitializationRun {
+    status: init_requested | conflict_found | scaffolded
+
+    transitions status {
+        init_requested -> conflict_found
+        init_requested -> scaffolded
+        terminal: conflict_found, scaffolded
+    }
+
+    -- Checked before a single basic is asked, so the maintainer never answers
+    -- questions only to be told at the end that init can't proceed. Every
+    -- artifact init would create is checked, and every one already occupied
+    -- is reported, not just the first -- the same judgement CheckInvocation
+    -- makes, that finding everything in one pass matters more than stopping
+    -- at the first problem.
+    conflicts: ScaffoldConflict with run = this
+    has_conflicts: conflicts.count > 0
+
+    -- The one basic with no default: the maintainer must supply it.
+    site_title: String when status = scaffolded
+
+    -- The rest, as given. Null means the maintainer accepted the default.
+    given_home_intro: String? when status = scaffolded
+    given_primary_color: String? when status = scaffolded
+    given_footer_text: String? when status = scaffolded
+
+    -- Resolved values actually written into the scaffold.
+    home_intro: given_home_intro ?? default_home_intro_for(site_title)
+    primary_color: given_primary_color ?? config.default_primary_color
+    footer_text: given_footer_text ?? config.default_footer_text
+
+    -- Opt-in extras, not defaulted basics: a provider the maintainer skipped
+    -- is simply not in this list, never filled in with a default handle.
+    -- Every entry is a recognised provider; see WizardOnlyGathersRecognizedProviders.
+    given_socials: List<SocialHandle> when status = scaffolded
+
+    -- Whether init performed each of these, or found it already done and left
+    -- it alone. Exposed so the maintainer knows what happened without having
+    -- to go check for themselves.
+    repository_initialized: Boolean when status = scaffolded
+    gitignore_created: Boolean when status = scaffolded
+}
+
+-- An artifact `init` would create whose path was already occupied. Recorded
+-- rather than raised, so the conflict check can find every occupied path in
+-- one pass instead of stopping at the first.
+entity ScaffoldConflict {
+    run: InitializationRun
+    kind: ScaffoldArtifactKind
+
+    -- Where the maintainer should look to resolve the conflict.
+    path: String
+}
+
 ------------------------------------------------------------
 -- Config
 ------------------------------------------------------------
@@ -553,6 +653,33 @@ config {
     -- so that the classification above has somewhere to land.
     failing_severity: FindingSeverity = error
     tolerated_severity: FindingSeverity = warning
+
+    -- init's defaults, applied when the maintainer accepts a basic as given
+    -- rather than typing one. Bulma's own stock primary colour, so accepting
+    -- every default leaves an unmodified Bulma look.
+    default_primary_color: String = "#00d1b2"
+    default_footer_text: String = "Built with vados."
+
+    -- Every artifact init creates in one run. Fixed policy, not something a
+    -- site configures: this is the exact set the conflict check tests.
+    scaffold_artifact_kinds: Set<ScaffoldArtifactKind> = {
+        site_config,
+        menu_config,
+        home_page,
+        image_tree,
+        stylesheet_entry,
+        package_manifest,
+        netlify_config,
+        readme
+    }
+
+    -- The providers init prompts a handle for, one skippable prompt each.
+    -- `other` is deliberately excluded: it has no canonical icon or colour,
+    -- so a quick prompt for a bare handle could never satisfy
+    -- UnrecognisedSocialLinkIsFullyDescribed.
+    recognized_social_providers: Set<SocialProvider> = {
+        github, linked_in, facebook, youtube, twitter
+    }
 }
 
 ------------------------------------------------------------
@@ -1016,6 +1143,64 @@ rule ReportCheckOutcome {
     )
 }
 
+-- Initializing a project ----------------------------------------------------
+
+rule BeginInit {
+    when: InitRequested()
+    ensures: InitializationRun.created(status: init_requested)
+}
+
+-- Every artifact init would create is checked in one pass, immediately, before
+-- the maintainer is asked anything. A conflict-free run is left at
+-- `init_requested` rather than advanced further here: scaffolding itself only
+-- happens once the basics arrive, in ScaffoldProject.
+rule DetectScaffoldConflicts {
+    when: run: InitializationRun.created
+    ensures:
+        for kind in config.scaffold_artifact_kinds where artifact_path_occupied(kind):
+            ScaffoldConflict.created(
+                run: run,
+                kind: kind,
+                path: artifact_path(kind)
+            )
+        if run.has_conflicts:
+            run.status = conflict_found
+}
+
+-- Scaffolding happens once, from the whole bundle of basics at once -- the
+-- same choice SiteConfigurationDeclared makes for main.json's fields, rather
+-- than one trigger per prompt. `requires: run.status = init_requested` is
+-- what makes this unreachable for a run the conflict check already rejected.
+--
+-- Version control is settled in this same rule rather than a separate one
+-- reacting to `transitions_to scaffolded`: repository_initialized and
+-- gitignore_created are when-qualified on `scaffolded`, and the obligation to
+-- set a field entering a `when` set falls on whichever rule produces the
+-- transition -- the same reason RenderImageVariants sets source_width,
+-- source_height and ratio itself rather than leaving them to a later rule.
+rule ScaffoldProject {
+    when: ProjectBasicsProvided(
+        run, site_title, home_intro?, primary_color?, footer_text?, socials
+    )
+    requires: run.status = init_requested
+    ensures:
+        run.site_title = site_title
+        run.given_home_intro = home_intro
+        run.given_primary_color = primary_color
+        run.given_footer_text = footer_text
+        run.given_socials = socials
+        run.repository_initialized = not git_repository_present()
+        run.gitignore_created = not gitignore_present()
+        run.status = scaffolded
+        ProjectScaffolded(run: run, kinds: config.scaffold_artifact_kinds)
+        if run.repository_initialized:
+            RepositoryInitialized(run: run)
+        if run.gitignore_created:
+            GitignoreCreated(run: run)
+        else:
+            GitignoreEntriesMerged(run: run)
+}
+
 ------------------------------------------------------------
 -- Invariants
 ------------------------------------------------------------
@@ -1095,6 +1280,28 @@ invariant FindingsBelongToCheckRuns {
         f.run.mode = check
 }
 
+-- A conflict is only ever recorded for a run the conflict check went on to
+-- reject; a scaffolded run never carries one.
+invariant ScaffoldConflictsBelongToRejectedRuns {
+    for c in ScaffoldConflicts:
+        c.run.status = conflict_found
+}
+
+-- Nothing is partially written: a run that reaches `scaffolded` had no
+-- conflicts, and a run with any conflict never reaches `scaffolded`.
+invariant ScaffoldingRequiresNoConflicts {
+    for r in InitializationRuns:
+        r.status = scaffolded implies r.conflicts.count = 0
+}
+
+-- The wizard only ever offers a handle for a provider with a canonical icon
+-- and colour; it never gathers one for `other`, which has neither.
+invariant WizardOnlyGathersRecognizedProviders {
+    for r in InitializationRuns:
+        r.status = scaffolded implies
+            r.given_socials.all(h => h.provider in config.recognized_social_providers)
+}
+
 ------------------------------------------------------------
 -- Surfaces
 ------------------------------------------------------------
@@ -1167,6 +1374,92 @@ surface CheckReport {
         -- Warnings are shown with the same prominence as errors and always
         -- appear in the report. They describe things generation tolerates by
         -- dropping or degrading, so they never make the check fail.
+}
+
+-- The `init` subcommand: scaffolds a fresh, deployable vados project. Unlike
+-- `generate`/`check`, it takes no source or image tree argument -- there is
+-- nothing to read yet, and nowhere but the current directory to create one.
+surface InitInvocation {
+    facing _: Maintainer
+
+    provides:
+        InitRequested()
+
+    @guarantee ScaffoldsInPlace
+        -- init always scaffolds into the maintainer's current directory.
+        -- There is no separate "create a new directory" mode.
+
+    @guarantee NoRustCrateIsScaffolded
+        -- init writes no Cargo.toml or main.rs. The scaffolded project relies
+        -- on the `vados` binary being installed separately -- the same binary
+        -- GeneratorInvocation and CheckInvocation are surfaces of.
+
+    @guarantee DeployableWithoutFurtherSetup
+        -- The scaffolded project is deployable to Netlify by connecting the
+        -- repository alone: its Netlify build configuration installs Rust and
+        -- `vados`, builds the stylesheet, and runs `generate`.
+
+    @guarantee AlwaysInstallsCurrentVados
+        -- The scaffolded Netlify build configuration installs whatever
+        -- version of `vados` is current at deploy time, not a pinned one:
+        -- deploys pick up vados fixes automatically. A considered trade
+        -- against reproducibility, not an oversight.
+}
+
+-- Where the maintainer supplies init's basics, once the conflict check has
+-- passed. Reachable only while status is `init_requested`: a run the conflict
+-- check already rejected has moved on to `conflict_found` and offers this
+-- nowhere.
+surface InitBasics {
+    facing _: Maintainer
+
+    context run: InitializationRun where status = init_requested
+
+    provides:
+        ProjectBasicsProvided(
+            run, site_title, home_intro?, primary_color?, footer_text?, socials
+        )
+
+    @guarantee ConflictsAreCheckedBeforeAnyPrompt
+        -- By the time this surface is reachable, every artifact init would
+        -- create has already been checked and none was occupied. Nothing is
+        -- asked otherwise.
+}
+
+-- Why `init` refused to run: every artifact whose path was already occupied.
+surface InitConflictReport {
+    facing _: Maintainer
+
+    context run: InitializationRun where status = conflict_found
+
+    exposes:
+        for c in run.conflicts:
+            c.kind
+            c.path
+
+    @guarantee ConflictReportListsEveryOccupiedPath
+        -- Every artifact whose path was already occupied is reported at
+        -- once, not just the first.
+}
+
+-- What `init` created, once it has.
+surface InitOutcome {
+    facing _: Maintainer
+
+    context run: InitializationRun where status = scaffolded
+
+    exposes:
+        run.site_title
+        run.home_intro
+        run.primary_color
+        run.footer_text
+
+        for h in run.given_socials:
+            h.provider
+            h.handle
+
+        run.repository_initialized
+        run.gitignore_created
 }
 
 -- What the maintainer authors in the source tree: main.json and menu.json at
@@ -1338,3 +1631,8 @@ surface PublishedPage {
 -- corresponding check finding, on the reasoning that a directory tree cannot
 -- produce two pages at one path or two roots.
 open question "If pages ever come from anywhere but directories, does check need findings for PagePathIsUnique and SingleRootPage?"
+
+-- init's menu.json starts with no main-menu entries; the maintainer adds
+-- those by hand afterward. Social links are no longer part of this question
+-- -- the wizard gathers those now -- but main-menu entries still are not.
+open question "Should a later version of init let the wizard add initial main-menu entries, rather than starting empty?"
