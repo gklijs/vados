@@ -2,7 +2,7 @@ use crate::bulma::ImageType;
 use crate::config_files::{MenuConfig, PageConfig, RawMenuItem, RawSocialItem};
 use crate::content::{items_to_side_notifications, to_internal_image};
 use crate::image::ProcessedImage;
-use crate::structure::SocialItem::{Facebook, Github, LinkedIn, Other, YouTube};
+use crate::structure::SocialItem::{Facebook, Github, LinkedIn, Other, Twitter, YouTube};
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use std::cmp::Ordering;
@@ -335,6 +335,7 @@ pub enum SocialItem {
     LinkedIn(String),
     Facebook(String),
     YouTube(String),
+    Twitter(String),
     Other(String, String, String),
 }
 
@@ -342,11 +343,16 @@ pub enum SocialItem {
 /// recognises automatically. Kept in sync with `SocialItem::new`'s matching,
 /// so `check` can flag an unrecognised provider missing its required icon
 /// and color before generation would panic on it.
+///
+/// `twitter.com` and `x.com` are both recognised as the same provider; the
+/// rebrand changed the URL, not the identity of the account.
 pub(crate) fn is_recognized_social_provider(url: &str) -> bool {
     url.starts_with("https://github.com/")
         || url.starts_with("https://www.linkedin.com/")
         || url.starts_with("https://www.facebook.com/")
         || url.starts_with("https://www.youtube.com/")
+        || url.starts_with("https://twitter.com/")
+        || url.starts_with("https://x.com/")
 }
 
 impl SocialItem {
@@ -356,6 +362,9 @@ impl SocialItem {
             url if url.starts_with("https://www.linkedin.com/") => LinkedIn(url),
             url if url.starts_with("https://www.facebook.com/") => Facebook(url),
             url if url.starts_with("https://www.youtube.com/") => YouTube(url),
+            url if url.starts_with("https://twitter.com/") || url.starts_with("https://x.com/") => {
+                Twitter(url)
+            }
             url => {
                 let icon = raw
                     .icon
@@ -375,6 +384,7 @@ impl SocialItem {
             SocialItem::LinkedIn(url) => url,
             SocialItem::Facebook(url) => url,
             SocialItem::YouTube(url) => url,
+            SocialItem::Twitter(url) => url,
             SocialItem::Other(url, _, _) => url,
         }
     }
@@ -385,6 +395,7 @@ impl SocialItem {
             SocialItem::LinkedIn(_) => "linkedin",
             SocialItem::Facebook(_) => "facebook",
             SocialItem::YouTube(_) => "youtube",
+            SocialItem::Twitter(_) => "twitter",
             SocialItem::Other(_, icon, _) => icon,
         }
     }
@@ -395,7 +406,56 @@ impl SocialItem {
             SocialItem::LinkedIn(_) => "0077b5",
             SocialItem::Facebook(_) => "4267B2",
             SocialItem::YouTube(_) => "c4302b",
+            SocialItem::Twitter(_) => "1DA1F2",
             SocialItem::Other(_, _, color) => color,
+        }
+    }
+}
+
+/// A provider `init`'s wizard can gather a bare handle for. See
+/// `vados.allium`'s `config.recognized_social_providers`: every variant here
+/// has a canonical icon and brand color (kept in sync with `SocialItem`
+/// above), so a handle alone is enough to produce a complete social link --
+/// unlike `SocialItem::Other`, which needs both supplied explicitly.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RecognizedSocialProvider {
+    Github,
+    LinkedIn,
+    Facebook,
+    YouTube,
+    Twitter,
+}
+
+impl RecognizedSocialProvider {
+    pub fn all() -> [RecognizedSocialProvider; 5] {
+        use RecognizedSocialProvider::*;
+        [Github, LinkedIn, Facebook, YouTube, Twitter]
+    }
+
+    /// A short label for the wizard prompt.
+    pub fn label(self) -> &'static str {
+        match self {
+            RecognizedSocialProvider::Github => "GitHub",
+            RecognizedSocialProvider::LinkedIn => "LinkedIn",
+            RecognizedSocialProvider::Facebook => "Facebook",
+            RecognizedSocialProvider::YouTube => "YouTube",
+            RecognizedSocialProvider::Twitter => "X",
+        }
+    }
+
+    /// The profile URL a bare handle resolves to for this provider. Kept in
+    /// sync with `SocialItem::new`'s prefix matching above, so a handle the
+    /// wizard gathers always produces a URL `is_recognized_social_provider`
+    /// recognizes.
+    pub fn profile_url(self, handle: &str) -> String {
+        match self {
+            RecognizedSocialProvider::Github => format!("https://github.com/{handle}"),
+            RecognizedSocialProvider::LinkedIn => {
+                format!("https://www.linkedin.com/in/{handle}/")
+            }
+            RecognizedSocialProvider::Facebook => format!("https://www.facebook.com/{handle}"),
+            RecognizedSocialProvider::YouTube => format!("https://www.youtube.com/{handle}"),
+            RecognizedSocialProvider::Twitter => format!("https://x.com/{handle}"),
         }
     }
 }

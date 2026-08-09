@@ -5,5 +5,6 @@ mod content;
 mod files;
 pub mod generator;
 mod image;
+pub mod init;
 mod structure;
 mod templates;
