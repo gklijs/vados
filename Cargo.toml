@@ -16,6 +16,7 @@ rust-version = "1.87.0"
 askama = "0.11.0"
 clap = { version = "4.1.4", features = ["derive"] }
 dashmap = "5.1.0"
+dialoguer = "0.11.0"
 fast_image_resize = "6.1.0"
 image = "0.24.1"
 minifier = {version = "0.0.42", features = ["html"] }
