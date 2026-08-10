@@ -12,13 +12,28 @@
 --   writing anything, and `init` scaffolds a fresh project -- gathering a few
 --   basics and creating a starting source tree, image tree and Netlify
 --   deployment setup -- before there is anything for the other two to read.
+--   Six further subcommands author content into a project that already
+--   exists, one piece at a time, instead of reading it wholesale the way
+--   `generate`/`check` do: `page new` creates a page, `image add` registers an
+--   image, `page add-image` attaches an image (freshly registered or already
+--   declared) to a page, `social add`/`social update`/`social remove` and
+--   `footer set` adjust menu.json's social links and main.json's footer, and
+--   `menu add-item` appends an entry to menu.json's main menu.
 --
 -- Includes:
---   - The command line: the `generate`, `check` and `init` subcommands
+--   - The command line: the `generate`, `check` and `init` subcommands, and
+--     the six content-authoring subcommands (`page new`, `image add`,
+--     `page add-image`, `social add`/`update`/`remove`, `footer set`,
+--     `menu add-item`)
 --   - Pre-flight validation: findings, their severity, and the check outcome
 --   - Project scaffolding: what `init` creates, the basics and social handles
 --     it gathers with their defaults, its refusal to overwrite anything
 --     already there, and its idempotent handling of version control
+--   - Authoring content into an existing project: creating a page, registering
+--     an image, attaching an image to a page as its hero or as a notification,
+--     adding, updating or removing a social link or the footer, and appending
+--     an entry to the main menu -- each checked against the same problems
+--     `check` itself would find, before anything is written
 --   - Site-wide configuration (title, footer, extra CSS/JS, background, navbar)
 --   - The Bulma design commitment: semantic colours, aspect-ratio classes and
 --     the default Bulma/Material-Design-icon stylesheets are first-class here,
@@ -57,6 +72,15 @@
 --     build
 --   - The `git` invocation and the literal lines a .gitignore ends up with.
 --     Only the choice to initialize-if-absent and merge-if-present is domain
+--   - The literal mechanics of reading, modifying and rewriting main.json,
+--     menu.json, page.json or images.json when authoring content into an
+--     existing project. Only the bundle of inputs gathered and the resulting
+--     outcome are domain -- the same judgement already made for JSON parsing
+--     mechanics above
+--   - The interactive prompt sequences the six content-authoring subcommands
+--     use to gather whatever input the maintainer didn't supply as a flag.
+--     Only the bundle of inputs gathered is domain, the same as `init`'s own
+--     prompt sequence is excluded above
 
 ------------------------------------------------------------
 -- External Entities
@@ -197,6 +221,52 @@ enum ScaffoldArtifactKind {
     netlify_config    -- netlify.toml
     readme            -- README.md
 }
+
+-- Why a `page new` request couldn't proceed. Recorded rather than raised, so
+-- every problem with the request is found in one pass -- the same judgement
+-- ScaffoldArtifactKind's conflict check and CheckInvocation both already
+-- make -- instead of the maintainer discovering them one attempt at a time.
+enum PageCreationBlockReason {
+    path_already_a_page | parent_path_is_not_a_page | image_reference_unresolved
+}
+
+-- Why an `image add` (or the image-registering form of `page add-image`)
+-- request couldn't proceed.
+enum ImageRegistrationBlockReason { source_file_unreadable | reference_key_already_used }
+
+-- Why a `page add-image` request couldn't proceed. Shares its middle two
+-- reasons with ImageRegistrationBlockReason (registering a new image is the
+-- same problem however it's reached) plus two of its own: the target page
+-- must already exist, and an existing reference must resolve.
+enum PageImageAttachmentBlockReason {
+    target_page_missing | source_file_unreadable | reference_key_already_used |
+    image_reference_unresolved | hero_already_present
+}
+
+-- Whether an image `page add-image` attaches fills a page's one hero slot or
+-- joins its notifications instead. See PageImageAttachmentRun.effective_role.
+enum PageImageRole { hero | notification }
+
+-- Which of the three social-link authoring commands a SocialLinkChangeRun
+-- performs -- the same technique GenerationRun.mode already uses to share one
+-- entity between `generate` and `check`.
+enum SocialLinkChangeKind { add | update | remove }
+
+-- Why a `social add`, `social update` or `social remove` request was
+-- rejected. Unlike the block reasons above, a social-link change carries at
+-- most one: matching an existing link and judging completeness are both
+-- cheap enough that there is never more than one thing wrong to report.
+enum SocialLinkChangeRejectionReason {
+    unrecognised_provider_incomplete | url_already_registered |
+    no_matching_social_link | ambiguous_social_link_match | match_index_out_of_range
+}
+
+-- Why a `menu add-item` request was rejected. Mirrors
+-- ExternalMenuLinkCarriesTitle for the one way an add could break a stated
+-- invariant, plus one added-command-specific check against duplicating an
+-- entry already there. An internal url naming a path with no page yet is
+-- deliberately not a rejection reason -- see MenuLinkAdditionRun.would_resolve.
+enum MenuLinkAdditionRejectionReason { external_link_without_title | url_already_in_menu }
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -597,6 +667,268 @@ entity ScaffoldConflict {
 
     -- Where the maintainer should look to resolve the conflict.
     path: String
+}
+
+-- Authoring content into an existing project --------------------------------
+--
+-- The six entities below are each their own short-lived run, the same way
+-- InitializationRun is its own lifecycle rather than a third RunMode: they
+-- read and write an existing source/image tree directly, at a point where
+-- there is no GenerationRun in progress to attach to. None of them creates a
+-- Page, SiteImage, SocialLink, MenuLink or SiteConfig -- those only ever come
+-- from a GenerationRun discovering an already-authored tree. Instead each
+-- ends by declaring an outcome fact (PageFileWritten, ImageFileRegistered,
+-- PageImageAttached, SocialLinkAdded/Updated/Removed, FooterContentUpdated,
+-- MenuLinkAppended) that a later `generate` or `check` run would read back.
+
+-- One run of `page new`: creates a page.json (and, unless the maintainer
+-- supplies their own content reference, a stub content file) for a path not
+-- yet in the source tree. Two-phase for the same reason InitializationRun
+-- checks for conflicts before asking for any basics: nothing about a title,
+-- subtitle or summary is worth asking for if the page can't be created.
+-- Every status enum below spells out its own values in full
+-- (page_creation_requested rather than a bare requested) rather than sharing
+-- short names like `requested`/`created` across the six entities in this
+-- section. Status literals are otherwise scoped per entity -- an inline
+-- enum has no type identity outside its own field -- but distinct names
+-- also keep any diagnostic or error message about "status requested"
+-- unambiguous about which of these six runs it means, the same reason
+-- InitializationRun already spells its own first state `init_requested`
+-- rather than reusing GenerationRun's `requested`.
+
+entity PageCreationRun {
+    source_location: String
+    image_source_location: String?
+    given_path: String
+    given_image_reference: String?
+    status: page_creation_requested | page_creation_blocked | page_created
+
+    transitions status {
+        page_creation_requested -> page_creation_blocked
+        page_creation_requested -> page_created
+        terminal: page_creation_blocked, page_created
+    }
+
+    blocks: PageCreationBlock with run = this
+    is_blocked: blocks.count > 0
+
+    -- Present once the blocker check has passed and the maintainer's
+    -- remaining details have arrived.
+    title: String when status = page_created
+    sub_title: String? when status = page_created
+    icon: String? when status = page_created
+    summary: String? when status = page_created
+    order: Integer? when status = page_created
+    given_content: ContentReference? when status = page_created
+
+    -- A page.json with no content reference gets the same fallback a
+    -- directory with no page.json gets at generate/check time: a bare
+    -- heading. See DiscoverPage.
+    content: given_content ?? default_page_content(given_path)
+    content_was_defaulted: given_content = null
+}
+
+-- One reason a page-creation request couldn't proceed. Recorded rather than
+-- raised, so path_already_a_page, parent_path_is_not_a_page and
+-- image_reference_unresolved are all found in one pass instead of the
+-- maintainer discovering them one `page new` attempt at a time.
+entity PageCreationBlock {
+    run: PageCreationRun
+    reason: PageCreationBlockReason
+    detail: String
+}
+
+-- One run of `image add`: registers one entry in an images.json, creating the
+-- file if the directory has none yet. Two-phase for the same reason as
+-- PageCreationRun: a duplicate reference key or an unreadable source file
+-- means the registration can never succeed, so there is no reason to ask for
+-- a title or alternative text first.
+entity ImageRegistrationRun {
+    image_source_location: String
+    given_dir: String
+    given_file_name: String
+    status: image_registration_requested | image_registration_blocked | image_registered
+
+    transitions status {
+        image_registration_requested -> image_registration_blocked
+        image_registration_requested -> image_registered
+        terminal: image_registration_blocked, image_registered
+    }
+
+    -- How this image will be looked up from a page or notification, derived
+    -- the moment the location is known -- before the blocker check even
+    -- runs, since reference_key_already_used needs it.
+    reference_key: reference_key_for(given_dir, given_file_name)
+
+    blocks: ImageRegistrationBlock with run = this
+    is_blocked: blocks.count > 0
+
+    title: String? when status = image_registered
+    alt_text: String when status = image_registered
+}
+
+entity ImageRegistrationBlock {
+    run: ImageRegistrationRun
+    reason: ImageRegistrationBlockReason
+    detail: String
+}
+
+-- One run of `page add-image`: attaches an image -- freshly registered or
+-- already declared -- to a page that already exists. The first image
+-- attached to a page fills its one hero slot; every one after that (or any
+-- call once the hero slot is already filled) becomes a notification instead,
+-- since a Page has exactly one hero image but any number of notifications.
+-- The maintainer can override the inferred role with given_as, but can never
+-- force a second hero image onto a page -- hero_already_present exists to say
+-- so rather than silently overwriting the first.
+entity PageImageAttachmentRun {
+    source_location: String
+    image_source_location: String
+    given_path: String
+
+    -- Exactly one of these two names the image: a freshly registered one
+    -- (dir + file_name) or one already declared elsewhere in the tree. See
+    -- PageImageAttachmentNamesExactlyOneImageSource.
+    given_dir: String?
+    given_file_name: String?
+    given_existing_reference: String?
+
+    given_as: PageImageRole?
+    status: image_attachment_requested | image_attachment_blocked | image_attached
+
+    transitions status {
+        image_attachment_requested -> image_attachment_blocked
+        image_attachment_requested -> image_attached
+        terminal: image_attachment_blocked, image_attached
+    }
+
+    reference_key: given_existing_reference ?? reference_key_for(given_dir, given_file_name)
+    hero_available: existing_page_image_reference(source_location, given_path) = null
+    effective_role: given_as ?? (if hero_available: hero else: notification)
+
+    blocks: PageImageAttachmentBlock with run = this
+    is_blocked: blocks.count > 0
+
+    -- Gathered once the blocker check has passed. given_alt_text is required
+    -- only when a new image is being registered (see
+    -- PageImageAttachmentRegistersAltTextForNewImages); given_side and
+    -- given_caption matter only once effective_role resolves to
+    -- notification. The maintainer's actual prompt sequence, which asks for
+    -- only the subset that applies, is excluded per this file's own Excludes
+    -- section -- every call still passes through this one phase, trivially
+    -- when nothing further is needed.
+    given_alt_text: String? when status = image_attached
+    given_side: NotificationSide? when status = image_attached
+    given_caption: String? when status = image_attached
+
+    -- The alternative text the attached image carries, whichever way it was
+    -- named: freshly given for a new registration, already on file for a
+    -- reused reference.
+    resolved_alt_text:
+        if given_existing_reference != null:
+            declared_image_alt_text(image_source_location, given_existing_reference)
+        else:
+            given_alt_text
+    effective_caption: given_caption ?? resolved_alt_text
+}
+
+entity PageImageAttachmentBlock {
+    run: PageImageAttachmentRun
+    reason: PageImageAttachmentBlockReason
+    detail: String
+}
+
+-- One run of `social add`, `social update` or `social remove`, unified by
+-- change_kind the same way GenerationRun.mode unifies `generate` and `check`.
+-- Unlike the three entities above, there is no expensive prompt sequence to
+-- protect the maintainer from: matching an existing link and judging
+-- completeness are both cheap, so this is single-phase.
+--
+-- `update` replaces the matched link wholesale rather than merging individual
+-- fields into it: the maintainer gives a complete replacement (a handle, or a
+-- url with its icon and colour), the same shape `add` accepts for a new one.
+-- A partial merge would need to define what "keep the rest as it was" means
+-- when only some fields are given, which is more machinery than a rename
+-- command needs.
+entity SocialLinkChangeRun {
+    source_location: String
+    change_kind: SocialLinkChangeKind
+    status: social_change_requested | social_change_rejected | social_change_applied
+
+    transitions status {
+        social_change_requested -> social_change_rejected
+        social_change_requested -> social_change_applied
+        terminal: social_change_rejected, social_change_applied
+    }
+
+    -- add/update: exactly one of these two ways of naming the link.
+    given_handle: SocialHandle?
+    given_url: String?
+    given_icon: String?
+    given_brand_color: String?
+
+    -- update/remove: which existing link, and how to disambiguate when more
+    -- than one matches.
+    given_match: String?
+    given_index: Integer?
+
+    resulting_url:
+        if given_handle != null: profile_url_for(given_handle.provider, given_handle.handle)
+        else: given_url
+    resulting_provider: social_provider_of(resulting_url)
+
+    rejection: SocialLinkChangeRejectionReason? when status = social_change_rejected
+}
+
+-- One run of `footer set`: replaces main.json's single footer content
+-- reference. The simplest of the six -- nothing about a footer content
+-- reference can be rejected that ContentReference doesn't already classify
+-- for itself (see RunStructuralChecks's handling of an unrecognised
+-- reference), so there is no blocked/rejected state to model.
+entity FooterUpdateRun {
+    source_location: String
+    footer_content: ContentReference
+    status: footer_update_requested | footer_updated
+
+    transitions status {
+        footer_update_requested -> footer_updated
+        terminal: footer_updated
+    }
+}
+
+-- One run of `menu add-item`: appends one entry to menu.json's main menu.
+-- Single-phase like SocialLinkChangeRun: nothing about a menu entry is
+-- expensive enough to check that it is worth protecting the maintainer from
+-- a prompt sequence first. Deliberately add-only -- there is no
+-- `menu remove-item`/`menu update-item` yet, the same way PageCreationRun and
+-- ImageRegistrationRun have no delete/rename counterpart either (see this
+-- file's own Excludes section); this is the open question it closes, and it
+-- opens a narrower one of its own at the bottom of this file.
+entity MenuLinkAdditionRun {
+    source_location: String
+    given_url: String
+    given_title: String?
+    given_icon: String?
+    status: menu_link_addition_requested | menu_link_addition_rejected | menu_link_added
+
+    transitions status {
+        menu_link_addition_requested -> menu_link_addition_rejected
+        menu_link_addition_requested -> menu_link_added
+        terminal: menu_link_addition_rejected, menu_link_added
+    }
+
+    -- Classified the same way RegisterMainMenuLink classifies a declared
+    -- link, so add-time judgement and read-time judgement never drift apart.
+    kind: menu_link_kind_of(given_url)
+
+    rejection: MenuLinkAdditionRejectionReason? when status = menu_link_addition_rejected
+
+    -- Whether this entry, once added, would actually show up in the
+    -- published menu. Exposed on the outcome rather than blocked on: an
+    -- internal link naming a path with no page yet is a legitimate forward
+    -- reference (see MenuLink.resolves), not a mistake `add-item` should
+    -- refuse to write.
+    would_resolve: kind = external or page_exists_at(source_location, given_url)
 }
 
 ------------------------------------------------------------
@@ -1201,6 +1533,364 @@ rule ScaffoldProject {
             GitignoreEntriesMerged(run: run)
 }
 
+-- Authoring content into an existing project --------------------------------
+
+-- Creating a page ------------------------------------------------------
+
+rule RequestPageCreation {
+    when: PageCreationRequested(source, image_source?, path, image?)
+    ensures: PageCreationRun.created(
+        source_location: source,
+        image_source_location: image_source,
+        given_path: path,
+        given_image_reference: image,
+        status: page_creation_requested
+    )
+}
+
+-- Every blocker is checked in one pass, immediately, before the maintainer is
+-- asked for a title or anything else -- the same judgement
+-- DetectScaffoldConflicts makes for `init`.
+rule DetectPageCreationBlockers {
+    when: run: PageCreationRun.created
+    let parent = parent_path(run.given_path)
+    ensures:
+        if page_exists_at(run.source_location, run.given_path):
+            PageCreationBlock.created(
+                run: run, reason: path_already_a_page, detail: run.given_path
+            )
+        if parent != null and not page_exists_at(run.source_location, parent):
+            PageCreationBlock.created(
+                run: run, reason: parent_path_is_not_a_page, detail: parent
+            )
+        if run.given_image_reference != null
+            and not image_reference_resolves(run.image_source_location, run.given_image_reference):
+            PageCreationBlock.created(
+                run: run, reason: image_reference_unresolved, detail: run.given_image_reference
+            )
+        if run.is_blocked:
+            run.status = page_creation_blocked
+}
+
+rule ProvidePageCreationDetails {
+    when: PageCreationDetailsProvided(run, title, sub_title?, icon?, summary?, order?, content?)
+    requires: run.status = page_creation_requested
+    ensures:
+        run.title = title
+        run.sub_title = sub_title
+        run.icon = icon
+        run.summary = summary
+        run.order = order
+        run.given_content = content
+        run.status = page_created
+        PageFileWritten(
+            run: run,
+            path: run.given_path,
+            title: title,
+            content: content ?? default_page_content(run.given_path),
+            sub_title: sub_title,
+            icon: icon,
+            summary: summary,
+            order: order,
+            image_reference: run.given_image_reference
+        )
+}
+
+-- Registering an image ---------------------------------------------------
+
+rule RequestImageRegistration {
+    when: ImageRegistrationRequested(image_source, dir, file_name)
+    ensures: ImageRegistrationRun.created(
+        image_source_location: image_source,
+        given_dir: dir,
+        given_file_name: file_name,
+        status: image_registration_requested
+    )
+}
+
+rule DetectImageRegistrationBlockers {
+    when: run: ImageRegistrationRun.created
+    ensures:
+        if not source_readable(
+            image_source_path(run.image_source_location, run.given_dir, run.given_file_name)
+        ):
+            ImageRegistrationBlock.created(
+                run: run, reason: source_file_unreadable, detail: run.given_file_name
+            )
+        if image_reference_key_used(run.image_source_location, run.reference_key):
+            ImageRegistrationBlock.created(
+                run: run, reason: reference_key_already_used, detail: run.reference_key
+            )
+        if run.is_blocked:
+            run.status = image_registration_blocked
+}
+
+rule ProvideImageRegistrationDetails {
+    when: ImageRegistrationDetailsProvided(run, title?, alt_text)
+    requires: run.status = image_registration_requested
+    ensures:
+        run.title = title
+        run.alt_text = alt_text
+        run.status = image_registered
+        ImageFileRegistered(
+            run: run,
+            reference_key: run.reference_key,
+            source_file: image_source_path(run.image_source_location, run.given_dir, run.given_file_name),
+            alt_text: alt_text,
+            title: title ?? base_name(run.given_file_name)
+        )
+}
+
+-- Attaching an image to a page -------------------------------------------
+
+rule RequestPageImageAttachment {
+    when: PageImageAttachmentRequested(
+        source, image_source, path, dir?, file_name?, existing_reference?, as?
+    )
+    ensures: PageImageAttachmentRun.created(
+        source_location: source,
+        image_source_location: image_source,
+        given_path: path,
+        given_dir: dir,
+        given_file_name: file_name,
+        given_existing_reference: existing_reference,
+        given_as: as,
+        status: image_attachment_requested
+    )
+}
+
+rule DetectPageImageAttachmentBlockers {
+    when: run: PageImageAttachmentRun.created
+    ensures:
+        if not page_exists_at(run.source_location, run.given_path):
+            PageImageAttachmentBlock.created(
+                run: run, reason: target_page_missing, detail: run.given_path
+            )
+        if run.given_existing_reference = null
+            and not source_readable(
+                image_source_path(run.image_source_location, run.given_dir, run.given_file_name)
+            ):
+            PageImageAttachmentBlock.created(
+                run: run, reason: source_file_unreadable, detail: run.given_file_name
+            )
+        if run.given_existing_reference = null
+            and image_reference_key_used(run.image_source_location, run.reference_key):
+            PageImageAttachmentBlock.created(
+                run: run, reason: reference_key_already_used, detail: run.reference_key
+            )
+        if run.given_existing_reference != null
+            and not image_reference_resolves(run.image_source_location, run.given_existing_reference):
+            PageImageAttachmentBlock.created(
+                run: run, reason: image_reference_unresolved, detail: run.given_existing_reference
+            )
+        if run.given_as = hero and not run.hero_available:
+            PageImageAttachmentBlock.created(
+                run: run, reason: hero_already_present, detail: run.given_path
+            )
+        if run.is_blocked:
+            run.status = image_attachment_blocked
+}
+
+-- Always the mechanism that reaches `created`, even when effective_role
+-- resolves to hero and there is nothing left to gather beyond a new image's
+-- own alternative text: this keeps exactly one rule producing the
+-- `created` transition rather than two convergent ones.
+rule ProvidePageImageAttachmentDetails {
+    when: PageImageAttachmentDetailsProvided(run, alt_text?, side?, caption?)
+    requires: run.status = image_attachment_requested
+    ensures:
+        run.given_alt_text = alt_text
+        run.given_side = side
+        run.given_caption = caption
+        run.status = image_attached
+        PageImageAttached(
+            run: run,
+            path: run.given_path,
+            role: run.effective_role,
+            reference_key: run.reference_key,
+            side: if run.effective_role = notification: run.given_side ?? right else: null,
+            content: if run.effective_role = notification: run.effective_caption else: null
+        )
+}
+
+-- Changing a social link --------------------------------------------------
+
+rule RequestSocialLinkAddition {
+    when: SocialLinkAdditionRequested(source, handle?, url?, icon?, brand_color?)
+    ensures: SocialLinkChangeRun.created(
+        source_location: source,
+        change_kind: add,
+        given_handle: handle,
+        given_url: url,
+        given_icon: icon,
+        given_brand_color: brand_color,
+        status: social_change_requested
+    )
+}
+
+rule RequestSocialLinkUpdate {
+    when: SocialLinkUpdateRequested(source, match, index?, handle?, url?, icon?, brand_color?)
+    ensures: SocialLinkChangeRun.created(
+        source_location: source,
+        change_kind: update,
+        given_match: match,
+        given_index: index,
+        given_handle: handle,
+        given_url: url,
+        given_icon: icon,
+        given_brand_color: brand_color,
+        status: social_change_requested
+    )
+}
+
+rule RequestSocialLinkRemoval {
+    when: SocialLinkRemovalRequested(source, match, index?)
+    ensures: SocialLinkChangeRun.created(
+        source_location: source,
+        change_kind: remove,
+        given_match: match,
+        given_index: index,
+        status: social_change_requested
+    )
+}
+
+-- Guarded on change_kind = add, distinctly from the update/remove rules
+-- below, so the three never overlap on the same SocialLinkChangeRun.created
+-- trigger.
+rule ApplySocialLinkAddition {
+    when: run: SocialLinkChangeRun.created
+    requires: run.status = social_change_requested
+    requires: run.change_kind = add
+    ensures:
+        if run.resulting_provider = other and (run.given_icon = null or run.given_brand_color = null):
+            run.rejection = unrecognised_provider_incomplete
+            run.status = social_change_rejected
+        else if social_link_url_registered(run.source_location, run.resulting_url):
+            run.rejection = url_already_registered
+            run.status = social_change_rejected
+        else:
+            run.status = social_change_applied
+            SocialLinkAdded(
+                run: run,
+                url: run.resulting_url,
+                provider: run.resulting_provider,
+                icon: run.given_icon,
+                brand_color: run.given_brand_color
+            )
+}
+
+rule ApplySocialLinkUpdate {
+    when: run: SocialLinkChangeRun.created
+    requires: run.status = social_change_requested
+    requires: run.change_kind = update
+    let match_count = matching_social_link_count(run.source_location, run.given_match)
+    ensures:
+        if match_count = 0:
+            run.rejection = no_matching_social_link
+            run.status = social_change_rejected
+        else if match_count > 1 and run.given_index = null:
+            run.rejection = ambiguous_social_link_match
+            run.status = social_change_rejected
+        else if run.given_index != null and (run.given_index < 0 or run.given_index >= match_count):
+            run.rejection = match_index_out_of_range
+            run.status = social_change_rejected
+        else if run.resulting_provider = other and (run.given_icon = null or run.given_brand_color = null):
+            run.rejection = unrecognised_provider_incomplete
+            run.status = social_change_rejected
+        else:
+            run.status = social_change_applied
+            SocialLinkUpdated(
+                run: run,
+                previous_url: selected_social_link_url(run.source_location, run.given_match, run.given_index),
+                url: run.resulting_url,
+                provider: run.resulting_provider,
+                icon: run.given_icon,
+                brand_color: run.given_brand_color
+            )
+}
+
+rule ApplySocialLinkRemoval {
+    when: run: SocialLinkChangeRun.created
+    requires: run.status = social_change_requested
+    requires: run.change_kind = remove
+    let match_count = matching_social_link_count(run.source_location, run.given_match)
+    ensures:
+        if match_count = 0:
+            run.rejection = no_matching_social_link
+            run.status = social_change_rejected
+        else if match_count > 1 and run.given_index = null:
+            run.rejection = ambiguous_social_link_match
+            run.status = social_change_rejected
+        else if run.given_index != null and (run.given_index < 0 or run.given_index >= match_count):
+            run.rejection = match_index_out_of_range
+            run.status = social_change_rejected
+        else:
+            run.status = social_change_applied
+            SocialLinkRemoved(
+                run: run,
+                url: selected_social_link_url(run.source_location, run.given_match, run.given_index)
+            )
+}
+
+-- Updating the footer -------------------------------------------------------
+
+rule RequestFooterUpdate {
+    when: FooterUpdateRequested(source, footer_content)
+    ensures: FooterUpdateRun.created(
+        source_location: source,
+        footer_content: footer_content,
+        status: footer_update_requested
+    )
+}
+
+-- Nothing here can be rejected (see FooterUpdateRun's own comment), so this
+-- fires unconditionally the moment the run exists -- the same two-rule shape
+-- DetectPageCreationBlockers/ProvidePageCreationDetails use, just without a
+-- blocked branch.
+rule ApplyFooterUpdate {
+    when: run: FooterUpdateRun.created
+    requires: run.status = footer_update_requested
+    ensures:
+        run.status = footer_updated
+        FooterContentUpdated(run: run, footer_content: run.footer_content)
+}
+
+-- Appending a main menu entry -----------------------------------------------
+
+rule RequestMenuLinkAddition {
+    when: MenuLinkAdditionRequested(source, url, title?, icon?)
+    ensures: MenuLinkAdditionRun.created(
+        source_location: source,
+        given_url: url,
+        given_title: title,
+        given_icon: icon,
+        status: menu_link_addition_requested
+    )
+}
+
+-- The two ways this can be rejected mirror ApplySocialLinkAddition's shape:
+-- one that would break a stated invariant (ExternalMenuLinkCarriesTitle),
+-- one that would just duplicate an entry already there.
+rule ApplyMenuLinkAddition {
+    when: run: MenuLinkAdditionRun.created
+    requires: run.status = menu_link_addition_requested
+    ensures:
+        if run.kind = external and run.given_title = null:
+            run.rejection = external_link_without_title
+            run.status = menu_link_addition_rejected
+        else if menu_link_url_registered(run.source_location, run.given_url):
+            run.rejection = url_already_in_menu
+            run.status = menu_link_addition_rejected
+        else:
+            run.status = menu_link_added
+            MenuLinkAppended(
+                run: run,
+                url: run.given_url,
+                title: run.given_title,
+                icon: run.given_icon
+            )
+}
+
 ------------------------------------------------------------
 -- Invariants
 ------------------------------------------------------------
@@ -1300,6 +1990,57 @@ invariant WizardOnlyGathersRecognizedProviders {
     for r in InitializationRuns:
         r.status = scaffolded implies
             r.given_socials.all(h => h.provider in config.recognized_social_providers)
+}
+
+-- A blocker is only ever recorded for a run the blocker check went on to
+-- reject; a created run never carries one. Mirrors
+-- ScaffoldConflictsBelongToRejectedRuns for InitializationRun.
+invariant PageCreationBlocksBelongToBlockedRuns {
+    for b in PageCreationBlocks:
+        b.run.status = page_creation_blocked
+}
+
+invariant ImageRegistrationBlocksBelongToBlockedRuns {
+    for b in ImageRegistrationBlocks:
+        b.run.status = image_registration_blocked
+}
+
+invariant PageImageAttachmentBlocksBelongToBlockedRuns {
+    for b in PageImageAttachmentBlocks:
+        b.run.status = image_attachment_blocked
+}
+
+-- Exactly one of the two ways of naming an image is given: a freshly
+-- registered file, or an already-declared reference.
+invariant PageImageAttachmentNamesExactlyOneImageSource {
+    for r in PageImageAttachmentRuns:
+        (r.given_existing_reference != null
+            implies (r.given_dir = null and r.given_file_name = null))
+        and (r.given_existing_reference = null
+            implies (r.given_dir != null and r.given_file_name != null))
+}
+
+-- A page-image attachment never registers a new image without the
+-- alternative text EveryImageHasAlternativeText will go on to require of it
+-- once a generate/check run reads the tree back.
+invariant PageImageAttachmentRegistersAltTextForNewImages {
+    for r in PageImageAttachmentRuns:
+        r.status = image_attached and r.given_existing_reference = null
+            implies r.given_alt_text != null
+}
+
+-- A rejected social-link change always carries the one reason it was
+-- rejected; an applied one never does.
+invariant SocialLinkChangeRejectionMatchesStatus {
+    for r in SocialLinkChangeRuns:
+        r.status = social_change_rejected implies r.rejection != null
+}
+
+-- A rejected menu-link addition always carries the one reason it was
+-- rejected; an added one never does.
+invariant MenuLinkAdditionRejectionMatchesStatus {
+    for r in MenuLinkAdditionRuns:
+        r.status = menu_link_addition_rejected implies r.rejection != null
 }
 
 ------------------------------------------------------------
@@ -1460,6 +2201,249 @@ surface InitOutcome {
 
         run.repository_initialized
         run.gitignore_created
+}
+
+-- Authoring content into an existing project ---------------------------
+
+-- The `page new` subcommand.
+surface PageCreationRequest {
+    facing _: Maintainer
+
+    provides:
+        PageCreationRequested(source, image_source?, path, image?)
+}
+
+-- Why `page new` refused to run: every reason the request was blocked.
+surface PageCreationBlockedReport {
+    facing _: Maintainer
+
+    context run: PageCreationRun where status = page_creation_blocked
+
+    exposes:
+        for b in run.blocks:
+            b.reason
+            b.detail
+}
+
+-- Where the maintainer supplies the rest of a new page's details, once the
+-- blocker check has passed. Reachable only while status is `requested`: a
+-- run the blocker check already rejected has moved on to `blocked` and
+-- offers this nowhere.
+surface PageCreationDetails {
+    facing _: Maintainer
+
+    context run: PageCreationRun where status = page_creation_requested
+
+    provides:
+        PageCreationDetailsProvided(run, title, sub_title?, icon?, summary?, order?, content?)
+}
+
+-- What `page new` created, once it has.
+surface PageCreatedOutcome {
+    facing _: Maintainer
+
+    context run: PageCreationRun where status = page_created
+
+    exposes:
+        run.given_path
+        run.title
+        run.sub_title
+        run.icon
+        run.summary
+        run.order
+        run.content
+        run.content_was_defaulted
+        run.given_image_reference
+}
+
+-- The `image add` subcommand.
+surface ImageRegistrationRequest {
+    facing _: Maintainer
+
+    provides:
+        ImageRegistrationRequested(image_source, dir, file_name)
+}
+
+surface ImageRegistrationBlockedReport {
+    facing _: Maintainer
+
+    context run: ImageRegistrationRun where status = image_registration_blocked
+
+    exposes:
+        for b in run.blocks:
+            b.reason
+            b.detail
+}
+
+surface ImageRegistrationDetails {
+    facing _: Maintainer
+
+    context run: ImageRegistrationRun where status = image_registration_requested
+
+    provides:
+        ImageRegistrationDetailsProvided(run, title?, alt_text)
+}
+
+-- What `image add` registered, once it has -- including the reference key a
+-- page or notification would use to point at it.
+surface ImageRegisteredOutcome {
+    facing _: Maintainer
+
+    context run: ImageRegistrationRun where status = image_registered
+
+    exposes:
+        run.reference_key
+        run.title
+        run.alt_text
+}
+
+-- The `page add-image` subcommand.
+surface PageImageAttachmentRequest {
+    facing _: Maintainer
+
+    provides:
+        PageImageAttachmentRequested(
+            source, image_source, path, dir?, file_name?, existing_reference?, as?
+        )
+}
+
+surface PageImageAttachmentBlockedReport {
+    facing _: Maintainer
+
+    context run: PageImageAttachmentRun where status = image_attachment_blocked
+
+    exposes:
+        for b in run.blocks:
+            b.reason
+            b.detail
+}
+
+-- Exposes effective_role so the maintainer knows, before answering, whether
+-- this attachment is about to fill the page's hero slot or join its
+-- notifications.
+surface PageImageAttachmentDetails {
+    facing _: Maintainer
+
+    context run: PageImageAttachmentRun where status = image_attachment_requested
+
+    exposes:
+        run.effective_role
+
+    provides:
+        PageImageAttachmentDetailsProvided(run, alt_text?, side?, caption?)
+}
+
+surface PageImageAttachedOutcome {
+    facing _: Maintainer
+
+    context run: PageImageAttachmentRun where status = image_attached
+
+    exposes:
+        run.given_path
+        run.reference_key
+        run.effective_role
+        run.given_side
+        run.effective_caption
+}
+
+-- The `social add` subcommand.
+surface SocialLinkAdditionRequest {
+    facing _: Maintainer
+
+    provides:
+        SocialLinkAdditionRequested(source, handle?, url?, icon?, brand_color?)
+}
+
+-- The `social update` subcommand.
+surface SocialLinkUpdateRequest {
+    facing _: Maintainer
+
+    provides:
+        SocialLinkUpdateRequested(source, match, index?, handle?, url?, icon?, brand_color?)
+}
+
+-- The `social remove` subcommand.
+surface SocialLinkRemovalRequest {
+    facing _: Maintainer
+
+    provides:
+        SocialLinkRemovalRequested(source, match, index?)
+}
+
+-- Why a social-link change was rejected, whichever of the three subcommands
+-- requested it.
+surface SocialLinkChangeRejectedReport {
+    facing _: Maintainer
+
+    context run: SocialLinkChangeRun where status = social_change_rejected
+
+    exposes:
+        run.change_kind
+        run.rejection
+}
+
+-- What a social-link change did, once applied.
+surface SocialLinkChangedOutcome {
+    facing _: Maintainer
+
+    context run: SocialLinkChangeRun where status = social_change_applied
+
+    exposes:
+        run.change_kind
+        run.resulting_url
+        run.resulting_provider
+}
+
+-- The `footer set` subcommand.
+surface FooterUpdateRequest {
+    facing _: Maintainer
+
+    provides:
+        FooterUpdateRequested(source, footer_content)
+}
+
+surface FooterUpdatedOutcome {
+    facing _: Maintainer
+
+    context run: FooterUpdateRun where status = footer_updated
+
+    exposes:
+        run.footer_content.reference
+        run.footer_content.kind
+}
+
+-- The `menu add-item` subcommand.
+surface MenuLinkAdditionRequest {
+    facing _: Maintainer
+
+    provides:
+        MenuLinkAdditionRequested(source, url, title?, icon?)
+}
+
+surface MenuLinkAdditionRejectedReport {
+    facing _: Maintainer
+
+    context run: MenuLinkAdditionRun where status = menu_link_addition_rejected
+
+    exposes:
+        run.rejection
+}
+
+-- would_resolve tells the maintainer, at the moment the entry is added,
+-- whether it will actually show up in the published menu -- distinct from a
+-- rejection, since an internal link naming a path with no page yet is
+-- allowed; it just will not resolve until that page exists.
+surface MenuLinkAddedOutcome {
+    facing _: Maintainer
+
+    context run: MenuLinkAdditionRun where status = menu_link_added
+
+    exposes:
+        run.given_url
+        run.given_title
+        run.given_icon
+        run.kind
+        run.would_resolve
 }
 
 -- What the maintainer authors in the source tree: main.json and menu.json at
@@ -1636,3 +2620,8 @@ open question "If pages ever come from anywhere but directories, does check need
 -- those by hand afterward. Social links are no longer part of this question
 -- -- the wizard gathers those now -- but main-menu entries still are not.
 open question "Should a later version of init let the wizard add initial main-menu entries, rather than starting empty?"
+
+-- `menu add-item` is deliberately add-only, the same way PageCreationRun and
+-- ImageRegistrationRun have no delete/rename counterpart: an entry, once
+-- added, can only be changed or removed by hand-editing menu.json.
+open question "Should a later version add `menu update-item`/`menu remove-item` alongside `menu add-item`?"
