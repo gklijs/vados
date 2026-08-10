@@ -8,7 +8,12 @@ use dashmap::DashMap;
 use std::cmp::Ordering;
 use std::sync::Arc;
 
-fn parent_path(path: &str) -> Option<String> {
+/// The path one level up from `path`, or `None` for the root itself. Public
+/// (rather than crate-private) because the content-authoring commands need
+/// it too: a page-creation request's parent must already be a page (see
+/// `vados.allium`'s `DetectPageCreationBlockers`), the same relationship this
+/// module already needed for menus, breadcrumbs and side notifications.
+pub fn parent_path(path: &str) -> Option<String> {
     if path.len() <= 1 {
         return None;
     }
@@ -294,9 +299,9 @@ impl Structure {
         // parent = this.parent`, a page with no parent has no siblings, so
         // there is nothing to show rather than something to panic over.
         let own_children = self.by_parent.get(path);
-        let items = match own_children.or_else(|| {
-            parent_path(path).and_then(|parent| self.by_parent.get(&*parent))
-        }) {
+        let items = match own_children
+            .or_else(|| parent_path(path).and_then(|parent| self.by_parent.get(&*parent)))
+        {
             Some(items) => items,
             None => return vec![],
         };
@@ -339,20 +344,73 @@ pub enum SocialItem {
     Other(String, String, String),
 }
 
-/// Whether a social link's URL matches one of the providers `SocialItem`
-/// recognises automatically. Kept in sync with `SocialItem::new`'s matching,
-/// so `check` can flag an unrecognised provider missing its required icon
-/// and color before generation would panic on it.
+/// Which provider a social link's URL was recognised as, without needing a
+/// `RawSocialItem` (an icon and color) the way `SocialItem::new` does. See
+/// `vados.allium`'s `SocialProvider` enum and `social_provider_of`. Public so
+/// the `social add`/`update`/`remove` commands can classify a URL the
+/// maintainer gave before any icon/color has been supplied.
 ///
 /// `twitter.com` and `x.com` are both recognised as the same provider; the
 /// rebrand changed the URL, not the identity of the account.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SocialProviderKind {
+    Github,
+    LinkedIn,
+    Facebook,
+    YouTube,
+    Twitter,
+    Other,
+}
+
+/// Kept in sync with `SocialItem::new`'s matching below: the two must always
+/// agree on which provider a URL belongs to.
+pub fn classify_social_provider(url: &str) -> SocialProviderKind {
+    use SocialProviderKind::*;
+    match url {
+        u if u.starts_with("https://github.com/") => Github,
+        u if u.starts_with("https://www.linkedin.com/") => LinkedIn,
+        u if u.starts_with("https://www.facebook.com/") => Facebook,
+        u if u.starts_with("https://www.youtube.com/") => YouTube,
+        u if u.starts_with("https://twitter.com/") || u.starts_with("https://x.com/") => Twitter,
+        _ => Other,
+    }
+}
+
+/// Whether a social link's URL matches one of the providers `SocialItem`
+/// recognises automatically, so `check` can flag an unrecognised provider
+/// missing its required icon and color before generation would panic on it.
 pub(crate) fn is_recognized_social_provider(url: &str) -> bool {
-    url.starts_with("https://github.com/")
-        || url.starts_with("https://www.linkedin.com/")
-        || url.starts_with("https://www.facebook.com/")
-        || url.starts_with("https://www.youtube.com/")
-        || url.starts_with("https://twitter.com/")
-        || url.starts_with("https://x.com/")
+    classify_social_provider(url) != SocialProviderKind::Other
+}
+
+/// The Material Design Icons name a recognised provider always uses. `None`
+/// for `Other`, which has no canonical icon -- the maintainer must supply
+/// one. Kept in sync with `SocialItem::get_icon` below.
+pub fn canonical_icon(provider: SocialProviderKind) -> Option<&'static str> {
+    use SocialProviderKind::*;
+    match provider {
+        Github => Some("github"),
+        LinkedIn => Some("linkedin"),
+        Facebook => Some("facebook"),
+        YouTube => Some("youtube"),
+        Twitter => Some("twitter"),
+        Other => None,
+    }
+}
+
+/// The brand color a recognised provider always uses. `None` for `Other`, the
+/// same way as `canonical_icon`. Kept in sync with `SocialItem::get_color`
+/// below.
+pub fn canonical_brand_color(provider: SocialProviderKind) -> Option<&'static str> {
+    use SocialProviderKind::*;
+    match provider {
+        Github => Some("171515"),
+        LinkedIn => Some("0077b5"),
+        Facebook => Some("4267B2"),
+        YouTube => Some("c4302b"),
+        Twitter => Some("1DA1F2"),
+        Other => None,
+    }
 }
 
 impl SocialItem {

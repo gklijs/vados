@@ -269,6 +269,29 @@ pub(crate) fn classify_content_reference(reference: &str) -> ContentKind {
     }
 }
 
+/// Escapes the characters that would otherwise be read as markup when
+/// dropped straight into an HTML attribute or element.
+pub(crate) fn escape_html(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+/// Coerces free-form text into something that will actually classify as a
+/// `ContentReference` rather than `Unrecognised`. Used wherever a
+/// content-authoring command writes plain descriptive text -- a notification
+/// caption, or an image's own alt text standing in for one -- into a field
+/// that `check`/`generate` will read back as a content reference. Text that
+/// already looks like one (a `.md`/`.html` file, or inline HTML ending in a
+/// closing tag) passes through unchanged, so a maintainer who deliberately
+/// names a file still gets that file, not a paragraph containing its name.
+pub(crate) fn ensure_content_reference(text: String) -> String {
+    match classify_content_reference(&text) {
+        ContentKind::Unrecognised => format!("<p>{}</p>", escape_html(&text)),
+        ContentKind::MarkdownFile | ContentKind::HtmlFile | ContentKind::InlineHtml => text,
+    }
+}
+
 pub(crate) fn get_file_path(source: &str, path: &str, reference: &str) -> String {
     if path == "/" {
         format!("{}/{}", source, reference)
@@ -428,4 +451,48 @@ fn get_page(
     }
     .render()
     .unwrap()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ensure_content_reference_leaves_a_markdown_reference_untouched() {
+        assert_eq!(ensure_content_reference("notes.md".to_string()), "notes.md");
+    }
+
+    #[test]
+    fn ensure_content_reference_leaves_an_html_reference_untouched() {
+        assert_eq!(
+            ensure_content_reference("notes.html".to_string()),
+            "notes.html"
+        );
+    }
+
+    #[test]
+    fn ensure_content_reference_leaves_inline_html_untouched() {
+        assert_eq!(
+            ensure_content_reference("<p>already html</p>".to_string()),
+            "<p>already html</p>"
+        );
+    }
+
+    #[test]
+    fn ensure_content_reference_wraps_plain_text_as_inline_html() {
+        assert_eq!(
+            ensure_content_reference("Alice smiling".to_string()),
+            "<p>Alice smiling</p>"
+        );
+    }
+
+    #[test]
+    fn ensure_content_reference_escapes_markup_characters_in_plain_text() {
+        // Deliberately doesn't end in '>' -- text that does is already
+        // (however loosely) classified as inline HTML and left untouched.
+        assert_eq!(
+            ensure_content_reference("Rock & roll".to_string()),
+            "<p>Rock &amp; roll</p>"
+        );
+    }
 }

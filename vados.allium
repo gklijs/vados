@@ -138,9 +138,6 @@ value SocialHandle {
 ------------------------------------------------------------
 
 -- Bulma's semantic colour palette. Used for the navbar and for notifications.
--- NOTE: the Rust implementation spells the success value `Succes`. That is a
--- typo and the correct spelling is used here; the code should be corrected
--- rather than the spec matching the mistake.
 enum Color {
     white | black | light | dark | primary | link | info | success | warning | danger
 }
