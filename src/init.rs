@@ -10,6 +10,8 @@
 //! bundle of basics gathered as a first-class type here.
 
 use crate::bulma::default_css_links;
+use crate::content::escape_html;
+use crate::json_files::write_json_pretty;
 // Re-exported so callers outside this crate (the CLI in `main.rs`) can name
 // the provider type through `vados::init` without reaching into the
 // otherwise-private `structure` module.
@@ -19,7 +21,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
 
 /// Where `init` puts the source tree, the image tree and, per
@@ -193,21 +195,6 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
         repository_initialized,
         gitignore_created,
     })
-}
-
-fn escape_html(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-fn write_json_pretty<T: Serialize>(path: PathBuf, value: &T) -> io::Result<()> {
-    let contents = serde_json::to_string_pretty(value)
-        .expect("a scaffolded config is always representable as JSON");
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
-    fs::write(path, contents)
 }
 
 #[derive(Serialize)]
@@ -477,6 +464,7 @@ fn write_or_merge_gitignore(dir: &Path) -> io::Result<bool> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
@@ -534,7 +522,12 @@ mod tests {
 
         let conflicts = detect_conflicts(&dir.path);
 
-        assert_eq!(conflicts.len(), 8, "expected every kind to conflict, got {:?}", conflicts);
+        assert_eq!(
+            conflicts.len(),
+            8,
+            "expected every kind to conflict, got {:?}",
+            conflicts
+        );
     }
 
     #[test]
@@ -591,12 +584,10 @@ mod tests {
         assert_eq!(outcome.footer_text, "(c) me");
         assert_eq!(outcome.socials.len(), 1);
 
-        let main_json =
-            fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
+        let main_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
         assert!(main_json.contains("(c) me"));
 
-        let menu_json =
-            fs::read_to_string(dir.path.join(SOURCE_DIR).join("menu.json")).unwrap();
+        let menu_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("menu.json")).unwrap();
         assert!(menu_json.contains("https://github.com/gklijs"));
 
         let stylesheet = fs::read_to_string(dir.path.join("sass/main.scss")).unwrap();

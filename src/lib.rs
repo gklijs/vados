@@ -1,3 +1,4 @@
+pub mod authoring;
 mod bulma;
 pub mod check;
 mod config_files;
@@ -6,5 +7,6 @@ mod files;
 pub mod generator;
 mod image;
 pub mod init;
+mod json_files;
 mod structure;
 mod templates;

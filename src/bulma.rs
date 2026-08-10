@@ -2,9 +2,9 @@ use crate::bulma::ImageRatio::{
     Is16By9, Is1By1, Is1By2, Is1By3, Is2By1, Is2By3, Is3By1, Is3By2, Is3By4, Is3By5, Is4By3,
     Is4by5, Is5By3, Is5By4, Is9By16,
 };
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize, Eq, PartialEq, Clone, Hash)]
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Hash)]
 pub(crate) enum Color {
     White,
     Black,
@@ -13,7 +13,7 @@ pub(crate) enum Color {
     Primary,
     Link,
     Info,
-    Succes,
+    Success,
     Warning,
     Danger,
 }
@@ -28,7 +28,7 @@ impl Color {
             Color::Primary => "is-primary",
             Color::Link => "is-link",
             Color::Info => "is-info",
-            Color::Succes => "is-success",
+            Color::Success => "is-success",
             Color::Warning => "is-warning",
             Color::Danger => "is-danger",
         }

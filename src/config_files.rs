@@ -1,8 +1,15 @@
 use crate::bulma::{default_css_links, default_js_links, vados_js, Color};
 use crate::files::write_raw;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Deserialize)]
+// Every config struct below derives `Serialize` as well as `Deserialize`:
+// the content-authoring commands (`page new`, `image add`, `page add-image`,
+// `social add`/`update`/`remove`, `footer set`, `menu add-item`) read one of
+// these back, change the one thing they were asked to, and write the whole
+// struct out again -- so the shape read and the shape written must always be
+// exactly the same one. `generate`/`check` only ever read these, so before
+// those commands existed there was nothing to round-trip.
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MainConfig {
     pub(crate) site_title: String,
@@ -51,7 +58,7 @@ impl MainConfig {
     }
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PageConfig {
     pub(crate) title: String,
@@ -82,7 +89,7 @@ impl PageConfig {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RawMenuItem {
     pub(crate) url: String,
@@ -90,7 +97,7 @@ pub(crate) struct RawMenuItem {
     pub(crate) icon: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RawSocialItem {
     pub(crate) url: String,
@@ -98,14 +105,14 @@ pub(crate) struct RawSocialItem {
     pub(crate) color: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MenuConfig {
     pub(crate) main_menu: Vec<RawMenuItem>,
     pub(crate) socials: Vec<RawSocialItem>,
 }
 
-#[derive(Debug, Deserialize, Eq, PartialEq, Clone)]
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Notification {
     pub(crate) content: String,
@@ -115,7 +122,7 @@ pub(crate) struct Notification {
     pub(crate) color: Option<Color>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImageReference {
     pub(crate) title: Option<String>,
@@ -123,7 +130,7 @@ pub(crate) struct ImageReference {
     pub(crate) alt_text: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 pub(crate) struct ImageList {
     pub(crate) title: Option<String>,
     pub(crate) list: Vec<ImageReference>,
