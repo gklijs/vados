@@ -57,8 +57,20 @@ fn normalize_dir(given_dir: &str) -> String {
     }
 }
 
+/// Strips a trailing slash from a maintainer-given `--img-source`. Every
+/// function below either concatenates this onto `given_dir` or slices a
+/// `WalkDir` entry at `image_source.len()`; both assume `image_source` has
+/// no trailing separator. A shell that tab-completes a directory naturally
+/// produces one (`imgroot/`), which would otherwise shift every subdirectory
+/// key by one character -- `"team/photo"` instead of `"/team/photo"` -- and
+/// make otherwise-valid image references look unresolved.
+fn normalize_image_source(image_source: &str) -> &str {
+    image_source.trim_end_matches('/')
+}
+
 /// Where the actual image bytes for a registration request live on disk.
 pub fn image_source_path(image_source: &str, given_dir: &str, file_name: &str) -> PathBuf {
+    let image_source = normalize_image_source(image_source);
     let path_start = normalize_dir(given_dir);
     if path_start.is_empty() {
         Path::new(image_source).join(file_name)
@@ -68,6 +80,7 @@ pub fn image_source_path(image_source: &str, given_dir: &str, file_name: &str) -
 }
 
 fn images_json_path(image_source: &str, given_dir: &str) -> PathBuf {
+    let image_source = normalize_image_source(image_source);
     let path_start = normalize_dir(given_dir);
     if path_start.is_empty() {
         Path::new(image_source).join("images.json")
@@ -84,12 +97,28 @@ pub fn reference_key_for_registration(given_dir: &str, file_name: &str) -> Optio
     reference_key_for(&normalize_dir(given_dir), file_name)
 }
 
-/// Whether a file exists and can be opened as an ordinary file. Used for
-/// `source_readable` in `vados.allium`; deliberately shallow -- it does not
-/// decode the image, the same way `check`'s `MissingImageSourceFile` finding
-/// only asks whether the file is there.
+/// Whether a file exists, can be opened as an ordinary file, and has a name
+/// `reference_key_for` can actually derive a key from. Used for
+/// `source_readable` in `vados.allium`; deliberately shallow otherwise -- it
+/// does not decode the image, the same way `check`'s `MissingImageSourceFile`
+/// finding only asks whether the file is there.
+///
+/// The extension check matters: without it, a present-but-extensionless file
+/// passes this check, `reference_key_for_registration` then returns `None`
+/// for it, and the `ReferenceKeyAlreadyUsed` check in
+/// `detect_registration_blockers` (guarded on that same `Some`) silently
+/// never fires -- so the request looks unblocked right up until
+/// `register_image` panics on the very same `None`, after already having
+/// written the malformed entry to disk. Folding the extension requirement in
+/// here means a missing extension is reported as `SourceFileUnreadable`
+/// (whose own message already says "or its name has no extension") before
+/// anything is written, the same as any other unreadable source.
 pub fn source_readable(path: &Path) -> bool {
-    path.is_file()
+    let has_extension = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n.contains('.'));
+    path.is_file() && has_extension
 }
 
 /// Every reference key already declared anywhere in the image tree. Backs
@@ -97,6 +126,7 @@ pub fn source_readable(path: &Path) -> bool {
 /// one) and `image_reference_resolves` (attaching an existing image must name
 /// one that's really there).
 pub fn collect_declared_image_keys(image_source: &str) -> HashSet<String> {
+    let image_source = normalize_image_source(image_source);
     let mut keys = HashSet::new();
     for dir in get_all_directory_paths(image_source) {
         let images_json = Path::new(&dir).join("images.json");
@@ -122,6 +152,7 @@ pub fn collect_declared_image_keys(image_source: &str) -> HashSet<String> {
 /// an already-declared image: its caption defaults to that image's own
 /// alt text rather than asking the maintainer to repeat it.
 pub fn declared_image_alt_text(image_source: &str, reference_key: &str) -> Option<String> {
+    let image_source = normalize_image_source(image_source);
     for dir in get_all_directory_paths(image_source) {
         let images_json = Path::new(&dir).join("images.json");
         let list: ImageList = match read_json_or(&images_json, || ImageList {
@@ -303,6 +334,26 @@ mod tests {
     }
 
     #[test]
+    fn a_present_file_with_no_extension_is_blocked_rather_than_panicking() {
+        // A regression test: reference_key_for_registration can't derive a
+        // key without an extension, so this used to sail through the
+        // blocker check (source_readable only asked whether the file
+        // existed) and panic inside register_image after already writing a
+        // malformed entry to images.json.
+        let tree = TestTree::new("no_extension");
+        tree.write_image("photo", "bytes");
+
+        let blocks = detect_registration_blockers(tree.root(), "", "photo");
+
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(
+            blocks[0].reason,
+            ImageRegistrationBlockReason::SourceFileUnreadable
+        );
+        assert!(!tree.path.join("images.json").exists());
+    }
+
+    #[test]
     fn a_reused_reference_key_is_blocked() {
         let tree = TestTree::new("reused_key");
         tree.write_image("photo.jpg", "bytes");
@@ -412,6 +463,28 @@ mod tests {
     }
 
     #[test]
+    fn a_trailing_slash_on_img_source_does_not_shift_subdirectory_keys() {
+        // A shell that tab-completes a directory naturally appends a
+        // trailing slash. Regression test: this used to shift every
+        // subdirectory key by one character ("team/b" instead of "/team/b"),
+        // making an image that plainly exists look unresolved.
+        let tree = TestTree::new("trailing_slash");
+        tree.write_images_json(
+            "team",
+            r#"{"title":null,"list":[{"title":null,"fileName":"b.jpg","altText":"b"}]}"#,
+        );
+        let with_trailing_slash = format!("{}/", tree.root());
+
+        let keys = collect_declared_image_keys(&with_trailing_slash);
+
+        assert!(
+            keys.contains("/team/b"),
+            "expected /team/b among {:?}",
+            keys
+        );
+    }
+
+    #[test]
     fn declared_image_alt_text_finds_a_match_by_reference_key() {
         let tree = TestTree::new("alt_text_lookup");
         tree.write_images_json(
@@ -424,6 +497,21 @@ mod tests {
             Some("Alice smiling".to_string())
         );
         assert_eq!(declared_image_alt_text(tree.root(), "/nope"), None);
+    }
+
+    #[test]
+    fn declared_image_alt_text_also_tolerates_a_trailing_slash_on_img_source() {
+        let tree = TestTree::new("alt_text_trailing_slash");
+        tree.write_images_json(
+            "team",
+            r#"{"title":null,"list":[{"title":null,"fileName":"alice.jpg","altText":"Alice smiling"}]}"#,
+        );
+        let with_trailing_slash = format!("{}/", tree.root());
+
+        assert_eq!(
+            declared_image_alt_text(&with_trailing_slash, "/team/alice"),
+            Some("Alice smiling".to_string())
+        );
     }
 
     #[test]
