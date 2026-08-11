@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html class="has-navbar-fixed-top" lang="en">
+<html class="has-navbar-fixed-top" lang="{{ language }}">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -11,10 +11,12 @@
     {% for css_link in css_links %}
     <link href="{{ css_link }}" rel="stylesheet">
     {% endfor %}
+    <style>.skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:0.5em 1em;background:#fff;color:#000;}.skip-link:focus{left:0.5em;top:0.5em;}</style>
 </head>
 <body>
+<a class="skip-link" href="#main">Skip to main content</a>
 {{ navigation|safe }}
-<section class="section {{background_class}}" id="main">
+<main class="section {{background_class}}" id="main" tabindex="-1">
     <div class="container">
         {% if let Some(b) = breadcrumbs %}{{ b|safe }}{% endif %}
         <div class="{% if let Some(_) = side_menu %}tile is-ancestor is-flex-direction-row-reverse{% else %}tile is-ancestor{% endif %}">
@@ -47,7 +49,7 @@
             </div>
         </div>
     </div>
-</section>
+</main>
 {{ footer|safe }}
 {% for js_link in js_links %}
 <script src="{{ js_link }}"></script>

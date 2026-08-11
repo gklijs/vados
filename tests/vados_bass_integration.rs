@@ -122,7 +122,10 @@ fn generated_pages_match_facts_observed_on_the_live_site() {
     // Home page's own title and subtitle (main.json is site-wide; this is
     // root/page.json).
     assert!(index.contains(">Home<"));
-    assert!(index.contains("Introduction to Gerard&#x27;s bass playing adventures"));
+    // askama 0.16 escapes `'` as the decimal entity `&#39;` rather than the
+    // hex entity `&#x27;` earlier versions used; both are valid, equivalent
+    // HTML and render identically -- only the literal form changed.
+    assert!(index.contains("Introduction to Gerard&#39;s bass playing adventures"));
     // Main menu, built from menu.json with titles inherited from the pages
     // it points at.
     assert!(index.contains(">Gear<"));

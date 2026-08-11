@@ -3,7 +3,7 @@
 
 use crate::config_files::{MenuConfig, RawSocialItem};
 use crate::json_files::{read_json, write_json_pretty};
-use crate::structure::{canonical_brand_color, canonical_icon};
+use crate::structure::{canonical_brand_color, canonical_icon, canonical_label};
 pub use crate::structure::{
     classify_social_provider, RecognizedSocialProvider, SocialProviderKind,
 };
@@ -29,7 +29,7 @@ impl fmt::Display for SocialLinkChangeRejectionReason {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             SocialLinkChangeRejectionReason::UnrecognisedProviderIncomplete => {
-                "an unrecognised provider needs both an icon and a brand color"
+                "an unrecognised provider needs an icon, a brand color, and an accessible-name label"
             }
             SocialLinkChangeRejectionReason::UrlAlreadyRegistered => {
                 "a social link with this url is already registered"
@@ -56,6 +56,10 @@ pub struct GivenSocialLink {
     pub url: Option<String>,
     pub icon: Option<String>,
     pub brand_color: Option<String>,
+    /// The link's accessible name, required for an unrecognised provider the
+    /// same as `icon`/`brand_color` -- it is rendered as an icon with no
+    /// visible text. See `vados.allium`'s `SocialLink.label`.
+    pub label: Option<String>,
 }
 
 impl GivenSocialLink {
@@ -85,8 +89,10 @@ fn provider_is_complete(
     provider: SocialProviderKind,
     icon: &Option<String>,
     brand_color: &Option<String>,
+    label: &Option<String>,
 ) -> bool {
-    provider != SocialProviderKind::Other || (icon.is_some() && brand_color.is_some())
+    provider != SocialProviderKind::Other
+        || (icon.is_some() && brand_color.is_some() && label.is_some())
 }
 
 /// What a social-link change did, once applied. See `vados.allium`'s
@@ -97,6 +103,7 @@ pub struct SocialLinkChangedOutcome {
     pub provider: SocialProviderKind,
     pub icon: Option<String>,
     pub brand_color: Option<String>,
+    pub label: Option<String>,
     /// The link's previous url, for `social update` only.
     pub previous_url: Option<String>,
 }
@@ -109,6 +116,12 @@ fn resolved_icon(provider: SocialProviderKind, given: &Option<String>) -> Option
 
 fn resolved_brand_color(provider: SocialProviderKind, given: &Option<String>) -> Option<String> {
     canonical_brand_color(provider)
+        .map(String::from)
+        .or_else(|| given.clone())
+}
+
+fn resolved_label(provider: SocialProviderKind, given: &Option<String>) -> Option<String> {
+    canonical_label(provider)
         .map(String::from)
         .or_else(|| given.clone())
 }
@@ -127,7 +140,7 @@ pub fn add_social_link(
 
     let url = given.resulting_url();
     let provider = classify_social_provider(&url);
-    if !provider_is_complete(provider, &given.icon, &given.brand_color) {
+    if !provider_is_complete(provider, &given.icon, &given.brand_color, &given.label) {
         return Ok(Err(
             SocialLinkChangeRejectionReason::UnrecognisedProviderIncomplete,
         ));
@@ -140,12 +153,14 @@ pub fn add_social_link(
         url: url.clone(),
         icon: given.icon.clone(),
         color: given.brand_color.clone(),
+        label: given.label.clone(),
     });
     write_json_pretty(path, &menu_config)?;
 
     Ok(Ok(SocialLinkChangedOutcome {
         icon: resolved_icon(provider, &given.icon),
         brand_color: resolved_brand_color(provider, &given.brand_color),
+        label: resolved_label(provider, &given.label),
         url,
         provider,
         previous_url: None,
@@ -207,7 +222,7 @@ pub fn update_social_link(
 
     let url = given.resulting_url();
     let provider = classify_social_provider(&url);
-    if !provider_is_complete(provider, &given.icon, &given.brand_color) {
+    if !provider_is_complete(provider, &given.icon, &given.brand_color, &given.label) {
         return Ok(Err(
             SocialLinkChangeRejectionReason::UnrecognisedProviderIncomplete,
         ));
@@ -218,12 +233,14 @@ pub fn update_social_link(
         url: url.clone(),
         icon: given.icon.clone(),
         color: given.brand_color.clone(),
+        label: given.label.clone(),
     };
     write_json_pretty(path, &menu_config)?;
 
     Ok(Ok(SocialLinkChangedOutcome {
         icon: resolved_icon(provider, &given.icon),
         brand_color: resolved_brand_color(provider, &given.brand_color),
+        label: resolved_label(provider, &given.label),
         url,
         provider,
         previous_url: Some(previous_url),
@@ -295,11 +312,12 @@ mod tests {
             url: Some(url.to_string()),
             icon: None,
             brand_color: None,
+            label: None,
         }
     }
 
     #[test]
-    fn adding_a_recognised_provider_by_handle_needs_no_icon_or_color() {
+    fn adding_a_recognised_provider_by_handle_needs_no_icon_color_or_label() {
         let source = TestSource::new("add_handle", EMPTY_MENU);
 
         let result = add_social_link(
@@ -309,6 +327,7 @@ mod tests {
                 url: None,
                 icon: None,
                 brand_color: None,
+                label: None,
             },
         )
         .unwrap();
@@ -317,6 +336,7 @@ mod tests {
         assert_eq!(outcome.url, "https://github.com/gklijs");
         assert_eq!(outcome.provider, SocialProviderKind::Github);
         assert_eq!(outcome.icon, Some("github".to_string()));
+        assert_eq!(outcome.label, Some("GitHub".to_string()));
         assert_eq!(source.menu_config().socials.len(), 1);
     }
 
@@ -331,6 +351,7 @@ mod tests {
                 url: None,
                 icon: None,
                 brand_color: None,
+                label: None,
             },
         )
         .unwrap();
@@ -349,7 +370,7 @@ mod tests {
     }
 
     #[test]
-    fn adding_an_unrecognised_provider_without_icon_or_color_is_rejected() {
+    fn adding_an_unrecognised_provider_without_icon_color_or_label_is_rejected() {
         let source = TestSource::new("add_incomplete", EMPTY_MENU);
 
         let result =
@@ -363,7 +384,29 @@ mod tests {
     }
 
     #[test]
-    fn adding_an_unrecognised_provider_with_icon_and_color_succeeds() {
+    fn adding_an_unrecognised_provider_missing_only_the_label_is_rejected() {
+        let source = TestSource::new("add_missing_label", EMPTY_MENU);
+
+        let result = add_social_link(
+            source.root(),
+            GivenSocialLink {
+                handle: None,
+                url: Some("https://mastodon.social/@x".to_string()),
+                icon: Some("mastodon".to_string()),
+                brand_color: Some("6364FF".to_string()),
+                label: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(
+            result.unwrap_err(),
+            SocialLinkChangeRejectionReason::UnrecognisedProviderIncomplete
+        );
+    }
+
+    #[test]
+    fn adding_an_unrecognised_provider_with_icon_color_and_label_succeeds() {
         let source = TestSource::new("add_complete", EMPTY_MENU);
 
         let result = add_social_link(
@@ -373,6 +416,7 @@ mod tests {
                 url: Some("https://mastodon.social/@x".to_string()),
                 icon: Some("mastodon".to_string()),
                 brand_color: Some("6364FF".to_string()),
+                label: Some("Mastodon".to_string()),
             },
         )
         .unwrap();
@@ -380,6 +424,7 @@ mod tests {
         let outcome = result.unwrap();
         assert_eq!(outcome.provider, SocialProviderKind::Other);
         assert_eq!(outcome.icon, Some("mastodon".to_string()));
+        assert_eq!(outcome.label, Some("Mastodon".to_string()));
     }
 
     #[test]

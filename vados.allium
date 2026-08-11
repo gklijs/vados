@@ -47,9 +47,19 @@
 --   - Images: aspect-ratio matching, centre cropping, responsive variant set,
 --     and the Main/Sub/Side placement distinction
 --   - Page assembly and publication
+--   - Accessibility: a declarable site language, accessible names for
+--     icon-only controls (social links, the menu toggles), and structural
+--     guarantees every published page holds to -- a skip link, landmark
+--     regions, and keyboard-focusable, labelled navigation controls
 --
 -- Excludes (implementation, deliberately not modelled):
---   - The template engine and the individual template files / their markup
+--   - The template engine and the individual template files / their markup,
+--     with one carve-out: the accessibility guarantees named just above and
+--     stated under PublishedPage's @guarantee clauses (a skip link, landmark
+--     regions, focusable and labelled controls) are domain commitments this
+--     spec holds the templates to, not incidental markup choices. Everything
+--     else about the templates -- their structure, styling and every element
+--     not named in one of those guarantees -- remains excluded
 --   - Concurrency, shared ownership and the caching data structures
 --   - JSON parsing mechanics (main.json, menu.json, page.json and images.json
 --     are named only as the surfaces the maintainer authors)
@@ -58,6 +68,16 @@
 --     alpha premultiplication and WebP encoding quality
 --   - CSS class name spelling (`is-primary`, `is-16by9`, ...). The Color and
 --     ImageRatio enumerations are domain; their class names are not
+--   - Colour contrast ratios. Which Bulma semantic Color a navbar or
+--     notification uses is domain (Color itself, and SiteConfig.navbar_color);
+--     whether a given Color's actual rendered pair of foreground and
+--     background clears a WCAG contrast threshold depends on Bulma's own
+--     stylesheet values, which this tool never computes or asserts against
+--   - Animation/transition timing for the menu toggles, and whether
+--     `prefers-reduced-motion` is honoured. The toggles' expanded/collapsed
+--     state and what they control is domain (see
+--     InteractiveControlsAreLabelledAndFocusable); how that state change is
+--     animated is not
 --   - HTML minification of the produced output
 --   - Pixel breakpoints and the `sizes`/`decoding`/`loading` attribute values.
 --     The Main/Sub/Side placement distinction is domain; the pixels are not
@@ -343,11 +363,19 @@ entity SiteConfig {
     background_class: String?
     navbar_color: Color?
 
+    -- The site's content language, as an IETF BCP 47 tag (`"en"`, `"nl"`,
+    -- `"fr-CA"`, ...). See SiteLanguageIsDeclared: every published page
+    -- declares this on its root element, so assistive technology and
+    -- browsers pronounce, hyphenate and translate the page correctly instead
+    -- of guessing.
+    language: String?
+
     -- Defaults apply when the maintainer says nothing.
     default_css_included: include_default_css ?? true
     default_js_included: include_default_js ?? true
     background: background_class ?? config.default_background_class
     navbar: navbar_color ?? config.default_navbar_color
+    effective_language: language ?? config.default_language
 
     -- The default stylesheets are the Bulma stylesheet and a Material Design
     -- icon font; the default script supplies the burger-menu and side-menu
@@ -535,13 +563,20 @@ entity SocialLink {
     given_icon: String?
     given_brand_color: String?
 
+    -- The link's accessible name: what a screen reader announces for it. It
+    -- is rendered as an icon with no visible text, so this is the only name
+    -- it has -- see IconOnlyControlsCarryAnAccessibleName.
+    given_label: String?
+
     -- Recognised from the url. Classified once, on registration.
     provider: SocialProvider
 
-    -- Recognised providers carry a canonical icon and brand colour. Note this
-    -- is a brand colour, not a Bulma semantic Color.
+    -- Recognised providers carry a canonical icon, brand colour and label
+    -- (their own name: "GitHub", "LinkedIn", ...). Note the brand colour is
+    -- a brand colour, not a Bulma semantic Color.
     icon: if provider = other: given_icon else: canonical_icon(provider)
     brand_color: if provider = other: given_brand_color else: canonical_brand_color(provider)
+    label: if provider = other: given_label else: canonical_label(provider)
 }
 
 -- An image the maintainer listed for publication, authored as images.json in a
@@ -637,11 +672,13 @@ entity InitializationRun {
     given_home_intro: String? when status = scaffolded
     given_primary_color: String? when status = scaffolded
     given_footer_text: String? when status = scaffolded
+    given_language: String? when status = scaffolded
 
     -- Resolved values actually written into the scaffold.
     home_intro: given_home_intro ?? default_home_intro_for(site_title)
     primary_color: given_primary_color ?? config.default_primary_color
     footer_text: given_footer_text ?? config.default_footer_text
+    language: given_language ?? config.default_language
 
     -- Opt-in extras, not defaulted basics: a provider the maintainer skipped
     -- is simply not in this list, never filled in with a default handle.
@@ -864,6 +901,11 @@ entity SocialLinkChangeRun {
     given_icon: String?
     given_brand_color: String?
 
+    -- The link's accessible name -- required, like given_icon/given_brand_color,
+    -- when resulting_provider is other. See SocialLink.label and
+    -- IconOnlyControlsCarryAnAccessibleName.
+    given_label: String?
+
     -- update/remove: which existing link, and how to disambiguate when more
     -- than one matches.
     given_match: String?
@@ -936,6 +978,7 @@ config {
     -- Bulma defaults applied when the maintainer configures nothing.
     default_navbar_color: Color = warning
     default_background_class: String = "has-background-light"
+    default_language: String = "en"
     default_css_links: List<String> = [
         "https://cdn.jsdelivr.net/npm/@mdi/font@6.5.95/css/materialdesignicons.min.css",
         "https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"
@@ -1045,7 +1088,7 @@ rule AdoptSiteConfiguration {
         run, site_title, footer_content,
         extra_css_files, extra_js_files,
         include_default_css?, include_default_js?,
-        background_class?, navbar_color?
+        background_class?, navbar_color?, language?
     )
     requires: run.status = requested
     ensures:
@@ -1058,7 +1101,8 @@ rule AdoptSiteConfiguration {
             include_default_css: include_default_css,
             include_default_js: include_default_js,
             background_class: background_class,
-            navbar_color: navbar_color
+            navbar_color: navbar_color,
+            language: language
         )
         run.status = configured
 }
@@ -1092,7 +1136,7 @@ rule RegisterMainMenuLink {
 }
 
 rule RegisterSocialLink {
-    when: SocialLinkDeclared(run, position, url, icon?, brand_color?)
+    when: SocialLinkDeclared(run, position, url, icon?, brand_color?, label?)
     requires: run.status = configured
     ensures: SocialLink.created(
         run: run,
@@ -1100,7 +1144,8 @@ rule RegisterSocialLink {
         url: url,
         provider: social_provider_of(url),
         given_icon: icon,
-        given_brand_color: brand_color
+        given_brand_color: brand_color,
+        given_label: label
     )
 }
 
@@ -1323,7 +1368,8 @@ rule RunStructuralChecks {
             )
 
         for s in run.social_links
-            where s.provider = other and (s.given_icon = null or s.given_brand_color = null):
+            where s.provider = other
+                and (s.given_icon = null or s.given_brand_color = null or s.given_label = null):
             Finding.created(
                 run: run,
                 kind: unrecognised_social_link_incomplete,
@@ -1509,7 +1555,7 @@ rule DetectScaffoldConflicts {
 -- source_height and ratio itself rather than leaving them to a later rule.
 rule ScaffoldProject {
     when: ProjectBasicsProvided(
-        run, site_title, home_intro?, primary_color?, footer_text?, socials
+        run, site_title, home_intro?, primary_color?, footer_text?, language?, socials
     )
     requires: run.status = init_requested
     ensures:
@@ -1517,6 +1563,7 @@ rule ScaffoldProject {
         run.given_home_intro = home_intro
         run.given_primary_color = primary_color
         run.given_footer_text = footer_text
+        run.given_language = language
         run.given_socials = socials
         run.repository_initialized = not git_repository_present()
         run.gitignore_created = not gitignore_present()
@@ -1713,7 +1760,7 @@ rule ProvidePageImageAttachmentDetails {
 -- Changing a social link --------------------------------------------------
 
 rule RequestSocialLinkAddition {
-    when: SocialLinkAdditionRequested(source, handle?, url?, icon?, brand_color?)
+    when: SocialLinkAdditionRequested(source, handle?, url?, icon?, brand_color?, label?)
     ensures: SocialLinkChangeRun.created(
         source_location: source,
         change_kind: add,
@@ -1721,12 +1768,13 @@ rule RequestSocialLinkAddition {
         given_url: url,
         given_icon: icon,
         given_brand_color: brand_color,
+        given_label: label,
         status: social_change_requested
     )
 }
 
 rule RequestSocialLinkUpdate {
-    when: SocialLinkUpdateRequested(source, match, index?, handle?, url?, icon?, brand_color?)
+    when: SocialLinkUpdateRequested(source, match, index?, handle?, url?, icon?, brand_color?, label?)
     ensures: SocialLinkChangeRun.created(
         source_location: source,
         change_kind: update,
@@ -1736,6 +1784,7 @@ rule RequestSocialLinkUpdate {
         given_url: url,
         given_icon: icon,
         given_brand_color: brand_color,
+        given_label: label,
         status: social_change_requested
     )
 }
@@ -1759,7 +1808,8 @@ rule ApplySocialLinkAddition {
     requires: run.status = social_change_requested
     requires: run.change_kind = add
     ensures:
-        if run.resulting_provider = other and (run.given_icon = null or run.given_brand_color = null):
+        if run.resulting_provider = other
+            and (run.given_icon = null or run.given_brand_color = null or run.given_label = null):
             run.rejection = unrecognised_provider_incomplete
             run.status = social_change_rejected
         else if social_link_url_registered(run.source_location, run.resulting_url):
@@ -1772,7 +1822,8 @@ rule ApplySocialLinkAddition {
                 url: run.resulting_url,
                 provider: run.resulting_provider,
                 icon: run.given_icon,
-                brand_color: run.given_brand_color
+                brand_color: run.given_brand_color,
+                label: run.given_label
             )
 }
 
@@ -1791,7 +1842,8 @@ rule ApplySocialLinkUpdate {
         else if run.given_index != null and (run.given_index < 0 or run.given_index >= match_count):
             run.rejection = match_index_out_of_range
             run.status = social_change_rejected
-        else if run.resulting_provider = other and (run.given_icon = null or run.given_brand_color = null):
+        else if run.resulting_provider = other
+            and (run.given_icon = null or run.given_brand_color = null or run.given_label = null):
             run.rejection = unrecognised_provider_incomplete
             run.status = social_change_rejected
         else:
@@ -1802,7 +1854,8 @@ rule ApplySocialLinkUpdate {
                 url: run.resulting_url,
                 provider: run.resulting_provider,
                 icon: run.given_icon,
-                brand_color: run.given_brand_color
+                brand_color: run.given_brand_color,
+                label: run.given_label
             )
 }
 
@@ -1905,11 +1958,14 @@ invariant ExternalMenuLinkCarriesTitle {
 -- MenuLink.resolves and GenerationRun.published_main_menu_links) rather than
 -- failing the run.
 
--- Recognised social providers supply their own icon and brand colour; an
--- unrecognised one must be given both.
+-- Recognised social providers supply their own icon, brand colour and label;
+-- an unrecognised one must be given all three -- the label as much as the
+-- other two, since it is rendered as an icon with no visible text and the
+-- label is the only accessible name it will ever have.
 invariant UnrecognisedSocialLinkIsFullyDescribed {
     for s in SocialLinks:
-        s.provider = other implies s.given_icon != null and s.given_brand_color != null
+        s.provider = other implies
+            s.given_icon != null and s.given_brand_color != null and s.given_label != null
 }
 
 -- Every image carries alternative text; this is an accessibility commitment,
@@ -2155,7 +2211,7 @@ surface InitBasics {
 
     provides:
         ProjectBasicsProvided(
-            run, site_title, home_intro?, primary_color?, footer_text?, socials
+            run, site_title, home_intro?, primary_color?, footer_text?, language?, socials
         )
 
     @guarantee ConflictsAreCheckedBeforeAnyPrompt
@@ -2191,6 +2247,7 @@ surface InitOutcome {
         run.home_intro
         run.primary_color
         run.footer_text
+        run.language
 
         for h in run.given_socials:
             h.provider
@@ -2348,7 +2405,7 @@ surface SocialLinkAdditionRequest {
     facing _: Maintainer
 
     provides:
-        SocialLinkAdditionRequested(source, handle?, url?, icon?, brand_color?)
+        SocialLinkAdditionRequested(source, handle?, url?, icon?, brand_color?, label?)
 }
 
 -- The `social update` subcommand.
@@ -2356,7 +2413,7 @@ surface SocialLinkUpdateRequest {
     facing _: Maintainer
 
     provides:
-        SocialLinkUpdateRequested(source, match, index?, handle?, url?, icon?, brand_color?)
+        SocialLinkUpdateRequested(source, match, index?, handle?, url?, icon?, brand_color?, label?)
 }
 
 -- The `social remove` subcommand.
@@ -2389,6 +2446,9 @@ surface SocialLinkChangedOutcome {
         run.change_kind
         run.resulting_url
         run.resulting_provider
+        run.given_icon
+        run.given_brand_color
+        run.given_label
 }
 
 -- The `footer set` subcommand.
@@ -2463,12 +2523,12 @@ surface SourceTree {
             run, site_title, footer_content,
             extra_css_files, extra_js_files,
             include_default_css?, include_default_js?,
-            background_class?, navbar_color?
+            background_class?, navbar_color?, language?
         ) when run.status = requested
 
         MainMenuLinkDeclared(run, position, url, title?, icon?)
             when run.status = configured
-        SocialLinkDeclared(run, position, url, icon?, brand_color?)
+        SocialLinkDeclared(run, position, url, icon?, brand_color?, label?)
             when run.status = configured
         PageDeclared(
             run, path, title?, sub_title?, image?, icon?, summary?, content?, order?
@@ -2529,6 +2589,7 @@ surface PublishedPage {
         site.css_links
         site.js_links
         site.footer_content.html
+        site.effective_language
 
         page.title
         page.sub_title
@@ -2553,6 +2614,7 @@ surface PublishedPage {
             social.url
             social.icon
             social.brand_color
+            social.label
 
         page.breadcrumb_trail when page.shows_breadcrumbs
         page.side_menu_root when page.shows_side_menu
@@ -2602,6 +2664,43 @@ surface PublishedPage {
         -- entry naming a path with no page is dropped from the menu and
         -- reported to the maintainer; the visitor never sees a menu item with
         -- no title or a link to nowhere.
+
+    @guarantee SiteLanguageIsDeclared
+        -- Every published page declares the site's language (see
+        -- SiteConfig.effective_language) on its root element, so assistive
+        -- technology and browsers pronounce, hyphenate and translate the
+        -- page correctly instead of guessing.
+
+    @guarantee SkipLinkOffered
+        -- Every published page offers a skip-to-main-content link as the
+        -- very first focusable element, so a keyboard or screen-reader
+        -- visitor can bypass the navigation and social links and reach the
+        -- content directly, the same way a sighted visitor's eye does.
+
+    @guarantee LandmarksAreMarked
+        -- The main navigation, the page's own content, and the site-wide
+        -- footer are each marked with their semantic landmark role
+        -- (navigation, main, contentinfo), so assistive technology can jump
+        -- straight to any of the three without reading everything in
+        -- between.
+
+    @guarantee AllInteractiveControlsAreNativelyFocusable
+        -- Every interactive control a visitor can reach -- menu links, the
+        -- burger/side-menu toggles, social links -- is a native focusable
+        -- element (an `<a>` or a `<button>`, never a non-interactive element
+        -- with a click handler bolted on), so keyboard focus order and
+        -- default focus indication are never suppressed.
+
+    @guarantee IconOnlyControlsCarryAnAccessibleName
+        -- A control that carries no visible text of its own has an
+        -- accessible name instead. A social link shows only a provider's
+        -- icon, so it carries `social.label` as its name (see
+        -- SocialLink.label). A burger/side-menu toggle shows only bars, so
+        -- it carries a fixed accessible name naming what it opens, and
+        -- additionally exposes whether that target is currently expanded and
+        -- which element it is -- so a screen-reader visitor knows both what
+        -- the control is and what pressing it will do, the same information
+        -- a sighted visitor gets from seeing the menu open.
 }
 
 ------------------------------------------------------------

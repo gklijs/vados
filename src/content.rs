@@ -25,6 +25,7 @@ pub(crate) struct GenericContent {
     css_links: Vec<String>,
     js_links: Vec<String>,
     footer: String,
+    language: String,
 }
 
 impl GenericContent {
@@ -33,11 +34,13 @@ impl GenericContent {
         let css_links = main_config.get_css_links();
         let js_links = main_config.get_js_links(destination);
         let footer = get_footer(source, main_config);
+        let language = main_config.get_language().to_string();
         GenericContent {
             background_class,
             css_links,
             js_links,
             footer,
+            language,
         }
     }
 }
@@ -437,6 +440,7 @@ fn get_page(
     PageTemplate {
         title: &*item.title,
         summary: &item.summary,
+        language: &generic_content.language,
         background_class: &generic_content.background_class,
         navigation: page_helper.navigation,
         breadcrumbs: page_helper.breadcrumbs,

@@ -62,9 +62,11 @@ const toggleBurgerMenu = function () {
     if (burger_menu_active) {
         burger_menu.classList.remove("is-active")
         main_menu.classList.remove("is-active")
+        burger_menu.setAttribute("aria-expanded", "false")
     } else {
         burger_menu.classList.add("is-active")
         main_menu.classList.add("is-active")
+        burger_menu.setAttribute("aria-expanded", "true")
     }
     burger_menu_active = !burger_menu_active
 }
@@ -75,9 +77,11 @@ const toggleSideMenu = function () {
     if (side_menu_active) {
         burger_side_menu.classList.remove("is-active")
         side_menu.classList.add("is-hidden")
+        burger_side_menu.setAttribute("aria-expanded", "false")
     } else {
         burger_side_menu.classList.add("is-active")
         side_menu.classList.remove("is-hidden")
+        burger_side_menu.setAttribute("aria-expanded", "true")
     }
     side_menu_active = !side_menu_active
 }

@@ -33,6 +33,7 @@ pub const DESTINATION_DIR: &str = "public";
 
 const DEFAULT_PRIMARY_COLOR: &str = "#00d1b2";
 const DEFAULT_FOOTER_TEXT: &str = "Built with vados.";
+const DEFAULT_LANGUAGE: &str = "en";
 
 fn default_home_intro_for(site_title: &str) -> String {
     format!("Welcome to {}.", site_title)
@@ -140,6 +141,9 @@ pub struct ProjectBasics {
     pub home_intro: Option<String>,
     pub primary_color: Option<String>,
     pub footer_text: Option<String>,
+    /// The site's content language, as an IETF BCP 47 tag. See
+    /// vados.allium's `SiteLanguageIsDeclared`.
+    pub language: Option<String>,
     pub socials: Vec<SocialHandle>,
 }
 
@@ -151,6 +155,7 @@ pub struct InitOutcome {
     pub home_intro: String,
     pub primary_color: String,
     pub footer_text: String,
+    pub language: String,
     pub socials: Vec<SocialHandle>,
     pub repository_initialized: bool,
     pub gitignore_created: bool,
@@ -173,8 +178,12 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
         .footer_text
         .clone()
         .unwrap_or_else(|| DEFAULT_FOOTER_TEXT.to_string());
+    let language = basics
+        .language
+        .clone()
+        .unwrap_or_else(|| DEFAULT_LANGUAGE.to_string());
 
-    write_site_config(dir, &basics.site_title, &footer_text)?;
+    write_site_config(dir, &basics.site_title, &footer_text, &language)?;
     write_menu_config(dir, &basics.socials)?;
     write_home_page(dir, &basics.site_title, &home_intro)?;
     fs::create_dir_all(dir.join(IMAGE_DIR))?;
@@ -191,6 +200,7 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
         home_intro,
         primary_color,
         footer_text,
+        language,
         socials: basics.socials,
         repository_initialized,
         gitignore_created,
@@ -207,10 +217,16 @@ struct MainJson {
     include_default_css: Option<bool>,
     background_class: Option<String>,
     navbar_color: Option<String>,
+    language: Option<String>,
     footer_content: String,
 }
 
-fn write_site_config(dir: &Path, site_title: &str, footer_text: &str) -> io::Result<()> {
+fn write_site_config(
+    dir: &Path,
+    site_title: &str,
+    footer_text: &str,
+    language: &str,
+) -> io::Result<()> {
     // The default MDI link, kept in sync with the same one `generate` uses
     // for a site that leaves `includeDefaultCss` at its own default. Bulma
     // itself is compiled locally instead, so `$primary` can be overridden.
@@ -223,6 +239,7 @@ fn write_site_config(dir: &Path, site_title: &str, footer_text: &str) -> io::Res
         include_default_css: Some(false),
         background_class: None,
         navbar_color: None,
+        language: Some(language.to_string()),
         footer_content: format!("<p>{}</p>", escape_html(footer_text)),
     };
     write_json_pretty(dir.join(SOURCE_DIR).join("main.json"), &json)
@@ -496,6 +513,7 @@ mod tests {
             home_intro: None,
             primary_color: None,
             footer_text: None,
+            language: None,
             socials: vec![],
         }
     }
@@ -562,7 +580,12 @@ mod tests {
         assert_eq!(outcome.home_intro, "Welcome to My Site.");
         assert_eq!(outcome.primary_color, DEFAULT_PRIMARY_COLOR);
         assert_eq!(outcome.footer_text, DEFAULT_FOOTER_TEXT);
+        assert_eq!(outcome.language, DEFAULT_LANGUAGE);
         assert!(outcome.socials.is_empty());
+
+        let main_json =
+            fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
+        assert!(main_json.contains(&format!("\"language\": \"{DEFAULT_LANGUAGE}\"")));
     }
 
     #[test]
@@ -572,6 +595,7 @@ mod tests {
         b.home_intro = Some("Hi there".to_string());
         b.primary_color = Some("#ff00aa".to_string());
         b.footer_text = Some("(c) me".to_string());
+        b.language = Some("nl".to_string());
         b.socials = vec![SocialHandle {
             provider: RecognizedSocialProvider::Github,
             handle: "gklijs".to_string(),
@@ -582,10 +606,12 @@ mod tests {
         assert_eq!(outcome.home_intro, "Hi there");
         assert_eq!(outcome.primary_color, "#ff00aa");
         assert_eq!(outcome.footer_text, "(c) me");
+        assert_eq!(outcome.language, "nl");
         assert_eq!(outcome.socials.len(), 1);
 
         let main_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
         assert!(main_json.contains("(c) me"));
+        assert!(main_json.contains("\"language\": \"nl\""));
 
         let menu_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("menu.json")).unwrap();
         assert!(menu_json.contains("https://github.com/gklijs"));

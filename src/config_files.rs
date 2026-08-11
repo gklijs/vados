@@ -19,6 +19,7 @@ pub(crate) struct MainConfig {
     pub(crate) include_default_css: Option<bool>,
     pub(crate) background_class: Option<String>,
     pub(crate) navbar_color: Option<Color>,
+    pub(crate) language: Option<String>,
     pub(crate) footer_content: String,
 }
 
@@ -33,6 +34,15 @@ impl MainConfig {
         match self.navbar_color.as_ref() {
             None => Color::Warning.to_css_class(),
             Some(s) => s.to_css_class(),
+        }
+    }
+    /// The site's content language, as an IETF BCP 47 tag, driving every
+    /// published page's `<html lang>`. See `vados.allium`'s
+    /// `SiteConfig.effective_language` and `SiteLanguageIsDeclared`.
+    pub(crate) fn get_language(&self) -> &str {
+        match self.language.as_deref() {
+            None => "en",
+            Some(l) => l,
         }
     }
     pub(crate) fn get_css_links(&self) -> Vec<String> {
@@ -103,6 +113,10 @@ pub(crate) struct RawSocialItem {
     pub(crate) url: String,
     pub(crate) icon: Option<String>,
     pub(crate) color: Option<String>,
+    /// The link's accessible name (see `vados.allium`'s `SocialLink.label`).
+    /// Required for a provider `is_recognized_social_provider` doesn't
+    /// recognise, the same as `icon`/`color`.
+    pub(crate) label: Option<String>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
