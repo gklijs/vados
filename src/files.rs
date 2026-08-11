@@ -59,13 +59,13 @@ pub(crate) fn write_html(destination: &str, path: &str, html: &str) {
     let (path, file) = get_html_destination(destination, path);
     let contents = minifier::html::minify(html);
     fs::create_dir_all(&path).unwrap();
-    fs::write(format!("{}/{}", &path, file), contents).expect("Unable to write file");
+    fs::write(format!("{}/{}", path, file), contents).expect("Unable to write file");
 }
 
 pub(crate) fn write_raw<C: AsRef<[u8]>>(destination: &str, path: &str, contents: C) {
     let (path, file) = get_destination(destination, path);
     fs::create_dir_all(&path).unwrap();
-    fs::write(format!("{}/{}", &path, file), contents).expect("Unable to write file");
+    fs::write(format!("{}/{}", path, file), contents).expect("Unable to write file");
 }
 
 pub(crate) fn empty(destination: &str, path: &str) -> bool {

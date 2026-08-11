@@ -583,8 +583,7 @@ mod tests {
         assert_eq!(outcome.language, DEFAULT_LANGUAGE);
         assert!(outcome.socials.is_empty());
 
-        let main_json =
-            fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
+        let main_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
         assert!(main_json.contains(&format!("\"language\": \"{DEFAULT_LANGUAGE}\"")));
     }
 

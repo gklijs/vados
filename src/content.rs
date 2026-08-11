@@ -77,7 +77,7 @@ impl ContentHelper<'_> {
         )
     }
     pub(crate) fn get_main_content(&self, source: &str) -> String {
-        get_main_content(source, self.path, &*self.item, self.structure)
+        get_main_content(source, self.path, &self.item, self.structure)
     }
     pub(crate) fn get_page(
         &self,
@@ -94,7 +94,7 @@ impl ContentHelper<'_> {
         };
         get_page(
             self.path,
-            &*self.item,
+            &self.item,
             page_helper,
             self.structure,
             generic_content,
@@ -114,7 +114,7 @@ pub(crate) fn to_content_items(
     dir_path: String,
     structure: &Structure,
 ) -> ContentItems {
-    let page_file_string = format!("{}/page.json", &dir_path);
+    let page_file_string = format!("{}/page.json", dir_path);
     let page_file_path = Path::new(&page_file_string);
     let page_config = match File::open(page_file_path) {
         Ok(f) => serde_json::from_reader(f).expect("JSON was not well-formatted"),
@@ -173,7 +173,7 @@ fn resolve_notification(
     id: String,
     structure: &Structure,
 ) -> String {
-    let content = get_content(source, path, &*notification.content);
+    let content = get_content(source, path, &notification.content);
     let image = notification
         .image
         .and_then(|i| structure.process_image(&i, ImageType::Sub));
@@ -196,7 +196,7 @@ fn resolve_notification(
                 title: &notification.title,
                 sub_title: &None,
                 color,
-                url: &*internal,
+                url: &internal,
                 image,
                 content: Some(content),
                 id,
@@ -209,7 +209,7 @@ fn resolve_notification(
             ExternalNotificationTemplate {
                 title: &notification.title,
                 color,
-                url: &*external,
+                url: &external,
                 image,
                 content,
                 id,
@@ -236,7 +236,7 @@ pub(crate) fn items_to_side_notifications(
             title: &Some(item.title.clone()),
             sub_title: &item.sub_title,
             color,
-            url: &*item.path,
+            url: &item.path,
             image,
             content: None,
             id,
@@ -307,7 +307,7 @@ fn md_to_content(file_path: &str) -> String {
     match fs::read_to_string(file_path) {
         Ok(text) => {
             let mut html_output: String = String::with_capacity(text.len() * 3 / 2);
-            let parser = Parser::new(&*text);
+            let parser = Parser::new(&text);
             html::push_html(&mut html_output, parser);
             html_output
         }
@@ -362,11 +362,11 @@ pub(crate) fn to_internal_image(
 ) -> String {
     InternalImageTemplate {
         ratio: processed_image.ratio.to_css_class(),
-        title: &*processed_image.title,
+        title: &processed_image.title,
         image_type,
-        src: &*processed_image.src,
-        srcset: &*processed_image.srcset,
-        alt: &*processed_image.alt,
+        src: &processed_image.src,
+        srcset: &processed_image.srcset,
+        alt: &processed_image.alt,
     }
     .render()
     .unwrap()
@@ -377,7 +377,7 @@ fn get_side_menu(path: &str, structure: &Structure) -> Option<String> {
         None => None,
         Some(menu_item) => {
             let s = SideMenuTemplate {
-                path: &*path,
+                path,
                 menu_item: &menu_item,
             };
             Some(s.render().unwrap())
@@ -394,7 +394,7 @@ fn get_navigation(
 ) -> String {
     NavigationTemplate {
         path,
-        site_title: &*main_config.site_title,
+        site_title: &main_config.site_title,
         color: main_config.get_navbar_color(),
         main_menu: &structure.get_main_menu_items(menu_config),
         socials: &menu_config.socials.iter().map(SocialItem::new).collect(),
@@ -421,7 +421,7 @@ fn get_main_content(source: &str, path: &str, item: &Item, structure: &Structure
         Some(i) => structure.process_image(i, ImageType::Main),
     };
     ContentTemplate {
-        title: &*item.title,
+        title: &item.title,
         sub_title: &item.sub_title,
         image,
         content: get_content(source, path, &item.content),
@@ -438,7 +438,7 @@ fn get_page(
     generic_content: &GenericContent,
 ) -> String {
     PageTemplate {
-        title: &*item.title,
+        title: &item.title,
         summary: &item.summary,
         language: &generic_content.language,
         background_class: &generic_content.background_class,
@@ -446,8 +446,8 @@ fn get_page(
         breadcrumbs: page_helper.breadcrumbs,
         side_menu: page_helper.side_menu,
         main_content: page_helper.main_content,
-        left_sub_notifications: &*structure.get_left_sub_notifications(path),
-        right_sub_notifications: &*structure.get_right_sub_notifications(path),
+        left_sub_notifications: &structure.get_left_sub_notifications(path),
+        right_sub_notifications: &structure.get_right_sub_notifications(path),
         side_notifications: &structure.get_side_notifications(path),
         footer: &generic_content.footer,
         css_links: &generic_content.css_links,

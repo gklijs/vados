@@ -18,7 +18,7 @@ pub fn parent_path(path: &str) -> Option<String> {
     }
     match String::from(path).rsplit_once('/') {
         None => Some(String::from("/")),
-        Some((first, _)) if first.is_empty() => Some(String::from("/")),
+        Some(("", _)) => Some(String::from("/")),
         Some((first, _)) => Some(String::from(first)),
     }
 }
@@ -197,7 +197,7 @@ impl Structure {
         let depth = path.matches('/').count();
         match depth {
             d if d <= 2 => None,
-            d if d == 3 => self
+            3 => self
                 .by_parent
                 .get(path)
                 .map(|entry| {
@@ -252,7 +252,7 @@ impl Structure {
                         }
                         Some(p) => {
                             result.push(self.by_path.get(&*p).unwrap().to_side_menu_item(None));
-                            parent = parent_path(&*p)
+                            parent = parent_path(&p)
                         }
                     }
                 }

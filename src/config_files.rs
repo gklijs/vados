@@ -59,7 +59,7 @@ impl MainConfig {
         match self.include_default_js {
             Some(b) if !b => self.js_files.clone(),
             _ => {
-                write_raw(destination, default_js_links().get(0).unwrap(), vados_js());
+                write_raw(destination, default_js_links().first().unwrap(), vados_js());
                 let mut result = self.js_files.clone();
                 result.append(&mut default_js_links());
                 result
@@ -84,7 +84,7 @@ pub(crate) struct PageConfig {
 
 impl PageConfig {
     pub(crate) fn new(path: &str) -> PageConfig {
-        let last = path.split('/').last().unwrap();
+        let last = path.split('/').next_back().unwrap();
         PageConfig {
             title: String::from(last),
             sub_title: None,

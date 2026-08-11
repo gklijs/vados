@@ -41,10 +41,8 @@ enum ContentSpec {
 fn content_spec() -> impl Strategy<Value = ContentSpec> {
     prop_oneof![
         Just(ContentSpec::InlineHtml),
-        (any::<bool>(), short_text()).prop_map(|(markdown, body)| ContentSpec::RealFile {
-            markdown,
-            body
-        }),
+        (any::<bool>(), short_text())
+            .prop_map(|(markdown, body)| ContentSpec::RealFile { markdown, body }),
         any::<bool>().prop_map(|markdown| ContentSpec::MissingFile { markdown }),
         "[a-z]{1,8}".prop_map(ContentSpec::Unrecognised),
     ]
@@ -106,13 +104,20 @@ struct NotificationSpec {
     url: LinkTargetSpec,
 }
 
-fn notification_spec(page_count: usize, image_count: usize) -> impl Strategy<Value = NotificationSpec> {
+fn notification_spec(
+    page_count: usize,
+    image_count: usize,
+) -> impl Strategy<Value = NotificationSpec> {
     (
         content_spec(),
         image_ref_spec(image_count),
         notification_url_spec(page_count),
     )
-        .prop_map(|(content, image, url)| NotificationSpec { content, image, url })
+        .prop_map(|(content, image, url)| NotificationSpec {
+            content,
+            image,
+            url,
+        })
 }
 
 #[derive(Debug, Clone)]
@@ -178,8 +183,10 @@ fn social_spec() -> impl Strategy<Value = SocialSpec> {
     prop_oneof![
         Just(SocialSpec::Github),
         Just(SocialSpec::LinkedIn),
-        (any::<bool>(), any::<bool>())
-            .prop_map(|(has_icon, has_color)| SocialSpec::Other { has_icon, has_color }),
+        (any::<bool>(), any::<bool>()).prop_map(|(has_icon, has_color)| SocialSpec::Other {
+            has_icon,
+            has_color
+        }),
     ]
 }
 
@@ -232,16 +239,16 @@ fn site_spec() -> impl Strategy<Value = SiteSpec> {
                 proptest::collection::vec(menu_link_spec(page_count), 0..4),
                 proptest::collection::vec(social_spec(), 0..3),
             )
-                .prop_map(
-                    |(pages, images, site_title, footer, main_menu, socials)| SiteSpec {
+                .prop_map(|(pages, images, site_title, footer, main_menu, socials)| {
+                    SiteSpec {
                         site_title,
                         footer,
                         pages,
                         images,
                         main_menu,
                         socials,
-                    },
-                )
+                    }
+                })
         })
     })
 }
@@ -287,7 +294,11 @@ fn content_ref(spec: &ContentSpec, dir: &std::path::Path, unique: &str) -> Strin
             name
         }
         ContentSpec::MissingFile { markdown } => {
-            format!("does-not-exist-{}.{}", unique, if *markdown { "md" } else { "html" })
+            format!(
+                "does-not-exist-{}.{}",
+                unique,
+                if *markdown { "md" } else { "html" }
+            )
         }
         ContentSpec::Unrecognised(s) => s.clone(),
     }
@@ -312,15 +323,19 @@ fn image_ref(spec: &ImageRefSpec, image_keys: &[String]) -> Option<String> {
 fn link_target(spec: &LinkTargetSpec, page_paths: &[String]) -> Option<String> {
     match spec {
         LinkTargetSpec::None => None,
-        LinkTargetSpec::ExistingPage(i) => {
-            page_paths.get(i % page_paths.len().max(1)).cloned()
-        }
+        LinkTargetSpec::ExistingPage(i) => page_paths.get(i % page_paths.len().max(1)).cloned(),
         LinkTargetSpec::DanglingPage(s) => Some(format!("/does-not-exist-{}", s)),
         LinkTargetSpec::External(url) => Some(url.clone()),
     }
 }
 
-fn notification_json(spec: &NotificationSpec, dir: &std::path::Path, image_keys: &[String], page_paths: &[String], unique: &str) -> serde_json::Value {
+fn notification_json(
+    spec: &NotificationSpec,
+    dir: &std::path::Path,
+    image_keys: &[String],
+    page_paths: &[String],
+    unique: &str,
+) -> serde_json::Value {
     json!({
         "content": content_ref(&spec.content, dir, unique),
         "title": Option::<String>::None,
@@ -373,7 +388,10 @@ fn materialize(spec: &SiteSpec) -> Materialized {
             ordered_pages.push(page.clone());
         }
     }
-    let page_paths: Vec<String> = ordered_pages.iter().map(|p| page_path(&p.segments)).collect();
+    let page_paths: Vec<String> = ordered_pages
+        .iter()
+        .map(|p| page_path(&p.segments))
+        .collect();
 
     for (i, page) in ordered_pages.iter().enumerate() {
         let dir = if page.segments.is_empty() {
@@ -388,7 +406,15 @@ fn materialize(spec: &SiteSpec) -> Materialized {
                 .notifications
                 .iter()
                 .enumerate()
-                .map(|(j, n)| notification_json(n, &dir, &image_keys, &page_paths, &format!("{}n{}", unique, j)))
+                .map(|(j, n)| {
+                    notification_json(
+                        n,
+                        &dir,
+                        &image_keys,
+                        &page_paths,
+                        &format!("{}n{}", unique, j),
+                    )
+                })
                 .collect();
             let doc = json!({
                 "title": page.title,
@@ -450,7 +476,10 @@ fn materialize(spec: &SiteSpec) -> Materialized {
                 "icon": Option::<String>::None,
                 "color": Option::<String>::None,
             }),
-            SocialSpec::Other { has_icon, has_color } => json!({
+            SocialSpec::Other {
+                has_icon,
+                has_color,
+            } => json!({
                 "url": "https://mastodon.example/@someone",
                 "icon": if *has_icon { Some("mastodon") } else { None },
                 "color": if *has_color { Some("6364FF") } else { None },

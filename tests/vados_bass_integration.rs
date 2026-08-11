@@ -22,7 +22,11 @@ use vados::check::check;
 use vados::generator::generate;
 
 fn fixture_root() -> String {
-    concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures/vados_bass/root").to_string()
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/fixtures/vados_bass/root"
+    )
+    .to_string()
 }
 
 fn fixture_img_root() -> String {
@@ -98,7 +102,11 @@ fn generate_produces_every_expected_page_and_asset() {
         "img/months/202202-w318.webp",
     ] {
         let path = dest.join(variant);
-        assert!(path.is_file(), "expected image variant {} to exist", variant);
+        assert!(
+            path.is_file(),
+            "expected image variant {} to exist",
+            variant
+        );
         assert!(
             std::fs::metadata(&path).unwrap().len() > 0,
             "{} exists but is empty",
