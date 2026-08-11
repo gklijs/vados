@@ -284,9 +284,9 @@ fn read_json<T: serde::de::DeserializeOwned>(
     unreadable_kind: FindingKind,
     findings: &mut Vec<Finding>,
 ) -> Option<T> {
-    let result = File::open(path).map_err(|e| e.to_string()).and_then(|f| {
-        serde_json::from_reader(f).map_err(|e| e.to_string())
-    });
+    let result = File::open(path)
+        .map_err(|e| e.to_string())
+        .and_then(|f| serde_json::from_reader(f).map_err(|e| e.to_string()));
     match result {
         Ok(value) => Some(value),
         Err(detail) => {
@@ -750,11 +750,7 @@ mod tests {
 
         let report = site.check();
 
-        assert!(has_kind_at(
-            &report,
-            FindingKind::MissingContentFile,
-            "/"
-        ));
+        assert!(has_kind_at(&report, FindingKind::MissingContentFile, "/"));
         assert!(report.passed());
     }
 
@@ -815,10 +811,7 @@ mod tests {
 
         let report = site.check();
 
-        assert_eq!(
-            count_kind(&report, FindingKind::MissingImageSourceFile),
-            1
-        );
+        assert_eq!(count_kind(&report, FindingKind::MissingImageSourceFile), 1);
         assert!(report.passed());
     }
 

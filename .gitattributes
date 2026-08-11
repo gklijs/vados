@@ -1,0 +1,14 @@
+# Normalize line endings to LF for everything text-ish, regardless of a
+# contributor's local core.autocrlf setting. Without this, checkouts on
+# Windows (or any local `core.autocrlf=true`) rewrite every file's line
+# endings, which then shows up as spurious churn or as noisy "LF will be
+# replaced by CRLF" warnings on every git operation.
+* text=auto eol=lf
+
+# Binary/generated assets: never touch line endings, never diff as text.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary

@@ -76,7 +76,7 @@ impl<'a> ImageProcessor<'a> {
         path_start: &str,
         reference: ImageReference,
     ) -> Result<(String, Arc<ProcessedImage>), Box<dyn Error>> {
-        let path = format!("{}/{}", &source, &reference.file_name);
+        let path = format!("{}/{}", source, reference.file_name);
         let mut origin = match ImageReader::open(&path) {
             Ok(f) => match f.decode() {
                 Ok(image) => image,
@@ -126,7 +126,7 @@ impl<'a> ImageProcessor<'a> {
             ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3));
         let mut srcset_part = vec![];
         for (width, quality) in all_widths(width) {
-            let path = format!("/img{}/{}-w{}.webp", path_start, &file_base, &width);
+            let path = format!("/img{}/{}-w{}.webp", path_start, file_base, width);
             if empty(self.destination, &path) {
                 let height = ratio.get_height(&width);
                 // Create container for data of destination image
@@ -143,14 +143,14 @@ impl<'a> ImageProcessor<'a> {
                 let mut result = enc.encode(quality);
                 write_raw(self.destination, &path, result.iter_mut());
             }
-            srcset_part.push(format!("{} {}w", &path, width));
+            srcset_part.push(format!("{} {}w", path, width));
         }
         let src = srcset_part.last().unwrap().clone();
         let srcset = srcset_part.join(", ");
         let base_path = if path_start.is_empty() {
-            format!("/{}", &file_base)
+            format!("/{}", file_base)
         } else {
-            format!("{}/{}", path_start, &file_base)
+            format!("{}/{}", path_start, file_base)
         };
         Ok((
             base_path,
@@ -206,8 +206,13 @@ pub(crate) fn prune_orphaned_variants(
         .filter(|e| e.file_type().is_file())
     {
         let file_name = entry.file_name().to_string_lossy();
-        let file_base = match file_name.strip_suffix(".webp").and_then(|s| s.rsplit_once("-w")) {
-            Some((base, width)) if !width.is_empty() && width.chars().all(|c| c.is_ascii_digit()) => {
+        let file_base = match file_name
+            .strip_suffix(".webp")
+            .and_then(|s| s.rsplit_once("-w"))
+        {
+            Some((base, width))
+                if !width.is_empty() && width.chars().all(|c| c.is_ascii_digit()) =>
+            {
                 base
             }
             _ => continue,
