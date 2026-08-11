@@ -4,7 +4,7 @@
 
 use super::image_registry;
 use crate::config_files::{Notification, PageConfig};
-use crate::content::ensure_content_reference;
+use crate::content::{ensure_content_reference, escape_html};
 use crate::json_files::{read_json, read_json_or, write_json_pretty};
 use crate::structure::parent_path;
 use std::fmt;
@@ -33,10 +33,14 @@ pub fn page_exists_at(source: &str, path: &str) -> bool {
 /// A page.json with no content reference gets the same fallback a directory
 /// with no page.json gets at generate/check time: a bare heading named after
 /// the page's own last path segment. See `vados.allium`'s
-/// `default_page_content` and `DiscoverPage`.
+/// `default_page_content` and `DiscoverPage`. Escaped the same way `init`
+/// escapes every other bit of plain text it writes into HTML -- a path
+/// segment is free-form text, not markup, so a stray `&`/`<`/`>` in it (a
+/// legal path character) must not be read back as the start of an entity or
+/// a tag.
 pub fn default_page_content(path: &str) -> String {
     let name = path.rsplit('/').find(|s| !s.is_empty()).unwrap_or(path);
-    format!("<h1>{}</h1>", name)
+    format!("<h1>{}</h1>", escape_html(name))
 }
 
 /// Why a `page new` request couldn't proceed. See `vados.allium`'s
@@ -533,6 +537,11 @@ mod tests {
     fn default_page_content_is_a_bare_heading_named_after_the_last_segment() {
         assert_eq!(default_page_content("/blog/post-one"), "<h1>post-one</h1>");
         assert_eq!(default_page_content("/blog"), "<h1>blog</h1>");
+    }
+
+    #[test]
+    fn default_page_content_escapes_markup_characters_in_the_path_segment() {
+        assert_eq!(default_page_content("/rock&roll"), "<h1>rock&amp;roll</h1>");
     }
 
     #[test]

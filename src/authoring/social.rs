@@ -60,12 +60,23 @@ pub struct GivenSocialLink {
 
 impl GivenSocialLink {
     fn resulting_url(&self) -> String {
+        // Trimmed here rather than left to callers: `init`'s own wizard
+        // trims a handle before building the same kind of URL
+        // (`s.handle.trim()` in `write_menu_config`), and the interactive
+        // prompts this crate's CLI falls back to trim too (`prompt_required`/
+        // `prompt_optional`). Only a handle/url given directly as a `--handle`
+        // or `--url` flag bypassed that -- trimming once here, on the one
+        // path that builds a URL from either, keeps all three ways of naming
+        // a link agreeing with each other instead of two of them trimming
+        // and the third silently keeping stray whitespace.
         match &self.handle {
-            Some((provider, handle)) => provider.profile_url(handle),
+            Some((provider, handle)) => provider.profile_url(handle.trim()),
             None => self
                 .url
-                .clone()
-                .expect("callers guarantee a handle or a url is given"),
+                .as_deref()
+                .map(str::trim)
+                .expect("callers guarantee a handle or a url is given")
+                .to_string(),
         }
     }
 }
@@ -307,6 +318,34 @@ mod tests {
         assert_eq!(outcome.provider, SocialProviderKind::Github);
         assert_eq!(outcome.icon, Some("github".to_string()));
         assert_eq!(source.menu_config().socials.len(), 1);
+    }
+
+    #[test]
+    fn a_handle_with_stray_whitespace_is_trimmed_before_building_the_url() {
+        let source = TestSource::new("add_handle_untrimmed", EMPTY_MENU);
+
+        let result = add_social_link(
+            source.root(),
+            GivenSocialLink {
+                handle: Some((RecognizedSocialProvider::Github, "  gklijs  ".to_string())),
+                url: None,
+                icon: None,
+                brand_color: None,
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.unwrap().url, "https://github.com/gklijs");
+    }
+
+    #[test]
+    fn a_url_with_stray_whitespace_is_trimmed() {
+        let source = TestSource::new("add_url_untrimmed", EMPTY_MENU);
+
+        let result =
+            add_social_link(source.root(), url_link("  https://github.com/gklijs  ")).unwrap();
+
+        assert_eq!(result.unwrap().url, "https://github.com/gklijs");
     }
 
     #[test]

@@ -627,6 +627,16 @@ fn run_page_add_image(
         );
         return ExitCode::FAILURE;
     }
+    // Alt text belongs to the image itself, not to one attachment of it, so
+    // an already-declared image keeps the alt text it was registered with --
+    // `--alt-text` has nothing to attach to here and would otherwise be
+    // silently discarded rather than doing what it looks like it does.
+    if existing_reference.is_some() && alt_text.is_some() {
+        eprintln!(
+            "`--alt-text` is not accepted with `--existing-reference`; the declared image's own alt text is used. Use `--caption` to override what's shown here."
+        );
+        return ExitCode::FAILURE;
+    }
 
     let given_source = if let Some(reference) = existing_reference {
         page::GivenImageSource::Existing { reference }
@@ -986,7 +996,16 @@ fn run_menu_add_item(
 ) -> ExitCode {
     let title =
         if menu_authoring::menu_link_kind_of(&url) == MenuLinkKind::External && title.is_none() {
-            optional_flag(None, "Title (required for an external link)")
+            // Genuinely required here -- `add_menu_link` rejects an external
+            // link with no title outright -- so this loops/fails like every
+            // other required-conditional-on-context field (`run_page_new`'s
+            // `title`, `run_footer_set`'s `content`), rather than
+            // `optional_flag`, which would accept a blank answer only for
+            // the rejection to arrive right after.
+            match require_flag(None, "title", "Title (required for an external link)") {
+                Some(t) => Some(t),
+                None => return ExitCode::FAILURE,
+            }
         } else {
             title
         };
