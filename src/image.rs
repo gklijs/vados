@@ -4,8 +4,8 @@ use crate::files::{empty, write_raw};
 use dashmap::DashMap;
 use fast_image_resize::images::Image;
 use fast_image_resize::{FilterType, MulDiv, PixelType, ResizeAlg, ResizeOptions, Resizer};
-use image::io::Reader;
 use image::GenericImage;
+use image::ImageReader;
 use std::borrow::Borrow;
 use std::error::Error;
 use std::fmt;
@@ -77,7 +77,7 @@ impl<'a> ImageProcessor<'a> {
         reference: ImageReference,
     ) -> Result<(String, Arc<ProcessedImage>), Box<dyn Error>> {
         let path = format!("{}/{}", &source, &reference.file_name);
-        let mut origin = match Reader::open(&path) {
+        let mut origin = match ImageReader::open(&path) {
             Ok(f) => match f.decode() {
                 Ok(image) => image,
                 Err(e) => return Err(Box::new(e)),

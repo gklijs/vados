@@ -94,7 +94,7 @@ impl fmt::Display for FindingKind {
             ExternalMenuLinkWithoutTitle => "external menu link has no title",
             UnresolvedMenuLink => "menu link matches no page",
             UnrecognisedSocialLinkIncomplete => {
-                "unrecognised social provider is missing an icon or a color"
+                "unrecognised social provider is missing an icon, a color, or an accessible-name label"
             }
             DuplicateImageReference => "two images declare the same reference key",
             ImageWithoutAlternativeText => "image has no alternative text",
@@ -233,7 +233,7 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
         }
         for social in &menu_config.socials {
             if !is_recognized_social_provider(&social.url)
-                && (social.icon.is_none() || social.color.is_none())
+                && (social.icon.is_none() || social.color.is_none() || social.label.is_none())
             {
                 findings.push(Finding {
                     kind: FindingKind::UnrecognisedSocialLinkIncomplete,
@@ -651,6 +651,48 @@ mod tests {
             "https://mastodon.social/@someone"
         ));
         assert!(!report.passed());
+    }
+
+    #[test]
+    fn unrecognised_social_provider_missing_only_the_label_is_an_error() {
+        // icon and color are given; the accessible-name label is not. It is
+        // just as required as the other two -- see
+        // vados.allium's UnrecognisedSocialLinkIsFullyDescribed.
+        let site = TestSite::new("social_missing_label");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source(
+            "menu.json",
+            r#"{"mainMenu":[],"socials":[{"url":"https://mastodon.social/@someone","icon":"mastodon","color":"6364FF"}]}"#,
+        );
+        site.write_source("page.json", VALID_PAGE_JSON);
+
+        let report = site.check();
+
+        assert!(has_kind_at(
+            &report,
+            FindingKind::UnrecognisedSocialLinkIncomplete,
+            "https://mastodon.social/@someone"
+        ));
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn unrecognised_social_provider_with_icon_color_and_label_is_not_flagged() {
+        let site = TestSite::new("social_fully_described");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source(
+            "menu.json",
+            r#"{"mainMenu":[],"socials":[{"url":"https://mastodon.social/@someone","icon":"mastodon","color":"6364FF","label":"Mastodon"}]}"#,
+        );
+        site.write_source("page.json", VALID_PAGE_JSON);
+
+        let report = site.check();
+
+        assert_eq!(
+            count_kind(&report, FindingKind::UnrecognisedSocialLinkIncomplete),
+            0
+        );
+        assert!(report.passed());
     }
 
     #[test]

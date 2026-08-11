@@ -369,7 +369,10 @@ struct ProviderSpec {
     profile_url_suffix: &'static str,
     icon: &'static str,
     brand_color: &'static str,
-    /// A short label for the `init` wizard's prompt.
+    /// Doubles as the `init` wizard's short prompt label and the accessible
+    /// name (`SocialItem.label`/`vados.allium`'s `SocialLink.label`) a
+    /// screen reader announces for the icon-only rendered link -- both are
+    /// just "this provider's own name", so one string serves both.
     label: &'static str,
 }
 
@@ -449,15 +452,28 @@ pub fn canonical_brand_color(provider: SocialProviderKind) -> Option<&'static st
     provider_spec(provider).map(|p| p.brand_color)
 }
 
+/// The accessible name a recognised provider always uses. `None` for
+/// `Other`, the same way as `canonical_icon`. See `vados.allium`'s
+/// `SocialLink.label`.
+pub fn canonical_label(provider: SocialProviderKind) -> Option<&'static str> {
+    provider_spec(provider).map(|p| p.label)
+}
+
 /// A link to the maintainer's presence on another site, rendered site-wide.
 /// Resolved once at construction from `PROVIDERS` rather than carrying its
-/// own per-provider match, the same way `canonical_icon`/`canonical_brand_color`
-/// do -- there is nothing left for `get_icon`/`get_color` to branch on.
+/// own per-provider match, the same way
+/// `canonical_icon`/`canonical_brand_color`/`canonical_label` do -- there is
+/// nothing left for `get_icon`/`get_color`/`get_label` to branch on.
 #[derive(Debug, PartialEq)]
 pub struct SocialItem {
     url: String,
     icon: String,
     brand_color: String,
+    /// The link's accessible name: what a screen reader announces for it,
+    /// since it is rendered as an icon with no visible text. See
+    /// `vados.allium`'s `SocialLink.label` and
+    /// `IconOnlyControlsCarryAnAccessibleName`.
+    label: String,
 }
 
 impl SocialItem {
@@ -477,10 +493,18 @@ impl SocialItem {
                     .clone()
                     .expect("Other social links should have color.")
             });
+        let label = canonical_label(provider)
+            .map(String::from)
+            .unwrap_or_else(|| {
+                raw.label
+                    .clone()
+                    .expect("Other social links should have label.")
+            });
         SocialItem {
             url: raw.url.clone(),
             icon,
             brand_color,
+            label,
         }
     }
     pub(crate) fn get_url(&self) -> &str {
@@ -493,6 +517,12 @@ impl SocialItem {
 
     pub(crate) fn get_color(&self) -> &str {
         &self.brand_color
+    }
+
+    /// The link's accessible name: what a screen reader announces for it.
+    /// See `vados.allium`'s `SocialLink.label`.
+    pub(crate) fn get_label(&self) -> &str {
+        &self.label
     }
 }
 

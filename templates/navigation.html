@@ -1,7 +1,7 @@
 <nav aria-label="main navigation" class="navbar is-fixed-top {{color}}" id="nav-bar" role="navigation">
     <div class="navbar-brand">
         {% if let Some(_) = side_menu %}
-        <button class="button navbar-burger is-hidden-tablet ml-0" id="burger-side-menu">
+        <button class="button navbar-burger is-hidden-tablet ml-0" id="burger-side-menu" aria-label="Toggle section menu" aria-expanded="false" aria-controls="side-menu-mobile">
             <span></span><span></span><span></span>
         </button>
         {% endif %}
@@ -9,13 +9,13 @@
             <span class="is-large">{{ site_title }}</span>
         </a>
         {% for s in socials %}
-        <a class="navbar-item is-hidden-desktop" href="{{ s.get_url() }}" target="_blank">
+        <a class="navbar-item is-hidden-desktop" href="{{ s.get_url() }}" target="_blank" aria-label="{{ s.get_label() }}">
             <span class="icon" style="color: #{{ s.get_color() }};">
                 <em class="mdi mdi-24px mdi-{{ s.get_icon() }}"></em>
             </span>
         </a>
         {% endfor %}
-        <button class="button navbar-burger" id="burger-menu"><span></span><span></span><span></span></button>
+        <button class="button navbar-burger" id="burger-menu" aria-label="Toggle main menu" aria-expanded="false" aria-controls="main-menu"><span></span><span></span><span></span></button>
     </div>
     <div class="navbar-menu" id="main-menu">
         <div class="navbar-start" id="flex-main-menu">
@@ -52,7 +52,7 @@
         </div>
         <div class="navbar-end">
             {% for s in socials %}
-            <a class="navbar-item is-hidden-touch" href="{{ s.get_url() }}" target="_blank">
+            <a class="navbar-item is-hidden-touch" href="{{ s.get_url() }}" target="_blank" aria-label="{{ s.get_label() }}">
                 <span class="icon" style="color: #{{ s.get_color() }};">
                 <em class="mdi mdi-36px mdi-{{ s.get_icon() }}"></em></span>
             </a>

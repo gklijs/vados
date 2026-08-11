@@ -8,6 +8,7 @@ use askama::Template;
 pub(crate) struct PageTemplate<'a> {
     pub(crate) title: &'a str,
     pub(crate) summary: &'a Option<String>,
+    pub(crate) language: &'a str,
     pub(crate) background_class: &'a str,
     pub(crate) navigation: &'a str,
     pub(crate) breadcrumbs: Option<String>,

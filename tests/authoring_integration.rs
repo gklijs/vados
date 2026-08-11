@@ -43,6 +43,7 @@ impl TestProject {
                 home_intro: None,
                 primary_color: None,
                 footer_text: None,
+                language: None,
                 socials: vec![],
             },
         )
@@ -205,6 +206,7 @@ fn authoring_every_kind_of_content_still_checks_clean() {
             url: None,
             icon: None,
             brand_color: None,
+            label: None,
         },
     )
     .unwrap()
