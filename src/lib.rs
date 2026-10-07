@@ -8,5 +8,6 @@ pub mod generator;
 mod image;
 pub mod init;
 mod json_files;
+pub mod luma;
 mod structure;
 mod templates;

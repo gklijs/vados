@@ -24,6 +24,11 @@
                 <div class="tile is-parent">
                     {{ main_content|safe }}
                 </div>
+                {% if let Some(l) = luma_events %}
+                <div class="tile is-vertical is-parent" id="luma-events">
+                    {{ l|safe }}
+                </div>
+                {% endif %}
                 <div class="tile is-horizontal">
                     <div class="tile is-vertical is-parent" id="child-tiles-left">
                         {% for s in left_sub_notifications %}
@@ -54,5 +59,8 @@
 {% for js_link in js_links %}
 <script src="{{ js_link }}"></script>
 {% endfor %}
+{% if let Some(s) = luma_button_script %}
+<script id="luma-checkout" src="{{ s }}"></script>
+{% endif %}
 </body>
 </html>

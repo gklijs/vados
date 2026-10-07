@@ -1,6 +1,6 @@
-//! End-to-end coverage for the six content-authoring subcommands
-//! (`page new`, `image add`, `page add-image`, `social
-//! add`/`update`/`remove`, `footer set`, `menu add-item`): scaffolds a fresh
+//! End-to-end coverage for the content-authoring subcommands (`page new`,
+//! `image add`, `page add-image`, `social add`/`update`/`remove`, `footer
+//! set`, `menu add-item`, `page add-luma-event`): scaffolds a fresh
 //! project with `init`, authors content into it one piece at a time exactly
 //! the way each subcommand's library function would, and checks the result
 //! with `check` -- the same validation a maintainer would run before
@@ -12,10 +12,12 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use vados::authoring::image_registry;
+use vados::authoring::luma::{self as luma_authoring, LumaEventDisplay};
 use vados::authoring::menu as menu_authoring;
 use vados::authoring::page;
 use vados::authoring::social::{self, GivenSocialLink, RecognizedSocialProvider};
 use vados::check::check;
+use vados::generator::generate;
 use vados::init::{self, ProjectBasics};
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
@@ -228,12 +230,94 @@ fn authoring_every_kind_of_content_still_checks_clean() {
             .unwrap();
     assert!(menu_outcome.would_resolve);
 
+    // `page add-luma-event`: link an event to the new page.
+    assert!(
+        luma_authoring::detect_luma_event_blockers(&project.source, "/team", "evt-TeamDay")
+            .is_empty()
+    );
+    luma_authoring::attach_luma_event(
+        &project.source,
+        "/team",
+        "evt-TeamDay",
+        luma_authoring::LumaEventAttachmentDetails {
+            title: "Team day".to_string(),
+            display: Some(LumaEventDisplay::Both),
+            button_label: None,
+        },
+    )
+    .unwrap();
+
     let report = check(&project.source, &project.img_source);
     assert!(
         report.findings.is_empty(),
         "expected the fully authored project to check clean, got {:?}",
         report.findings
     );
+}
+
+#[test]
+fn a_linked_luma_event_is_published_on_its_own_page_only() {
+    let project = TestProject::new("luma_publish");
+    page::create_page(
+        &project.source,
+        "/events",
+        None,
+        page::PageCreationDetails {
+            title: "Events".to_string(),
+            sub_title: None,
+            icon: None,
+            summary: None,
+            order: None,
+            content: None,
+        },
+    )
+    .unwrap();
+    page::create_page(
+        &project.source,
+        "/events/archive",
+        None,
+        page::PageCreationDetails {
+            title: "Archive".to_string(),
+            sub_title: None,
+            icon: None,
+            summary: None,
+            order: None,
+            content: None,
+        },
+    )
+    .unwrap();
+    luma_authoring::attach_luma_event(
+        &project.source,
+        "/events",
+        "evt-Jam",
+        luma_authoring::LumaEventAttachmentDetails {
+            title: "Jam night".to_string(),
+            display: Some(LumaEventDisplay::RegisterButton),
+            button_label: Some("Sign up".to_string()),
+        },
+    )
+    .unwrap();
+
+    let dest = project.dir.join("public");
+    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+
+    let events = fs::read_to_string(dest.join("events.html")).unwrap();
+    // The title links to the event on Luma whatever else is shown; see
+    // vados.allium's `LumaEventAlwaysReachable`.
+    assert!(events.contains(">Jam night</a>"));
+    assert!(events.contains(r#"data-luma-event-id="evt-Jam""#));
+    assert!(events.contains(">Sign up</a>"));
+    assert!(events.contains("checkout-button.js"));
+    // Register button only: no embedded event page.
+    assert!(!events.contains("<iframe"));
+
+    // Neither inherited by the page beneath, nor loading Luma's script on a
+    // page without a button; see `LumaEventsStayOnTheirPage` and
+    // `ThirdPartyCodeOnlyWhereUsed`.
+    for other in ["index.html", "events/archive.html"] {
+        let html = fs::read_to_string(dest.join(other)).unwrap();
+        assert!(!html.contains("luma"), "{other} mentions Luma");
+    }
 }
 
 #[test]

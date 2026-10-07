@@ -1,11 +1,13 @@
 use crate::bulma::{Color, ImageType};
 use crate::config_files::{MainConfig, MenuConfig, Notification, PageConfig};
 use crate::image::ProcessedImage;
+use crate::luma::BUTTON_SCRIPT_URL;
 use crate::structure::{Item, SocialItem, Structure};
 use crate::templates::{
     BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate,
     ExternalNotificationTemplate, FooterTemplate, InternalImageTemplate,
-    InternalNotificationTemplate, NavigationTemplate, PageTemplate, SideMenuTemplate,
+    InternalNotificationTemplate, LumaEventView, LumaEventsTemplate, NavigationTemplate,
+    PageTemplate, SideMenuTemplate,
 };
 use askama::Template;
 use pulldown_cmark::{html, Parser};
@@ -446,15 +448,44 @@ fn get_page(
         breadcrumbs: page_helper.breadcrumbs,
         side_menu: page_helper.side_menu,
         main_content: page_helper.main_content,
+        luma_events: get_luma_events(item),
         left_sub_notifications: &structure.get_left_sub_notifications(path),
         right_sub_notifications: &structure.get_right_sub_notifications(path),
         side_notifications: &structure.get_side_notifications(path),
         footer: &generic_content.footer,
         css_links: &generic_content.css_links,
         js_links: &generic_content.js_links,
+        // Luma's script is loaded once, and only by a page that shows a
+        // register button; see vados.allium's `ThirdPartyCodeOnlyWhereUsed`.
+        luma_button_script: item
+            .luma_events
+            .iter()
+            .any(|e| e.display().shows_register_button())
+            .then_some(BUTTON_SCRIPT_URL),
     }
     .render()
     .unwrap()
+}
+
+fn get_luma_events(item: &Item) -> Option<String> {
+    if item.luma_events.is_empty() {
+        return None;
+    }
+    let events = item
+        .luma_events
+        .iter()
+        .map(|e| LumaEventView {
+            event_id: &e.event_id,
+            // Only publishable events reach an `Item`, and those have a title.
+            title: e.effective_title().unwrap_or_default(),
+            event_url: e.event_url(),
+            embed_url: e.embed_url(),
+            shows_event_page: e.display().shows_event_page(),
+            shows_register_button: e.display().shows_register_button(),
+            button_label: e.button_label(),
+        })
+        .collect();
+    Some(LumaEventsTemplate { events }.render().unwrap())
 }
 
 #[cfg(test)]
