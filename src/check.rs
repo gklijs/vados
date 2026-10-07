@@ -9,6 +9,7 @@ use crate::config_files::{ImageList, MainConfig, MenuConfig, Notification, PageC
 use crate::content::{classify_content_reference, get_file_path, ContentKind};
 use crate::files::get_all_directory_paths;
 use crate::image::reference_key_for;
+use crate::luma::{is_luma_event_id, LumaEvent};
 use crate::structure::is_recognized_social_provider;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -54,6 +55,9 @@ pub enum FindingKind {
     UnknownNotificationImageReference,
     MissingImageSourceFile,
     DeadInternalNotificationLink,
+    MalformedLumaEventId,
+    LumaEventWithoutTitle,
+    DuplicateLumaEvent,
 }
 
 impl FindingKind {
@@ -67,14 +71,17 @@ impl FindingKind {
             | ExternalMenuLinkWithoutTitle
             | UnrecognisedSocialLinkIncomplete
             | DuplicateImageReference
-            | ImageWithoutAlternativeText => Severity::Error,
+            | ImageWithoutAlternativeText
+            | MalformedLumaEventId
+            | LumaEventWithoutTitle => Severity::Error,
             ImagesManifestUnreadable
             | MissingContentFile
             | UnresolvedMenuLink
             | UnknownPageImageReference
             | UnknownNotificationImageReference
             | MissingImageSourceFile
-            | DeadInternalNotificationLink => Severity::Warning,
+            | DeadInternalNotificationLink
+            | DuplicateLumaEvent => Severity::Warning,
         }
     }
 }
@@ -104,6 +111,9 @@ impl fmt::Display for FindingKind {
             }
             MissingImageSourceFile => "image source file does not exist",
             DeadInternalNotificationLink => "notification link matches no page",
+            MalformedLumaEventId => "Luma event ID is not of the form evt-...",
+            LumaEventWithoutTitle => "Luma event has no title",
+            DuplicateLumaEvent => "the same Luma event is linked more than once on this page",
         })
     }
 }
@@ -270,6 +280,11 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                 &mut findings,
             );
         }
+        check_luma_events(
+            path,
+            page_config.luma_events.as_deref().unwrap_or_default(),
+            &mut findings,
+        );
     }
 
     if let Some(main_config) = &main_config {
@@ -434,6 +449,31 @@ fn check_notification(
                 location: String::from(page_path),
                 detail: Some(url.clone()),
             });
+        }
+    }
+}
+
+fn check_luma_events(page_path: &str, events: &[LumaEvent], findings: &mut Vec<Finding>) {
+    let mut counts: HashMap<&str, usize> = HashMap::new();
+    for event in events {
+        *counts.entry(event.event_id.as_str()).or_insert(0) += 1;
+    }
+    for event in events {
+        let mut report = |kind| {
+            findings.push(Finding {
+                kind,
+                location: String::from(page_path),
+                detail: Some(event.event_id.clone()),
+            })
+        };
+        if !is_luma_event_id(&event.event_id) {
+            report(FindingKind::MalformedLumaEventId);
+        }
+        if event.effective_title().is_none() {
+            report(FindingKind::LumaEventWithoutTitle);
+        }
+        if counts[event.event_id.as_str()] > 1 {
+            report(FindingKind::DuplicateLumaEvent);
         }
     }
 }
@@ -880,6 +920,80 @@ mod tests {
             FindingKind::DeadInternalNotificationLink,
             "/"
         ));
+        assert!(report.passed());
+    }
+
+    fn page_with_luma_events(events: &str) -> String {
+        format!(r#"{{"title":"Home","content":"<p>hi</p>","lumaEvents":{events}}}"#)
+    }
+
+    #[test]
+    fn well_formed_titled_luma_events_have_no_findings() {
+        let site = TestSite::new("luma_valid");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source(
+            "page.json",
+            &page_with_luma_events(
+                r#"[{"eventId":"evt-a1","title":"Jam","display":"both"},
+                    {"eventId":"evt-b2","title":"Gig","buttonLabel":"Sign up"}]"#,
+            ),
+        );
+
+        let report = site.check();
+
+        assert!(report.findings.is_empty(), "{:?}", report.findings);
+    }
+
+    #[test]
+    fn malformed_luma_event_id_is_an_error() {
+        let site = TestSite::new("luma_malformed");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source(
+            "page.json",
+            &page_with_luma_events(r#"[{"eventId":"https://luma.com/jam","title":"Jam"}]"#),
+        );
+
+        let report = site.check();
+
+        assert!(has_kind_at(&report, FindingKind::MalformedLumaEventId, "/"));
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn luma_event_without_title_is_an_error() {
+        let site = TestSite::new("luma_untitled");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source(
+            "page.json",
+            &page_with_luma_events(
+                r#"[{"eventId":"evt-a1","title":null},{"eventId":"evt-b2","title":" "}]"#,
+            ),
+        );
+
+        let report = site.check();
+
+        assert_eq!(count_kind(&report, FindingKind::LumaEventWithoutTitle), 2);
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn duplicate_luma_event_is_a_warning_for_each_occurrence() {
+        let site = TestSite::new("luma_duplicate");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source(
+            "page.json",
+            &page_with_luma_events(
+                r#"[{"eventId":"evt-a1","title":"Jam"},{"eventId":"evt-a1","title":"Jam again"}]"#,
+            ),
+        );
+
+        let report = site.check();
+
+        assert_eq!(count_kind(&report, FindingKind::DuplicateLumaEvent), 2);
         assert!(report.passed());
     }
 

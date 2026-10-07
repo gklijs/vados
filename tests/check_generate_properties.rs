@@ -130,6 +130,35 @@ struct PageSpec {
     content: ContentSpec,
     image: ImageRefSpec,
     notifications: Vec<NotificationSpec>,
+    luma_events: Vec<LumaEventSpec>,
+}
+
+/// A Luma event as page.json would declare it: well-formed or not, titled
+/// or not, under any of the three displays. A small ID pool, so the same
+/// event turns up twice on one page often enough to exercise
+/// `DuplicateLumaEvent` too.
+#[derive(Debug, Clone)]
+struct LumaEventSpec {
+    event_id: &'static str,
+    title: Option<String>,
+    display: Option<&'static str>,
+}
+
+fn luma_event_spec() -> impl Strategy<Value = LumaEventSpec> {
+    (
+        prop_oneof![Just("evt-a1"), Just("evt-B2"), Just("evt-"), Just("cal-a1")],
+        proptest::option::of(short_text()),
+        proptest::option::of(prop_oneof![
+            Just("eventPage"),
+            Just("registerButton"),
+            Just("both")
+        ]),
+    )
+        .prop_map(|(event_id, title, display)| LumaEventSpec {
+            event_id,
+            title,
+            display,
+        })
 }
 
 fn path_segment() -> impl Strategy<Value = String> {
@@ -216,15 +245,19 @@ fn site_spec() -> impl Strategy<Value = SiteSpec> {
             content_spec(),
             image_ref_spec(image_count),
             proptest::collection::vec(notification_spec(4, image_count), 0..3),
+            proptest::collection::vec(luma_event_spec(), 0..3),
         )
             .prop_map(
-                move |(segments, has_config, title, content, image, notifications)| PageSpec {
-                    segments,
-                    has_config,
-                    title,
-                    content,
-                    image,
-                    notifications,
+                move |(segments, has_config, title, content, image, notifications, luma_events)| {
+                    PageSpec {
+                        segments,
+                        has_config,
+                        title,
+                        content,
+                        image,
+                        notifications,
+                        luma_events,
+                    }
                 },
             );
         let pages = proptest::collection::vec(page, 1..5);
@@ -426,6 +459,11 @@ fn materialize(spec: &SiteSpec) -> Materialized {
                 "order": Option::<u32>::None,
                 "leftNotifications": if notifications.is_empty() { serde_json::Value::Null } else { serde_json::Value::Array(notifications) },
                 "rightNotifications": Option::<Vec<serde_json::Value>>::None,
+                "lumaEvents": page
+                    .luma_events
+                    .iter()
+                    .map(|e| json!({ "eventId": e.event_id, "title": e.title, "display": e.display }))
+                    .collect::<Vec<_>>(),
             });
             let _ = std::fs::write(dir.join("page.json"), doc.to_string());
         }

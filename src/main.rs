@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use dialoguer::Input;
 use std::path::Path;
 use std::process::ExitCode;
+use vados::authoring::luma::{self as luma_authoring, LumaEventDisplay};
 use vados::authoring::menu::{self as menu_authoring, MenuLinkKind};
 use vados::authoring::page::{self, NotificationSide, PageImageRole};
 use vados::authoring::{image_registry, social};
@@ -138,6 +139,28 @@ enum PageCommand {
         /// Which side a notification is added to. Defaults to `right`.
         #[arg(long, value_enum)]
         side: Option<NotificationSideArg>,
+    },
+    /// Links an event hosted on Luma to an existing page, shown in its main
+    /// area after the page's own content.
+    AddLumaEvent {
+        #[arg(long)]
+        source: String,
+        /// The page to link the event from, e.g. `/events`.
+        #[arg(long)]
+        path: String,
+        /// Luma's event ID, `evt-...` (found under the event's embed options).
+        #[arg(long = "event-id")]
+        event_id: Option<String>,
+        /// What the event is called; names the embedded page for screen
+        /// readers and is the text of the link to the event.
+        #[arg(long)]
+        title: Option<String>,
+        /// How the event is shown. Defaults to `event-page`.
+        #[arg(long, value_enum)]
+        display: Option<LumaEventDisplayArg>,
+        /// The register button's text. Defaults to "Register".
+        #[arg(long = "button-label")]
+        button_label: Option<String>,
     },
 }
 
@@ -294,6 +317,23 @@ impl From<PageImageRoleArg> for PageImageRole {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
+enum LumaEventDisplayArg {
+    EventPage,
+    RegisterButton,
+    Both,
+}
+
+impl From<LumaEventDisplayArg> for LumaEventDisplay {
+    fn from(value: LumaEventDisplayArg) -> Self {
+        match value {
+            LumaEventDisplayArg::EventPage => LumaEventDisplay::EventPage,
+            LumaEventDisplayArg::RegisterButton => LumaEventDisplay::RegisterButton,
+            LumaEventDisplayArg::Both => LumaEventDisplay::Both,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
 enum NotificationSideArg {
     Left,
     Right,
@@ -375,6 +415,21 @@ fn main() -> ExitCode {
                 alt_text,
                 caption,
                 side.map(Into::into),
+            ),
+            PageCommand::AddLumaEvent {
+                source,
+                path,
+                event_id,
+                title,
+                display,
+                button_label,
+            } => run_page_add_luma_event(
+                source,
+                path,
+                event_id,
+                title,
+                display.map(Into::into),
+                button_label,
             ),
         },
         Command::Image { command } => match command {
@@ -1058,6 +1113,59 @@ fn run_menu_add_item(
         }
         Err(e) => {
             eprintln!("menu add-item failed while writing the project: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn run_page_add_luma_event(
+    source: String,
+    path: String,
+    event_id: Option<String>,
+    title: Option<String>,
+    display: Option<LumaEventDisplay>,
+    button_label: Option<String>,
+) -> ExitCode {
+    let event_id = match require_flag(event_id, "event-id", "Luma event ID (evt-...)") {
+        Some(id) => id.trim().to_string(),
+        None => return ExitCode::FAILURE,
+    };
+
+    // Every blocker is checked in one pass before the maintainer is asked
+    // for a title; see vados.allium's `DetectLumaEventAttachmentBlockers`.
+    let blocks = luma_authoring::detect_luma_event_blockers(&source, &path, &event_id);
+    if !blocks.is_empty() {
+        println!("`page add-luma-event` can't link a Luma event to {path} yet:\n");
+        for b in &blocks {
+            println!("  {:<40} {}", b.reason, b.detail);
+        }
+        return ExitCode::FAILURE;
+    }
+
+    let title = match require_flag(title, "title", "Event title") {
+        Some(t) => t,
+        None => return ExitCode::FAILURE,
+    };
+
+    match luma_authoring::attach_luma_event(
+        &source,
+        &path,
+        &event_id,
+        luma_authoring::LumaEventAttachmentDetails {
+            title,
+            display,
+            button_label,
+        },
+    ) {
+        Ok(outcome) => {
+            println!("\nLinked Luma event to {}:", outcome.path);
+            println!("  event:   {}", outcome.event_id);
+            println!("  title:   {}", outcome.title);
+            println!("  display: {}", outcome.display);
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("page add-luma-event failed while writing the project: {e}");
             ExitCode::FAILURE
         }
     }

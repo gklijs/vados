@@ -172,6 +172,7 @@ pub fn create_page(
         order: details.order,
         left_notifications: None,
         right_notifications: None,
+        luma_events: None,
     };
 
     let dir = page_dir(source, given_path);

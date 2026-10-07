@@ -68,7 +68,7 @@ vados check --source root --img-source imgroot
 
 ### Authoring content into an existing project
 
-Six subcommands change one piece of an already-scaffolded project at a time, instead of reading it wholesale the way
+Seven subcommands change one piece of an already-scaffolded project at a time, instead of reading it wholesale the way
 `generate`/`check` do. Each one checks itself against the same problems `check` would find before writing anything.
 Any flag left unset is asked for interactively (a plain terminal prompt); a required piece with no terminal available
 fails fast with a clear message instead of hanging.
@@ -96,6 +96,10 @@ fails fast with a clear message instead of hanging.
 - **`vados menu add-item --source root --url /blog`** -- appends one entry to the main menu. `--title` is required
   for an external (`https://`) url; an internal one falls back to its target page's own title. There's no
   `remove-item`/`update-item` yet -- edit `menu.json` by hand for that.
+- **`vados page add-luma-event --source root --path /events --event-id evt-AbC123 --title "Spring jam"`** -- links
+  an event hosted on [Luma](https://luma.com) to a page; see [Luma events](#luma-events). `--display` picks
+  `event-page` (the default), `register-button` or `both`; `--button-label` changes the button's text (default
+  "Register").
 
 ## Project layout
 
@@ -109,6 +113,30 @@ A vados project is two plain-text trees plus generated output:
   centre-cropped to the closest standard aspect ratio and published as a set of responsively sized WebP variants.
 - **Destination** (`--destination`, `generate` only): the published site. Variants already there are reused rather
   than regenerated across runs, and anything belonging to an image no longer declared is pruned.
+
+## Luma events
+
+A page can show events hosted on [Luma](https://luma.com) in its main area, right after its own content. Each one is
+listed under `lumaEvents` in the page's `page.json`; most pages link one, but any number is fine:
+
+```json
+"lumaEvents": [
+  { "eventId": "evt-AbC123", "title": "Spring jam", "display": "both", "buttonLabel": "Sign up" }
+]
+```
+
+- `eventId` is Luma's event ID (`evt-...`), shown in the event's embed options on Luma.
+- `title` is required: it's the text of a plain link to the event on Luma, always shown, and the accessible name of
+  the embedded event page.
+- `display` is `eventPage` (Luma's embedded event page, which includes registration -- the default),
+  `registerButton` (a button opening Luma's registration over the page), or `both`.
+- `buttonLabel` is the register button's text, defaulting to "Register".
+
+An event is shown only on the page that lists it, not on pages beneath it. Luma's button script is loaded only on
+pages that show a register button; pages without a Luma event make no requests to Luma. `check` reports an event
+ID that isn't of the form `evt-...` or an event without a title as errors (`generate` leaves such an event off the
+page), and the same event listed twice on one page as a warning. Nothing is fetched from Luma by `check` or
+`generate`, so whether the event actually exists isn't checked.
 
 ## Accessibility
 

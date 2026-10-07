@@ -18,13 +18,14 @@
 --   image, `page add-image` attaches an image (freshly registered or already
 --   declared) to a page, `social add`/`social update`/`social remove` and
 --   `footer set` adjust menu.json's social links and main.json's footer, and
---   `menu add-item` appends an entry to menu.json's main menu.
+--   `menu add-item` appends an entry to menu.json's main menu. One more,
+--   `page add-luma-event`, links an event hosted on Luma to a page.
 --
 -- Includes:
 --   - The command line: the `generate`, `check` and `init` subcommands, and
 --     the six content-authoring subcommands (`page new`, `image add`,
 --     `page add-image`, `social add`/`update`/`remove`, `footer set`,
---     `menu add-item`)
+--     `menu add-item`, `page add-luma-event`)
 --   - Pre-flight validation: findings, their severity, and the check outcome
 --   - Project scaffolding: what `init` creates, the basics and social handles
 --     it gathers with their defaults, its refusal to overwrite anything
@@ -46,6 +47,9 @@
 --     and auto-generated side notifications
 --   - Images: aspect-ratio matching, centre cropping, responsive variant set,
 --     and the Main/Sub/Side placement distinction
+--   - Luma events: linking an event hosted on Luma to a page, shown in the
+--     page's main area as the embedded event page, a register button, or
+--     both -- several per page allowed, one expected
 --   - Page assembly and publication
 --   - Accessibility: a declarable site language, accessible names for
 --     icon-only controls (social links, the menu toggles), and structural
@@ -97,7 +101,13 @@
 --     existing project. Only the bundle of inputs gathered and the resulting
 --     outcome are domain -- the same judgement already made for JSON parsing
 --     mechanics above
---   - The interactive prompt sequences the six content-authoring subcommands
+--   - Luma's own URLs: the embed address, the register-button script
+--     address, the shape of an event's public page address, and the iframe's
+--     size and styling. These are Luma's to change (and have already moved
+--     once, from lu.ma to luma.com); only the event ID, which identifies the
+--     event on Luma, is domain. Nothing is fetched from Luma at generate or
+--     check time -- whether an event ID names a real event is never checked
+--   - The interactive prompt sequences the content-authoring subcommands
 --     use to gather whatever input the maintainer didn't supply as a flag.
 --     Only the bundle of inputs gathered is domain, the same as `init`'s own
 --     prompt sequence is excluded above
@@ -211,6 +221,11 @@ enum FindingKind {
 
     -- Notifications.
     dead_internal_notification_link
+
+    -- Luma events.
+    malformed_luma_event_id
+    luma_event_without_title
+    duplicate_luma_event
 }
 
 enum MenuLinkKind { internal | external }
@@ -285,6 +300,18 @@ enum SocialLinkChangeRejectionReason {
 -- deliberately not a rejection reason -- see MenuLinkAdditionRun.would_resolve.
 enum MenuLinkAdditionRejectionReason { external_link_without_title | url_already_in_menu }
 
+-- How a Luma event linked to a page is shown in its main area: Luma's own
+-- embedded event page (details plus registration, inside the page), a
+-- register button that opens Luma's registration over the page, or both.
+enum LumaEventDisplay { event_page | register_button | both }
+
+-- Why a `page add-luma-event` request couldn't proceed. Recorded rather than
+-- raised, for the same find-everything-in-one-pass reason as
+-- PageCreationBlockReason.
+enum LumaEventAttachmentBlockReason {
+    target_page_missing | malformed_event_id | event_already_on_page
+}
+
 ------------------------------------------------------------
 -- Entities and Variants
 ------------------------------------------------------------
@@ -326,6 +353,9 @@ entity GenerationRun {
     -- Every notification declared anywhere beneath the source root, reachable
     -- without walking the page tree.
     notifications: Notification with page.run = this
+
+    -- Every Luma event linked to any page beneath the source root.
+    luma_events: LumaEvent with page.run = this
 
     -- The images this run declares. This is the set the destination is
     -- brought into line with: variants left at the destination by earlier
@@ -448,6 +478,20 @@ entity Page {
         if own_right_notifications.count > 0: own_right_notifications
         else: parent?.effective_right_notifications ?? {}
 
+    -- Luma events linked to this page, in declared order. Unlike
+    -- notifications, these are never inherited: an event belongs to the page
+    -- that names it, not to the section beneath it.
+    luma_events: LumaEvent with page = this
+
+    -- Only events that can actually be shown reach the published page. One
+    -- with a malformed ID or no title is reported and dropped, the same way
+    -- an unresolvable main menu entry is.
+    published_luma_events: luma_events where is_publishable
+
+    -- Luma's register-button script is loaded only by a page that shows at
+    -- least one register button. See ThirdPartyCodeOnlyWhereUsed.
+    loads_luma_button_script: published_luma_events.any(e => e.shows_register_button)
+
     -- Separately from configured notifications, every page advertises a few
     -- neighbouring pages: its own children when it has any, otherwise its
     -- siblings. Taken from the end of display order, never including itself.
@@ -518,6 +562,43 @@ entity Notification {
 
     image: SiteImage with reference_key = this.image_reference and run = this.page.run
     image_placement: config.notification_image_placement
+}
+
+-- An event hosted on Luma, linked from one page's page.json and shown in that
+-- page's main area, after its content. A page may link several; most link
+-- one. Luma is the only event platform vados knows about, so the event is
+-- identified by Luma's own event ID (`evt-...`) rather than by a URL: the
+-- addresses built from it are Luma's to change and are excluded above.
+entity LumaEvent {
+    page: Page
+    position: Integer
+    event_id: String
+
+    -- What the event is called. It names the embedded event page for
+    -- assistive technology and is the text of the plain link to the event
+    -- that is always shown alongside it. Optional only so that its absence
+    -- can be reported; see LumaEventCarriesTitle. A title that is blank or
+    -- only whitespace names nothing, so it is read as absent.
+    title: String?
+
+    given_display: LumaEventDisplay?
+    given_button_label: String?
+
+    display: given_display ?? config.default_luma_event_display
+    shows_event_page: display in {event_page, both}
+    shows_register_button: display in {register_button, both}
+    button_label: given_button_label ?? config.default_luma_button_label
+
+    -- `evt-` followed by Luma's identifier characters. A purely structural
+    -- test: whether such an event exists on Luma is never asked.
+    id_well_formed: is_luma_event_id(event_id)
+
+    -- The same event linked twice on one page. Both are still shown; this is
+    -- reported because it is almost certainly a copy-paste slip.
+    is_duplicate:
+        page.luma_events.any(o => o != this and o.event_id = this.event_id)
+
+    is_publishable: id_well_formed and title != null
 }
 
 -- An entry in the site-wide main menu, authored as menu.json at the source
@@ -970,6 +1051,41 @@ entity MenuLinkAdditionRun {
     would_resolve: kind = external or page_exists_at(source_location, given_url)
 }
 
+-- One run of `page add-luma-event`: links a Luma event to an existing page.
+-- Two-phase like PageImageAttachmentRun: everything that can be checked from
+-- the request alone is checked before the maintainer is asked for the title
+-- and how to show the event.
+entity LumaEventAttachmentRun {
+    source_location: String
+    given_path: String
+    given_event_id: String
+    status: luma_event_attachment_requested | luma_event_attachment_blocked | luma_event_attached
+
+    transitions status {
+        luma_event_attachment_requested -> luma_event_attachment_blocked
+        luma_event_attachment_requested -> luma_event_attached
+        terminal: luma_event_attachment_blocked, luma_event_attached
+    }
+
+    blocks: LumaEventAttachmentBlock with run = this
+    is_blocked: blocks.count > 0
+
+    -- Gathered once the blocker check has passed. The title is required:
+    -- the command never writes an event check would then report as
+    -- luma_event_without_title.
+    given_title: String when status = luma_event_attached
+    given_display: LumaEventDisplay? when status = luma_event_attached
+    given_button_label: String? when status = luma_event_attached
+
+    effective_display: given_display ?? config.default_luma_event_display
+}
+
+entity LumaEventAttachmentBlock {
+    run: LumaEventAttachmentRun
+    reason: LumaEventAttachmentBlockReason
+    detail: String
+}
+
 ------------------------------------------------------------
 -- Config
 ------------------------------------------------------------
@@ -989,6 +1105,11 @@ config {
     plain_notification_color: Color = info
     linked_notification_color: Color = link
     side_notification_color: Color = info
+
+    -- Luma events. The embedded event page already carries Luma's own
+    -- registration, so it alone is the default; a button is opted into.
+    default_luma_event_display: LumaEventDisplay = event_page
+    default_luma_button_label: String = "Register"
 
     -- Navigation thresholds, in path segments.
     breadcrumb_min_depth: Integer = 2
@@ -1018,7 +1139,9 @@ config {
         external_menu_link_without_title,
         unrecognised_social_link_incomplete,
         duplicate_image_reference,
-        image_without_alternative_text
+        image_without_alternative_text,
+        malformed_luma_event_id,
+        luma_event_without_title
     }
 
     -- The two severities themselves. Neither is adjustable; they are named here
@@ -1190,6 +1313,25 @@ rule AttachNotification {
         image_reference: image,
         url: url,
         given_color: color
+    )
+}
+
+-- A malformed or untitled event is still declared, so that a check run can
+-- report it; it is kept off the published page by
+-- Page.published_luma_events, and a generate run reports it as it passes,
+-- the same way it reports a dead internal notification link.
+rule AttachLumaEvent {
+    when: PageLumaEventDeclared(
+        page, position, event_id, title?, display?, button_label?
+    )
+    requires: page.status = discovered
+    ensures: LumaEvent.created(
+        page: page,
+        position: position,
+        event_id: event_id,
+        title: title,
+        given_display: display,
+        given_button_label: button_label
     )
 }
 
@@ -1420,6 +1562,22 @@ rule RunStructuralChecks {
                 detail: i.reference_key
             )
 
+        for e in run.luma_events where not e.id_well_formed:
+            Finding.created(
+                run: run,
+                kind: malformed_luma_event_id,
+                location: e.page.path,
+                detail: e.event_id
+            )
+
+        for e in run.luma_events where e.title = null:
+            Finding.created(
+                run: run,
+                kind: luma_event_without_title,
+                location: e.page.path,
+                detail: e.event_id
+            )
+
         -- Warnings: each of these is something generation already tolerates by
         -- dropping or degrading, so it is reported but does not fail the check.
 
@@ -1451,6 +1609,14 @@ rule RunStructuralChecks {
         -- Notification.links_nowhere; the difference is only that a check run
         -- keeps its report, so it becomes a Finding that can be counted and
         -- listed. The link ships either way.
+        for e in run.luma_events where e.is_duplicate:
+            Finding.created(
+                run: run,
+                kind: duplicate_luma_event,
+                location: e.page.path,
+                detail: e.event_id
+            )
+
         for n in run.notifications where n.links_nowhere:
             Finding.created(
                 run: run,
@@ -1941,6 +2107,60 @@ rule ApplyMenuLinkAddition {
             )
 }
 
+-- Linking a Luma event to a page -----------------------------------------
+
+rule RequestLumaEventAttachment {
+    when: LumaEventAttachmentRequested(source, path, event_id)
+    ensures: LumaEventAttachmentRun.created(
+        source_location: source,
+        given_path: path,
+        given_event_id: event_id,
+        status: luma_event_attachment_requested
+    )
+}
+
+-- The same three things check would object to, asked before anything is
+-- written: the page must exist, the ID must be well formed, and the page
+-- must not already link this event.
+rule DetectLumaEventAttachmentBlockers {
+    when: run: LumaEventAttachmentRun.created
+    ensures:
+        if not page_exists_at(run.source_location, run.given_path):
+            LumaEventAttachmentBlock.created(
+                run: run, reason: target_page_missing, detail: run.given_path
+            )
+        if not is_luma_event_id(run.given_event_id):
+            LumaEventAttachmentBlock.created(
+                run: run, reason: malformed_event_id, detail: run.given_event_id
+            )
+        if page_links_luma_event(run.source_location, run.given_path, run.given_event_id):
+            LumaEventAttachmentBlock.created(
+                run: run, reason: event_already_on_page, detail: run.given_event_id
+            )
+        if run.is_blocked:
+            run.status = luma_event_attachment_blocked
+}
+
+-- The event is appended after any the page already links, so it is shown
+-- last.
+rule ProvideLumaEventAttachmentDetails {
+    when: LumaEventAttachmentDetailsProvided(run, title, display?, button_label?)
+    requires: run.status = luma_event_attachment_requested
+    ensures:
+        run.given_title = title
+        run.given_display = display
+        run.given_button_label = button_label
+        run.status = luma_event_attached
+        LumaEventAppended(
+            run: run,
+            path: run.given_path,
+            event_id: run.given_event_id,
+            title: title,
+            display: display,
+            button_label: button_label
+        )
+}
+
 ------------------------------------------------------------
 -- Invariants
 ------------------------------------------------------------
@@ -1973,6 +2193,26 @@ invariant UnrecognisedSocialLinkIsFullyDescribed {
 invariant EveryImageHasAlternativeText {
     for i in SiteImages:
         i.alt_text != ""
+}
+
+-- A Luma event is named by its title, both for assistive technology (the
+-- embedded event page has no other accessible name) and as the text of the
+-- plain link to it. An accessibility commitment, like alternative text.
+invariant LumaEventCarriesTitle {
+    for e in LumaEvents:
+        e.title != null
+}
+
+-- An event ID is the only thing vados is told about a Luma event; one that
+-- cannot be an ID would publish an embed or button pointing nowhere.
+invariant LumaEventIdIsWellFormed {
+    for e in LumaEvents:
+        e.id_well_formed
+}
+
+invariant LumaEventAttachmentBlocksBelongToBlockedRuns {
+    for b in LumaEventAttachmentBlocks:
+        b.run.status = luma_event_attachment_blocked
 }
 
 -- Page paths identify pages within a run.
@@ -2503,6 +2743,50 @@ surface MenuLinkAddedOutcome {
         run.would_resolve
 }
 
+-- The `page add-luma-event` subcommand.
+surface LumaEventAttachmentRequest {
+    facing _: Maintainer
+
+    provides:
+        LumaEventAttachmentRequested(source, path, event_id)
+}
+
+surface LumaEventAttachmentBlockedReport {
+    facing _: Maintainer
+
+    context run: LumaEventAttachmentRun where status = luma_event_attachment_blocked
+
+    exposes:
+        for b in run.blocks:
+            b.reason
+            b.detail
+}
+
+surface LumaEventAttachmentDetails {
+    facing _: Maintainer
+
+    context run: LumaEventAttachmentRun where status = luma_event_attachment_requested
+
+    exposes:
+        run.given_path
+        run.given_event_id
+
+    provides:
+        LumaEventAttachmentDetailsProvided(run, title, display?, button_label?)
+}
+
+surface LumaEventAttachedOutcome {
+    facing _: Maintainer
+
+    context run: LumaEventAttachmentRun where status = luma_event_attached
+
+    exposes:
+        run.given_path
+        run.given_event_id
+        run.given_title
+        run.effective_display
+}
+
 -- What the maintainer authors in the source tree: main.json and menu.json at
 -- the root, a page.json per content directory, and images.json per image
 -- directory.
@@ -2573,6 +2857,26 @@ surface PageNotifications {
         -- annotated from one place.
 }
 
+-- The Luma events a page.json links, in the order they are listed.
+surface PageLumaEvents {
+    facing _: Maintainer
+
+    context page: Page where status = discovered
+
+    exposes:
+        page.path
+        page.title
+
+    provides:
+        PageLumaEventDeclared(
+            page, position, event_id, title?, display?, button_label?
+        )
+
+    @guarantee LumaEventsStayOnTheirPage
+        -- An event is shown on the page that links it and nowhere else;
+        -- unlike notifications, it is not inherited by the pages beneath.
+}
+
 -- What a visitor sees on a published page. A published site is read-only:
 -- there is nothing for a visitor to do.
 surface PublishedPage {
@@ -2637,6 +2941,14 @@ surface PublishedPage {
             n.image
             n.image_placement
 
+        for e in page.published_luma_events:
+            e.event_id
+            e.title
+            e.shows_event_page
+            e.shows_register_button
+            e.button_label
+        page.loads_luma_button_script
+
         for neighbour in page.side_notification_pages:
             neighbour.path
             neighbour.title
@@ -2691,6 +3003,28 @@ surface PublishedPage {
         -- with a click handler bolted on), so keyboard focus order and
         -- default focus indication are never suppressed.
 
+    @guarantee LumaEventsFollowTheContent
+        -- A page's Luma events are shown in its main area, directly after its
+        -- own content and before its left and right notifications, in the
+        -- order page.json lists them.
+
+    @guarantee LumaEventAlwaysReachable
+        -- Every Luma event shown also carries a plain link to the event's own
+        -- page on Luma, with the event's title as its text. A visitor whose
+        -- browser blocks the embedded page or the register-button script --
+        -- or who navigates by keyboard and would rather not enter an embedded
+        -- frame -- can still reach the event and register there.
+
+    @guarantee EmbeddedEventPageIsNamed
+        -- The embedded event page carries the event's title as its
+        -- accessible name, and is deferred rather than fetched eagerly, so it
+        -- never delays the page's own content.
+
+    @guarantee ThirdPartyCodeOnlyWhereUsed
+        -- Luma's register-button script is loaded only by pages that show a
+        -- register button, once per page however many they show. Pages
+        -- without a Luma event make no request to Luma at all.
+
     @guarantee IconOnlyControlsCarryAnAccessibleName
         -- A control that carries no visible text of its own has an
         -- accessible name instead. A social link shows only a provider's
@@ -2721,3 +3055,12 @@ open question "Should a later version of init let the wizard add initial main-me
 -- ImageRegistrationRun have no delete/rename counterpart: an entry, once
 -- added, can only be changed or removed by hand-editing menu.json.
 open question "Should a later version add `menu update-item`/`menu remove-item` alongside `menu add-item`?"
+
+-- Only single events are linked. Luma also offers an embeddable calendar
+-- (every upcoming event of an organiser), which would suit an "events"
+-- overview page better than listing each event by hand.
+open question "Should a later version support embedding a whole Luma calendar, alongside single events?"
+
+-- Luma's register button accepts extras -- a pre-applied coupon, a
+-- ticket type, a utm source for attribution -- none of which are modelled.
+open question "Should a Luma event's register button carry Luma's optional coupon, ticket-type and utm-source settings?"

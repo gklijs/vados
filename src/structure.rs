@@ -2,6 +2,7 @@ use crate::bulma::ImageType;
 use crate::config_files::{MenuConfig, PageConfig, RawMenuItem, RawSocialItem};
 use crate::content::{items_to_side_notifications, to_internal_image};
 use crate::image::ProcessedImage;
+use crate::luma::{is_luma_event_id, LumaEvent};
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use std::cmp::Ordering;
@@ -33,10 +34,14 @@ pub(crate) struct Item {
     pub(crate) summary: Option<String>,
     pub(crate) content: String,
     pub(crate) order: u32,
+    /// Only the events that can actually be shown; see `vados.allium`'s
+    /// `Page.published_luma_events`.
+    pub(crate) luma_events: Vec<LumaEvent>,
 }
 
 impl Item {
     pub(crate) fn new(path: String, page_config: PageConfig) -> Item {
+        let luma_events = published_luma_events(&path, page_config.luma_events);
         Item {
             path,
             title: page_config.title,
@@ -46,8 +51,37 @@ impl Item {
             summary: page_config.summary,
             content: page_config.content,
             order: page_config.order.unwrap_or(u32::MAX),
+            luma_events,
         }
     }
+}
+
+/// Drops the Luma events that can't be shown -- a malformed ID or no title
+/// -- reporting each as it goes, the same way an unresolvable main menu
+/// entry is reported and dropped. `check` reports the same events as
+/// errors; see `vados.allium`'s `AttachLumaEvent`.
+fn published_luma_events(path: &str, declared: Option<Vec<LumaEvent>>) -> Vec<LumaEvent> {
+    declared
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| {
+            if !is_luma_event_id(&e.event_id) {
+                println!(
+                    "Luma event {} on page {} is not a Luma event ID; leaving it off the page.",
+                    e.event_id, path
+                );
+                false
+            } else if e.effective_title().is_none() {
+                println!(
+                    "Luma event {} on page {} has no title; leaving it off the page.",
+                    e.event_id, path
+                );
+                false
+            } else {
+                true
+            }
+        })
+        .collect()
 }
 
 impl Ord for Item {

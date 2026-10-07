@@ -14,12 +14,31 @@ pub(crate) struct PageTemplate<'a> {
     pub(crate) breadcrumbs: Option<String>,
     pub(crate) side_menu: Option<&'a String>,
     pub(crate) main_content: &'a str,
+    pub(crate) luma_events: Option<String>,
     pub(crate) left_sub_notifications: &'a Vec<String>,
     pub(crate) right_sub_notifications: &'a Vec<String>,
     pub(crate) side_notifications: &'a Vec<String>,
     pub(crate) footer: &'a str,
     pub(crate) css_links: &'a [String],
     pub(crate) js_links: &'a [String],
+    pub(crate) luma_button_script: Option<&'a str>,
+}
+
+/// One Luma event as the page shows it, its Luma addresses already built.
+pub(crate) struct LumaEventView<'a> {
+    pub(crate) event_id: &'a str,
+    pub(crate) title: &'a str,
+    pub(crate) event_url: String,
+    pub(crate) embed_url: String,
+    pub(crate) shows_event_page: bool,
+    pub(crate) shows_register_button: bool,
+    pub(crate) button_label: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "luma_events.html")]
+pub(crate) struct LumaEventsTemplate<'a> {
+    pub(crate) events: Vec<LumaEventView<'a>>,
 }
 
 #[derive(Template)]

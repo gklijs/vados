@@ -1,5 +1,6 @@
 use crate::bulma::{default_css_links, default_js_links, vados_js, Color};
 use crate::files::write_raw;
+use crate::luma::LumaEvent;
 use serde::{Deserialize, Serialize};
 
 // Every config struct below derives `Serialize` as well as `Deserialize`:
@@ -80,6 +81,11 @@ pub(crate) struct PageConfig {
     pub(crate) order: Option<u32>,
     pub(crate) left_notifications: Option<Vec<Notification>>,
     pub(crate) right_notifications: Option<Vec<Notification>>,
+    /// Luma events shown in the page's main area, after its content. Left
+    /// out of page.json entirely when there are none, so pages that never
+    /// use Luma don't grow a `"lumaEvents": null` line on every rewrite.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) luma_events: Option<Vec<LumaEvent>>,
 }
 
 impl PageConfig {
@@ -95,6 +101,7 @@ impl PageConfig {
             order: None,
             left_notifications: None,
             right_notifications: None,
+            luma_events: None,
         }
     }
 }
