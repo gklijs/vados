@@ -1,8 +1,8 @@
 [package]
 name = "vados"
-version = "0.0.3"
+version = "0.1.0"
 authors = ["Gerard Klijs <g.klijs@gmail.com>"]
-include = ["src/**/*", "templates/**/*", "Cargo.toml"]
+include = ["src/**/*", "templates/**/*", "Cargo.toml", "/README.md", "/CHANGELOG.md", "/LICENSE-MIT"]
 description = "A Html generator, used with Bulma and a certain file structure to generate a static site"
 repository = "https://github.com/gklijs/vados"
 readme = "README.md"
