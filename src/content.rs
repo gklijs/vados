@@ -1,5 +1,6 @@
 use crate::bulma::{Color, ImageType};
-use crate::config_files::{MainConfig, MenuConfig, Notification, PageConfig};
+use crate::config_files::{favicon_media_type, MainConfig, MenuConfig, Notification, PageConfig};
+use crate::files::write_raw;
 use crate::image::ProcessedImage;
 use crate::luma::BUTTON_SCRIPT_URL;
 use crate::structure::{Item, SocialItem, Structure};
@@ -9,6 +10,7 @@ use crate::templates::{
     InternalNotificationTemplate, LumaEventView, LumaEventsTemplate, NavigationTemplate,
     PageTemplate, SideMenuTemplate,
 };
+use crate::ui_text::{ui_text, UiText};
 use askama::Template;
 use pulldown_cmark::{html, Parser};
 use std::fs;
@@ -28,6 +30,34 @@ pub(crate) struct GenericContent {
     js_links: Vec<String>,
     footer: String,
     language: String,
+    ui: &'static UiText,
+    description: Option<String>,
+    favicon: Option<Favicon>,
+}
+
+/// The site icon as pages link it: where it was published, and its media
+/// type when the file extension names one browsers know.
+struct Favicon {
+    href: String,
+    media_type: Option<&'static str>,
+}
+
+/// Publishes main.json's `favicon` at the site root under its own file name.
+/// A missing file is skipped with a message, the same way a missing image is:
+/// the site is still worth publishing without an icon, and `check` reports it.
+fn publish_favicon(source: &str, destination: &str, favicon: &str) -> Option<Favicon> {
+    let file_name = Path::new(favicon).file_name()?.to_str()?;
+    let contents = match fs::read(format!("{}/{}", source, favicon)) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("favicon {} could not be read, skipping it: {}", favicon, e);
+            return None;
+        }
+    };
+    let href = format!("/{}", file_name);
+    write_raw(destination, &href, contents);
+    let media_type = favicon_media_type(file_name);
+    Some(Favicon { href, media_type })
 }
 
 impl GenericContent {
@@ -37,12 +67,21 @@ impl GenericContent {
         let js_links = main_config.get_js_links(destination);
         let footer = get_footer(source, main_config);
         let language = main_config.get_language().to_string();
+        let ui = ui_text(&language);
+        let description = main_config.get_description().map(String::from);
+        let favicon = main_config
+            .favicon
+            .as_deref()
+            .and_then(|f| publish_favicon(source, destination, f));
         GenericContent {
             background_class,
             css_links,
             js_links,
             footer,
             language,
+            ui,
+            description,
+            favicon,
         }
     }
 }
@@ -87,7 +126,7 @@ impl ContentHelper<'_> {
         main_content: &str,
         generic_content: &GenericContent,
     ) -> String {
-        let breadcrumbs = get_breadcrumbs(self.path, self.structure);
+        let breadcrumbs = get_breadcrumbs(self.path, self.structure, generic_content.ui);
         let page_helper = PageHelper {
             navigation,
             breadcrumbs,
@@ -396,6 +435,7 @@ fn get_navigation(
 ) -> String {
     NavigationTemplate {
         path,
+        ui: ui_text(main_config.get_language()),
         site_title: &main_config.site_title,
         color: main_config.get_navbar_color(),
         main_menu: &structure.get_main_menu_items(menu_config),
@@ -406,9 +446,10 @@ fn get_navigation(
     .unwrap()
 }
 
-fn get_breadcrumbs(path: &str, structure: &Structure) -> Option<String> {
+fn get_breadcrumbs(path: &str, structure: &Structure, ui: &UiText) -> Option<String> {
     structure.get_breadcrumbs(path).map(|crumbs| {
         BreadcrumbsTemplate {
+            ui,
             crumbs,
             last: structure.get_menu_item(path),
         }
@@ -439,16 +480,27 @@ fn get_page(
     structure: &Structure,
     generic_content: &GenericContent,
 ) -> String {
+    // A page's own summary describes it best; the site description stands in
+    // for every page without one. See vados.allium's `PagesAreDescribed`.
+    let description = item
+        .summary
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .or(generic_content.description.as_deref());
     PageTemplate {
         title: &item.title,
-        summary: &item.summary,
+        description,
         language: &generic_content.language,
+        ui: generic_content.ui,
+        favicon_href: generic_content.favicon.as_ref().map(|f| f.href.as_str()),
+        favicon_type: generic_content.favicon.as_ref().and_then(|f| f.media_type),
         background_class: &generic_content.background_class,
         navigation: page_helper.navigation,
         breadcrumbs: page_helper.breadcrumbs,
         side_menu: page_helper.side_menu,
         main_content: page_helper.main_content,
-        luma_events: get_luma_events(item),
+        luma_events: get_luma_events(item, generic_content.ui),
         left_sub_notifications: &structure.get_left_sub_notifications(path),
         right_sub_notifications: &structure.get_right_sub_notifications(path),
         side_notifications: &structure.get_side_notifications(path),
@@ -467,7 +519,7 @@ fn get_page(
     .unwrap()
 }
 
-fn get_luma_events(item: &Item) -> Option<String> {
+fn get_luma_events(item: &Item, ui: &UiText) -> Option<String> {
     if item.luma_events.is_empty() {
         return None;
     }
@@ -482,7 +534,7 @@ fn get_luma_events(item: &Item) -> Option<String> {
             embed_url: e.embed_url(),
             shows_event_page: e.display().shows_event_page(),
             shows_register_button: e.display().shows_register_button(),
-            button_label: e.button_label(),
+            button_label: e.button_label(ui.luma_register),
         })
         .collect();
     Some(LumaEventsTemplate { events }.render().unwrap())

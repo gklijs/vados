@@ -11,6 +11,7 @@ use crate::files::get_all_directory_paths;
 use crate::image::reference_key_for;
 use crate::luma::{is_luma_event_id, LumaEvent};
 use crate::structure::is_recognized_social_provider;
+use crate::ui_text::is_translated;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
@@ -58,6 +59,8 @@ pub enum FindingKind {
     MalformedLumaEventId,
     LumaEventWithoutTitle,
     DuplicateLumaEvent,
+    MissingFaviconFile,
+    UntranslatedInterfaceLanguage,
 }
 
 impl FindingKind {
@@ -81,7 +84,9 @@ impl FindingKind {
             | UnknownNotificationImageReference
             | MissingImageSourceFile
             | DeadInternalNotificationLink
-            | DuplicateLumaEvent => Severity::Warning,
+            | DuplicateLumaEvent
+            | MissingFaviconFile
+            | UntranslatedInterfaceLanguage => Severity::Warning,
         }
     }
 }
@@ -114,6 +119,10 @@ impl fmt::Display for FindingKind {
             MalformedLumaEventId => "Luma event ID is not of the form evt-...",
             LumaEventWithoutTitle => "Luma event has no title",
             DuplicateLumaEvent => "the same Luma event is linked more than once on this page",
+            MissingFaviconFile => "favicon file does not exist",
+            UntranslatedInterfaceLanguage => {
+                "vados has no interface text in the site language, so it falls back to English"
+            }
         })
     }
 }
@@ -289,6 +298,22 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
 
     if let Some(main_config) = &main_config {
         check_content_reference(source, "/", &main_config.footer_content, &mut findings);
+        if let Some(favicon) = &main_config.favicon {
+            if !Path::new(&format!("{}/{}", source, favicon)).is_file() {
+                findings.push(Finding {
+                    kind: FindingKind::MissingFaviconFile,
+                    location: format!("{}/main.json", source),
+                    detail: Some(favicon.clone()),
+                });
+            }
+        }
+        if !is_translated(main_config.get_language()) {
+            findings.push(Finding {
+                kind: FindingKind::UntranslatedInterfaceLanguage,
+                location: format!("{}/main.json", source),
+                detail: Some(main_config.get_language().to_string()),
+            });
+        }
     }
 
     CheckReport { findings }
@@ -1012,5 +1037,54 @@ mod tests {
             1
         );
         assert!(report.passed());
+    }
+
+    fn site_with_main_json_extra(name: &str, extra: &str) -> TestSite {
+        let site = TestSite::new(name);
+        site.write_source(
+            "main.json",
+            &VALID_MAIN_JSON.replacen('{', &format!("{{ {},", extra), 1),
+        );
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site
+    }
+
+    #[test]
+    fn missing_favicon_file_is_a_warning() {
+        let site = site_with_main_json_extra("favicon_missing", r#""favicon": "favicon.svg""#);
+
+        let report = site.check();
+
+        assert_eq!(count_kind(&report, FindingKind::MissingFaviconFile), 1);
+        assert!(report.passed());
+    }
+
+    #[test]
+    fn present_favicon_file_is_not_flagged() {
+        let site = site_with_main_json_extra("favicon_present", r#""favicon": "favicon.svg""#);
+        site.write_source("favicon.svg", "<svg/>");
+
+        assert!(site.check().findings.is_empty());
+    }
+
+    #[test]
+    fn untranslated_site_language_is_a_warning() {
+        let site = site_with_main_json_extra("language_untranslated", r#""language": "pl""#);
+
+        let report = site.check();
+
+        assert_eq!(
+            count_kind(&report, FindingKind::UntranslatedInterfaceLanguage),
+            1
+        );
+        assert!(report.passed());
+    }
+
+    #[test]
+    fn translated_site_language_is_not_flagged() {
+        let site = site_with_main_json_extra("language_translated", r#""language": "nl-BE""#);
+
+        assert!(site.check().findings.is_empty());
     }
 }

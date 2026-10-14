@@ -57,10 +57,6 @@ impl fmt::Display for LumaEventDisplay {
     }
 }
 
-/// The label a register button carries when page.json gives none. See
-/// `config.default_luma_button_label`.
-pub(crate) const DEFAULT_BUTTON_LABEL: &str = "Register";
-
 /// One Luma event as page.json declares it. See `vados.allium`'s
 /// `LumaEvent`; `title` is optional only so its absence can be reported.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
@@ -86,12 +82,15 @@ impl LumaEvent {
     pub(crate) fn display(&self) -> LumaEventDisplay {
         self.display.unwrap_or_default()
     }
-    pub(crate) fn button_label(&self) -> &str {
+    /// The label page.json gives, or `default` -- the site language's word
+    /// for registering (see `SiteConfig.luma_button_label`) -- when it
+    /// gives none.
+    pub(crate) fn button_label<'a>(&'a self, default: &'a str) -> &'a str {
         self.button_label
             .as_deref()
             .map(str::trim)
             .filter(|l| !l.is_empty())
-            .unwrap_or(DEFAULT_BUTTON_LABEL)
+            .unwrap_or(default)
     }
     pub(crate) fn embed_url(&self) -> String {
         EMBED_URL.replace("{id}", &self.event_id)
@@ -159,11 +158,11 @@ mod tests {
     #[test]
     fn button_label_defaults_when_blank_or_missing() {
         let mut e = event("evt-a1", Some("Jam"));
-        assert_eq!(e.button_label(), "Register");
+        assert_eq!(e.button_label("Register"), "Register");
         e.button_label = Some(String::from(" "));
-        assert_eq!(e.button_label(), "Register");
+        assert_eq!(e.button_label("Register"), "Register");
         e.button_label = Some(String::from("Sign up"));
-        assert_eq!(e.button_label(), "Sign up");
+        assert_eq!(e.button_label("Register"), "Sign up");
     }
 
     #[test]

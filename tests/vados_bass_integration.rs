@@ -154,3 +154,36 @@ fn generated_pages_match_facts_observed_on_the_live_site() {
     let gear = std::fs::read_to_string(dest.join("gear.html")).unwrap();
     assert!(gear.contains("Something about the equipment I use"));
 }
+
+/// Every `<img src>` must be a bare URL pointing at a generated file: the
+/// `NNNw` width descriptor belongs only in `srcset`, and a `src` carrying it
+/// points browsers without srcset support at a file that doesn't exist.
+#[test]
+fn every_img_src_is_a_bare_url_to_an_existing_file() {
+    let dest = generated_site();
+    let html = std::fs::read_to_string(dest.join("gear/amber_stars.html")).unwrap();
+
+    let srcs: Vec<&str> = html
+        .split("<img")
+        .skip(1)
+        .filter_map(|tag| tag.split(" src=\"").nth(1))
+        .filter_map(|rest| rest.split('"').next())
+        .filter(|src| src.starts_with("/img/"))
+        .collect();
+    assert!(
+        !srcs.is_empty(),
+        "expected at least one generated <img> on the page"
+    );
+    for src in srcs {
+        assert!(
+            !src.contains(' '),
+            "img src {:?} carries a width descriptor",
+            src
+        );
+        assert!(
+            dest.join(src.trim_start_matches('/')).is_file(),
+            "img src {:?} points at a file that wasn't generated",
+            src
+        );
+    }
+}

@@ -1,7 +1,7 @@
-<nav aria-label="main navigation" class="navbar is-fixed-top {{color}}" id="nav-bar" role="navigation">
+<nav aria-label="{{ ui.main_navigation }}" class="navbar is-fixed-top {{color}}" id="nav-bar" role="navigation">
     <div class="navbar-brand">
         {% if let Some(_) = side_menu %}
-        <button class="button navbar-burger is-hidden-tablet ml-0" id="burger-side-menu" aria-label="Toggle section menu" aria-expanded="false" aria-controls="side-menu-mobile">
+        <button class="button navbar-burger is-hidden-tablet ml-0" id="burger-side-menu" aria-label="{{ ui.toggle_section_menu }}" aria-expanded="false" aria-controls="side-menu-mobile">
             <span></span><span></span><span></span>
         </button>
         {% endif %}
@@ -15,7 +15,7 @@
             </span>
         </a>
         {% endfor %}
-        <button class="button navbar-burger" id="burger-menu" aria-label="Toggle main menu" aria-expanded="false" aria-controls="main-menu"><span></span><span></span><span></span></button>
+        <button class="button navbar-burger" id="burger-menu" aria-label="{{ ui.toggle_main_menu }}" aria-expanded="false" aria-controls="main-menu"><span></span><span></span><span></span></button>
     </div>
     <div class="navbar-menu" id="main-menu">
         <div class="navbar-start" id="flex-main-menu">

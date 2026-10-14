@@ -5,8 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ title }}</title>
     <meta property="og:title" content="{{ title }}" />
-    {% if let Some(s) = summary %}
-    <meta property="og:description" content="{{ s }}" />
+    {% if let Some(d) = description %}
+    <meta name="description" content="{{ d }}" />
+    <meta property="og:description" content="{{ d }}" />
+    {% endif %}
+    {% if let Some(href) = favicon_href %}
+    <link rel="icon" href="{{ href }}"{% if let Some(t) = favicon_type %} type="{{ t }}"{% endif %}>
     {% endif %}
     {% for css_link in css_links %}
     <link href="{{ css_link }}" rel="stylesheet">
@@ -14,7 +18,7 @@
     <style>.skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:0.5em 1em;background:#fff;color:#000;}.skip-link:focus{left:0.5em;top:0.5em;}</style>
 </head>
 <body>
-<a class="skip-link" href="#main">Skip to main content</a>
+<a class="skip-link" href="#main">{{ ui.skip_link }}</a>
 {{ navigation|safe }}
 <main class="section {{background_class}}" id="main" tabindex="-1">
     <div class="container">

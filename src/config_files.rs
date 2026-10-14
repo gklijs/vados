@@ -2,6 +2,7 @@ use crate::bulma::{default_css_links, default_js_links, vados_js, Color};
 use crate::files::write_raw;
 use crate::luma::LumaEvent;
 use serde::{Deserialize, Serialize};
+use std::path::Path;
 
 // Every config struct below derives `Serialize` as well as `Deserialize`:
 // the content-authoring commands (`page new`, `image add`, `page add-image`,
@@ -21,6 +22,16 @@ pub(crate) struct MainConfig {
     pub(crate) background_class: Option<String>,
     pub(crate) navbar_color: Option<Color>,
     pub(crate) language: Option<String>,
+    /// The site's description for search engines, used by every page that
+    /// has no `summary` of its own. See `vados.allium`'s
+    /// `SiteConfig.description` and `PagesAreDescribed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) description: Option<String>,
+    /// A file in the source root (`favicon.svg`, `favicon.png`, `favicon.ico`)
+    /// published at the site root and linked as every page's icon. See
+    /// `vados.allium`'s `SiteConfig.favicon`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) favicon: Option<String>,
     pub(crate) footer_content: String,
 }
 
@@ -46,6 +57,14 @@ impl MainConfig {
             Some(l) => l,
         }
     }
+    /// The site description, if it has one worth publishing: a blank one
+    /// describes nothing, so it counts as missing.
+    pub(crate) fn get_description(&self) -> Option<&str> {
+        self.description
+            .as_deref()
+            .map(str::trim)
+            .filter(|d| !d.is_empty())
+    }
     pub(crate) fn get_css_links(&self) -> Vec<String> {
         match self.include_default_css {
             Some(b) if !b => self.css_files.clone(),
@@ -66,6 +85,18 @@ impl MainConfig {
                 result
             }
         }
+    }
+}
+
+/// The media type of a favicon, by file extension, for the kinds browsers
+/// reliably show as a tab icon (SVG, PNG, ICO); `None` for anything else.
+pub(crate) fn favicon_media_type(file_name: &str) -> Option<&'static str> {
+    let extension = Path::new(file_name).extension()?.to_str()?;
+    match extension.to_ascii_lowercase().as_str() {
+        "svg" => Some("image/svg+xml"),
+        "png" => Some("image/png"),
+        "ico" => Some("image/x-icon"),
+        _ => None,
     }
 }
 

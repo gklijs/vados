@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `main.json` takes an optional `description`, published as every page's `<meta name="description">` and
+  `og:description` unless the page has a `summary` of its own.
+- `main.json` takes an optional `favicon`: a file in the source root (SVG, PNG or ICO), published at the site root
+  and linked as every page's icon. `check` warns when the file doesn't exist. `vados init` asks for one, copying the
+  given SVG, PNG or ICO file into the source root; leaving the answer blank skips it.
+
+### Changed
+
+- The text vados adds to every page -- the skip link, the navigation, breadcrumb and menu-toggle names, and a Luma
+  register button's default label -- now follows the site language, in English, Dutch, German, French and Spanish.
+  `check` warns when the site language is none of these, since that text then falls back to English.
+
+### Fixed
+
+- The current page in the breadcrumbs was announced as "page" instead of its title; it's now marked with
+  `aria-current="page"`.
+
+- A generated `<img>`'s `src` carried the width descriptor that belongs only in `srcset` (e.g.
+  `src="/img/logo-w159.webp 159w"`), so browsers without srcset support requested a file that doesn't exist.
+  `src` is now the bare URL of the smallest variant.
+
 ## 0.1.0 - 2026-10-07
 
 The first release with a `vados` command-line tool; 0.0.3 was a library only. The library's

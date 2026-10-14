@@ -46,6 +46,7 @@ impl TestProject {
                 primary_color: None,
                 footer_text: None,
                 language: None,
+                favicon: None,
                 socials: vec![],
             },
         )
@@ -332,4 +333,61 @@ fn a_page_creation_block_is_reported_without_writing_anything() {
         blocks[0].reason,
         page::PageCreationBlockReason::PathAlreadyAPage
     );
+}
+
+#[test]
+fn a_dutch_site_with_a_description_and_favicon_is_published_in_dutch() {
+    let project = TestProject::new("dutch_site");
+    let main_json = PathBuf::from(&project.source).join("main.json");
+    let mut main: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(&main_json).unwrap()).unwrap();
+    main["language"] = "nl".into();
+    main["description"] = "Een site over neurodiversiteit.".into();
+    main["favicon"] = "favicon.svg".into();
+    fs::write(&main_json, serde_json::to_string_pretty(&main).unwrap()).unwrap();
+    fs::write(
+        PathBuf::from(&project.source).join("favicon.svg"),
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"/>",
+    )
+    .unwrap();
+    for (path, title, summary) in [
+        ("/over", "Over ons", Some("Wie we zijn.")),
+        ("/over/team", "Team", None),
+    ] {
+        page::create_page(
+            &project.source,
+            path,
+            None,
+            page::PageCreationDetails {
+                title: title.to_string(),
+                sub_title: None,
+                icon: None,
+                summary: summary.map(String::from),
+                order: None,
+                content: None,
+            },
+        )
+        .unwrap();
+    }
+    let report = check(&project.source, &project.img_source);
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
+
+    let dest = project.dir.join("public");
+    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+
+    assert!(dest.join("favicon.svg").is_file());
+    let home = fs::read_to_string(dest.join("index.html")).unwrap();
+    assert!(home.contains(r#"<link rel="icon" href="/favicon.svg" type="image/svg+xml">"#));
+    // No summary of its own, so the site description stands in.
+    assert!(home.contains(r#"<meta name="description" content="Een site over neurodiversiteit.""#));
+    assert!(home.contains(">Naar de hoofdinhoud</a>"));
+    assert!(home.contains(r#"aria-label="Hoofdmenu openen of sluiten""#));
+    assert!(!home.contains("Skip to main content"));
+
+    let over = fs::read_to_string(dest.join("over.html")).unwrap();
+    assert!(over.contains(r#"<meta name="description" content="Wie we zijn.""#));
+
+    let team = fs::read_to_string(dest.join("over/team.html")).unwrap();
+    assert!(team.contains(r#"aria-label="Kruimelpad""#));
+    assert!(team.contains(r#"aria-current="page""#));
 }

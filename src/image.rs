@@ -125,6 +125,7 @@ impl<'a> ImageProcessor<'a> {
         let resize_options =
             ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3));
         let mut srcset_part = vec![];
+        let mut src = String::new();
         for (width, quality) in all_widths(width) {
             let path = format!("/img{}/{}-w{}.webp", path_start, file_base, width);
             if empty(self.destination, &path) {
@@ -144,8 +145,10 @@ impl<'a> ImageProcessor<'a> {
                 write_raw(self.destination, &path, result.iter_mut());
             }
             srcset_part.push(format!("{} {}w", path, width));
+            // `src` is the fallback for browsers without srcset support, so it
+            // must be a bare URL: the width descriptor only belongs in srcset.
+            src = path;
         }
-        let src = srcset_part.last().unwrap().clone();
         let srcset = srcset_part.join(", ");
         let base_path = if path_start.is_empty() {
             format!("/{}", file_base)

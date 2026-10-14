@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use dialoguer::Input;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use vados::authoring::luma::{self as luma_authoring, LumaEventDisplay};
 use vados::authoring::menu::{self as menu_authoring, MenuLinkKind};
@@ -529,6 +529,7 @@ fn run_init() -> ExitCode {
     let primary_color = prompt_optional("Primary color [default: #00d1b2, Bulma's own]");
     let footer_text = prompt_optional("Footer text [default: \"Built with vados.\"]");
     let language = prompt_optional("Site language, as a BCP 47 tag [default: \"en\"]");
+    let favicon = prompt_favicon();
 
     println!("\nSocial links -- leave any of these blank to skip it.");
     let mut socials: Vec<SocialHandle> = Vec::new();
@@ -544,6 +545,7 @@ fn run_init() -> ExitCode {
         primary_color,
         footer_text,
         language,
+        favicon,
         socials,
     };
 
@@ -555,6 +557,10 @@ fn run_init() -> ExitCode {
             println!("  primary color: {}", outcome.primary_color);
             println!("  footer text:   {}", outcome.footer_text);
             println!("  language:      {}", outcome.language);
+            println!(
+                "  favicon:       {}",
+                outcome.favicon.as_deref().unwrap_or("none")
+            );
             if outcome.socials.is_empty() {
                 println!("  socials:       none");
             } else {
@@ -1224,6 +1230,21 @@ fn prompt_required(prompt: &str) -> String {
 /// Prompts for an answer the maintainer can skip. A blank answer means the
 /// default applies, so it is returned as `None` rather than the default's
 /// own text -- the default itself is resolved downstream.
+/// Asks for a favicon until it gets one `init::check_favicon` accepts, or a
+/// blank answer to skip it. Quotes around the path are dropped, since a
+/// terminal adds them when a file is dragged onto it.
+fn prompt_favicon() -> Option<PathBuf> {
+    loop {
+        let answer =
+            prompt_optional("Favicon: path to an SVG, PNG or ICO file [leave blank to skip]")?;
+        let path = PathBuf::from(answer.trim_matches(|c| c == '"' || c == '\''));
+        match init::check_favicon(&path) {
+            Ok(()) => return Some(path),
+            Err(problem) => println!("  {problem}; give another path, or leave it blank to skip."),
+        }
+    }
+}
+
 fn prompt_optional(prompt: &str) -> Option<String> {
     let answer: String = Input::new()
         .with_prompt(prompt)

@@ -10,6 +10,7 @@
 //! bundle of basics gathered as a first-class type here.
 
 use crate::bulma::default_css_links;
+use crate::config_files::favicon_media_type;
 use crate::content::escape_html;
 use crate::json_files::write_json_pretty;
 // Re-exported so callers outside this crate (the CLI in `main.rs`) can name
@@ -21,7 +22,7 @@ use std::collections::HashSet;
 use std::fmt;
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Where `init` puts the source tree, the image tree and, per
@@ -144,7 +145,42 @@ pub struct ProjectBasics {
     /// The site's content language, as an IETF BCP 47 tag. See
     /// vados.allium's `SiteLanguageIsDeclared`.
     pub language: Option<String>,
+    /// A favicon to copy into the source root, already accepted by
+    /// `check_favicon`. Unlike the other basics there's no default: `None`
+    /// means the maintainer skipped it and the site has no icon.
+    pub favicon: Option<PathBuf>,
     pub socials: Vec<SocialHandle>,
+}
+
+/// Why a favicon given to `init` can't be used. See vados.allium's
+/// `InitFaviconIsUsable`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FaviconProblem {
+    NotAFile,
+    UnsupportedType,
+}
+
+impl fmt::Display for FaviconProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            FaviconProblem::NotAFile => "no file exists at that path",
+            FaviconProblem::UnsupportedType => "a favicon must be an SVG, PNG or ICO file",
+        })
+    }
+}
+
+/// Whether `path` can be scaffolded as the site's favicon: an existing file
+/// of a kind browsers show as a tab icon. Checked as the maintainer gives it,
+/// so a typo is asked about again rather than failing the whole scaffold.
+pub fn check_favicon(path: &Path) -> Result<(), FaviconProblem> {
+    if !path.is_file() {
+        return Err(FaviconProblem::NotAFile);
+    }
+    let file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+    match favicon_media_type(file_name) {
+        Some(_) => Ok(()),
+        None => Err(FaviconProblem::UnsupportedType),
+    }
 }
 
 /// What `init` created, once it has. See vados.allium's `InitOutcome`
@@ -156,6 +192,8 @@ pub struct InitOutcome {
     pub primary_color: String,
     pub footer_text: String,
     pub language: String,
+    /// The favicon's file name in the source root, when one was given.
+    pub favicon: Option<String>,
     pub socials: Vec<SocialHandle>,
     pub repository_initialized: bool,
     pub gitignore_created: bool,
@@ -183,7 +221,29 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
         .clone()
         .unwrap_or_else(|| DEFAULT_LANGUAGE.to_string());
 
-    write_site_config(dir, &basics.site_title, &footer_text, &language)?;
+    // Copied under its own file name, which can't collide with anything else
+    // scaffolded there: check_favicon only accepts .svg, .png and .ico.
+    let favicon = match &basics.favicon {
+        None => None,
+        Some(path) => {
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .ok_or_else(|| io::Error::other("favicon path has no file name"))?
+                .to_string();
+            fs::create_dir_all(dir.join(SOURCE_DIR))?;
+            fs::copy(path, dir.join(SOURCE_DIR).join(&file_name))?;
+            Some(file_name)
+        }
+    };
+
+    write_site_config(
+        dir,
+        &basics.site_title,
+        &footer_text,
+        &language,
+        favicon.as_deref(),
+    )?;
     write_menu_config(dir, &basics.socials)?;
     write_home_page(dir, &basics.site_title, &home_intro)?;
     fs::create_dir_all(dir.join(IMAGE_DIR))?;
@@ -201,6 +261,7 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
         primary_color,
         footer_text,
         language,
+        favicon,
         socials: basics.socials,
         repository_initialized,
         gitignore_created,
@@ -218,6 +279,8 @@ struct MainJson {
     background_class: Option<String>,
     navbar_color: Option<String>,
     language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    favicon: Option<String>,
     footer_content: String,
 }
 
@@ -226,6 +289,7 @@ fn write_site_config(
     site_title: &str,
     footer_text: &str,
     language: &str,
+    favicon: Option<&str>,
 ) -> io::Result<()> {
     // The default MDI link, kept in sync with the same one `generate` uses
     // for a site that leaves `includeDefaultCss` at its own default. Bulma
@@ -240,6 +304,7 @@ fn write_site_config(
         background_class: None,
         navbar_color: None,
         language: Some(language.to_string()),
+        favicon: favicon.map(String::from),
         footer_content: format!("<p>{}</p>", escape_html(footer_text)),
     };
     write_json_pretty(dir.join(SOURCE_DIR).join("main.json"), &json)
@@ -514,6 +579,7 @@ mod tests {
             primary_color: None,
             footer_text: None,
             language: None,
+            favicon: None,
             socials: vec![],
         }
     }
@@ -684,5 +750,51 @@ mod tests {
         assert_eq!(slugify("Bass - gklijs!"), "bass-gklijs");
         assert_eq!(slugify(""), "vados-site");
         assert_eq!(slugify("###"), "vados-site");
+    }
+
+    #[test]
+    fn a_given_favicon_is_copied_into_the_source_root_and_configured() {
+        let dir = TestDir::new("favicon_given");
+        let icon = dir.path.join("my-icon.svg");
+        fs::write(&icon, "<svg/>").unwrap();
+        let mut b = basics("Icon Site");
+        b.favicon = Some(icon);
+
+        let outcome = scaffold(&dir.path, b).unwrap();
+
+        assert_eq!(outcome.favicon.as_deref(), Some("my-icon.svg"));
+        assert_eq!(
+            fs::read_to_string(dir.path.join(SOURCE_DIR).join("my-icon.svg")).unwrap(),
+            "<svg/>"
+        );
+        let main_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
+        assert!(main_json.contains("\"favicon\": \"my-icon.svg\""));
+    }
+
+    #[test]
+    fn a_skipped_favicon_leaves_main_json_without_one() {
+        let dir = TestDir::new("favicon_skipped");
+
+        let outcome = scaffold(&dir.path, basics("No Icon")).unwrap();
+
+        assert_eq!(outcome.favicon, None);
+        let main_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
+        assert!(!main_json.contains("favicon"));
+    }
+
+    #[test]
+    fn check_favicon_rejects_a_missing_file_and_an_unsupported_type() {
+        let dir = TestDir::new("favicon_checks");
+        let jpg = dir.path.join("icon.jpg");
+        fs::write(&jpg, "not an icon").unwrap();
+        let png = dir.path.join("icon.PNG");
+        fs::write(&png, "png bytes").unwrap();
+
+        assert_eq!(
+            check_favicon(&dir.path.join("missing.svg")),
+            Err(FaviconProblem::NotAFile)
+        );
+        assert_eq!(check_favicon(&jpg), Err(FaviconProblem::UnsupportedType));
+        assert_eq!(check_favicon(&png), Ok(()));
     }
 }

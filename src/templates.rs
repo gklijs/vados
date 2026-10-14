@@ -1,14 +1,18 @@
 use crate::bulma::ImageType;
 use crate::structure::MenuType::Internal;
 use crate::structure::{MenuItem, SocialItem};
+use crate::ui_text::UiText;
 use askama::Template;
 
 #[derive(Template)]
 #[template(path = "page.html")]
 pub(crate) struct PageTemplate<'a> {
     pub(crate) title: &'a str,
-    pub(crate) summary: &'a Option<String>,
+    pub(crate) description: Option<&'a str>,
     pub(crate) language: &'a str,
+    pub(crate) ui: &'a UiText,
+    pub(crate) favicon_href: Option<&'a str>,
+    pub(crate) favicon_type: Option<&'a str>,
     pub(crate) background_class: &'a str,
     pub(crate) navigation: &'a str,
     pub(crate) breadcrumbs: Option<String>,
@@ -45,6 +49,7 @@ pub(crate) struct LumaEventsTemplate<'a> {
 #[template(path = "navigation.html")]
 pub(crate) struct NavigationTemplate<'a> {
     pub(crate) path: &'a str,
+    pub(crate) ui: &'a UiText,
     pub(crate) site_title: &'a str,
     pub(crate) color: &'a str,
     pub(crate) main_menu: &'a Vec<MenuItem>,
@@ -54,7 +59,8 @@ pub(crate) struct NavigationTemplate<'a> {
 
 #[derive(Template)]
 #[template(path = "breadcrumbs.html")]
-pub(crate) struct BreadcrumbsTemplate {
+pub(crate) struct BreadcrumbsTemplate<'a> {
+    pub(crate) ui: &'a UiText,
     pub(crate) crumbs: Vec<MenuItem>,
     pub(crate) last: MenuItem,
 }

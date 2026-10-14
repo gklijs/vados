@@ -1,4 +1,4 @@
-<nav aria-label="breadcrumbs" class="breadcrumb is-hidden-touch">
+<nav aria-label="{{ ui.breadcrumbs }}" class="breadcrumb is-hidden-touch">
     <ul>
         {% for crumb in crumbs %}
         <li>
@@ -11,7 +11,7 @@
         </li>
         {% endfor %}
         <li class="is-active">
-            <a aria-label="page" href="#">
+            <a aria-current="page" href="#">
                 {% if let Some(icon) = last.icon %}
                 <span class="icon m-0"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
                 {% endif %}

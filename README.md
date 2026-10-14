@@ -29,7 +29,7 @@ Requires a fairly recent stable Rust toolchain (see `rust-version` in `Cargo.tom
 `vados init` scaffolds a fresh, deployable project into the current directory: a `root/` source tree (`main.json`,
 `menu.json`, a home `page.json`), an `imgroot/` image tree, a Sass entry that overrides Bulma's `$primary`, and a
 `netlify.toml` that builds and deploys with no further setup. It asks a few questions interactively (site title, home
-intro, primary color, footer text, site language, social handles) and refuses to run if anything it would create
+intro, primary color, footer text, site language, an optional favicon file to copy in, social handles) and refuses to run if anything it would create
 already exists.
 
 ```
@@ -99,14 +99,14 @@ fails fast with a clear message instead of hanging.
 - **`vados page add-luma-event --source root --path /events --event-id evt-AbC123 --title "Spring jam"`** -- links
   an event hosted on [Luma](https://luma.com) to a page; see [Luma events](#luma-events). `--display` picks
   `event-page` (the default), `register-button` or `both`; `--button-label` changes the button's text (default
-  "Register").
+  "Register", in the site's language).
 
 ## Project layout
 
 A vados project is two plain-text trees plus generated output:
 
-- **Source tree** (`--source`): `main.json` (site title, footer, extra CSS/JS, background, navbar color, language)
-  and `menu.json` (main menu, social links) at the root, and one `page.json` per content directory. Every directory
+- **Source tree** (`--source`): `main.json` (site title, footer, extra CSS/JS, background, navbar color, language,
+  description, favicon) and `menu.json` (main menu, social links) at the root, and one `page.json` per content directory. Every directory
   under the root is a page, whether or not it has its own `page.json` -- one without gets a title from its directory
   name and a bare heading for content.
 - **Image tree** (`--img-source`): one `images.json` per directory of images to publish. Each declared image is
@@ -130,13 +130,27 @@ listed under `lumaEvents` in the page's `page.json`; most pages link one, but an
   the embedded event page.
 - `display` is `eventPage` (Luma's embedded event page, which includes registration -- the default),
   `registerButton` (a button opening Luma's registration over the page), or `both`.
-- `buttonLabel` is the register button's text, defaulting to "Register".
+- `buttonLabel` is the register button's text, defaulting to "Register" in the site's language.
 
 An event is shown only on the page that lists it, not on pages beneath it. Luma's button script is loaded only on
 pages that show a register button; pages without a Luma event make no requests to Luma. `check` reports an event
 ID that isn't of the form `evt-...` or an event without a title as errors (`generate` leaves such an event off the
 page), and the same event listed twice on one page as a warning. Nothing is fetched from Luma by `check` or
 `generate`, so whether the event actually exists isn't checked.
+
+## Search engines and browser tabs
+
+Two optional `main.json` settings describe the site to search engines and browsers:
+
+```json
+"description": "A short description of the site, shown by search engines.",
+"favicon": "favicon.svg"
+```
+
+- `description` becomes every page's `<meta name="description">` (and link-preview description), except on a page
+  with a `summary` of its own in its `page.json`, which describes that page instead.
+- `favicon` is a file in the source root -- SVG, PNG or ICO -- published at the site root and linked as every
+  page's icon. `vados init` asks for one (leave it blank to skip). `check` warns when the file is missing; `generate` then publishes the site without an icon.
 
 ## Accessibility
 
@@ -145,6 +159,11 @@ element, offers a skip-to-content link and marked-up navigation/main/footer land
 control (social links, the menu toggles) an accessible name -- a social link's is its provider's own name, or an
 explicit `--label` for one vados doesn't recognise. Every declared image requires alternative text; `check` flags
 one that doesn't.
+
+The text vados adds itself -- the skip link, the names of the navigation landmarks and menu toggles, and a Luma
+register button's default label -- follows the site language. It's available in English, Dutch, German, French and
+Spanish (matched on the language alone, so `nl-BE` gets Dutch); for any other language it falls back to English and
+`check` warns about it.
 
 ## Examples
 
