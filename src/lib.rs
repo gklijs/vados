@@ -3,6 +3,7 @@ mod bulma;
 pub mod check;
 mod config_files;
 mod content;
+pub mod feed;
 mod files;
 pub mod generator;
 mod image;

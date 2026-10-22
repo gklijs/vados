@@ -12,4 +12,12 @@
     <div class="content is-medium mgb-small">
         {{ content|safe }}
     </div>
+    {% if let Some(f) = feed %}
+    <p class="mt-4">
+        <a href="{{ f.href }}" type="application/atom+xml">
+            <span class="icon"><i class="mdi mdi-rss" aria-hidden="true"></i></span>
+            <span>{{ ui.subscribe_feed }}</span>
+        </a>
+    </p>
+    {% endif %}
 </div>

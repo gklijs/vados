@@ -1,6 +1,7 @@
 extern crate core;
 
 use crate::content::{to_content_items, ContentHelper, GenericContent};
+use crate::feed::write_feeds;
 use crate::files::{
     get_all_directory_paths, get_image_list, get_main_config, get_menu_config, write_html,
 };
@@ -47,4 +48,5 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
         //generating the end html and writing it to file
         write_html(destination, path, &page);
     }
+    write_feeds(source, destination, &main_config, &structure);
 }

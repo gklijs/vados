@@ -14,6 +14,7 @@ pub(crate) struct PageTemplate<'a> {
     pub(crate) ui: &'a UiText,
     pub(crate) favicon_href: Option<&'a str>,
     pub(crate) favicon_type: Option<&'a str>,
+    pub(crate) feeds: Vec<FeedLink>,
     pub(crate) background_class: &'a str,
     pub(crate) navigation: &'a str,
     pub(crate) breadcrumbs: Option<String>,
@@ -89,6 +90,13 @@ impl DisplayDate {
     }
 }
 
+/// A feed as a page links to it: in its `<head>` for feed readers to find,
+/// and on the feed's own page for people to follow.
+pub(crate) struct FeedLink {
+    pub(crate) title: String,
+    pub(crate) href: String,
+}
+
 #[derive(Template)]
 #[template(path = "content.html")]
 pub(crate) struct ContentTemplate<'a> {
@@ -97,6 +105,8 @@ pub(crate) struct ContentTemplate<'a> {
     pub(crate) date: Option<DisplayDate>,
     pub(crate) image: Option<String>,
     pub(crate) content: String,
+    pub(crate) feed: Option<FeedLink>,
+    pub(crate) ui: &'a UiText,
 }
 
 #[derive(Template)]

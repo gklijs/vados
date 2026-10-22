@@ -29,7 +29,7 @@ Requires a fairly recent stable Rust toolchain (see `rust-version` in `Cargo.tom
 `vados init` scaffolds a fresh, deployable project into the current directory: a `root/` source tree (`main.json`,
 `menu.json`, a home `page.json`), an `imgroot/` image tree, a Sass entry that overrides Bulma's `$primary`, and a
 `netlify.toml` that builds and deploys with no further setup. It asks a few questions interactively (site title, home
-intro, primary color, footer text, site language, an optional favicon file to copy in, social handles) and refuses to run if anything it would create
+intro, primary color, footer text, site language, an optional favicon file to copy in, an optional site URL, social handles) and refuses to run if anything it would create
 already exists.
 
 ```
@@ -68,7 +68,7 @@ vados check --source root --img-source imgroot
 
 ### Authoring content into an existing project
 
-Seven subcommands change one piece of an already-scaffolded project at a time, instead of reading it wholesale the way
+Eight subcommands change one piece of an already-scaffolded project at a time, instead of reading it wholesale the way
 `generate`/`check` do. Each one checks itself against the same problems `check` would find before writing anything.
 Any flag left unset is asked for interactively (a plain terminal prompt); a required piece with no terminal available
 fails fast with a clear message instead of hanging.
@@ -102,13 +102,16 @@ fails fast with a clear message instead of hanging.
   an event hosted on [Luma](https://luma.com) to a page; see [Luma events](#luma-events). `--display` picks
   `event-page` (the default), `register-button` or `both`; `--button-label` changes the button's text (default
   "Register", in the site's language).
+- **`vados page enable-feed --source root --path /blog`** -- publishes an Atom feed of a page's dated children; see
+  [Feeds](#feeds). `--title` and `--limit` set the feed's title and size. A feed needs the site's address, so when
+  `main.json` has no `siteUrl` yet, `--site-url https://example.com` is required (or asked for) and written there.
 
 ## Project layout
 
 A vados project is two plain-text trees plus generated output:
 
 - **Source tree** (`--source`): `main.json` (site title, footer, extra CSS/JS, background, navbar color, language,
-  description, favicon) and `menu.json` (main menu, social links) at the root, and one `page.json` per content directory. Every directory
+  description, favicon, site URL) and `menu.json` (main menu, social links) at the root, and one `page.json` per content directory. Every directory
   under the root is a page, whether or not it has its own `page.json` -- one without gets a title from its directory
   name and a bare heading for content.
 - **Image tree** (`--img-source`): one `images.json` per directory of images to publish. Each declared image is
@@ -166,6 +169,32 @@ then gets today's date unless `--date` says otherwise.
 
 `check` reports a `date` it can't read as an error (`generate` treats that page as undated), and an undated page
 under a parent ordered by date as a warning.
+
+## Feeds
+
+A page can publish an [Atom](https://en.wikipedia.org/wiki/Atom_(web_standard)) feed of its dated children, so
+readers can subscribe to a blog or news section:
+
+```jsonc
+// main.json
+"siteUrl": "https://example.com"
+
+// blog/page.json
+{ "title": "Blog", "content": "posts.md", "childOrder": "dateDesc", "feed": true }
+```
+
+- `feed` is `true`, or `{ "title": "My blog", "limit": 10 }` to name the feed (default: the site title plus the
+  page's) and cap its size (default 20). It's published at the page's path plus `/feed.xml`, e.g. `/blog/feed.xml`,
+  or `/feed.xml` for the home page.
+- It lists the page's children that have a `date`, newest first whatever their `childOrder`, each with its title,
+  `summary` and full content. A feed has no time zone to go by, so dates are given as UTC.
+- `siteUrl` is required: a feed is read away from the site, so every link in it is given in full. Without a usable
+  one, `generate` publishes the site without feeds.
+- Every page of the section links the feed in its `<head>`, where feed readers look for it, and the section's own
+  page shows a "Subscribe" link in the site's language.
+
+`check` reports a feed without a usable `siteUrl`, and a `siteUrl` that isn't an absolute http(s) URL, as errors, and an
+undated page under a feed (which the feed leaves out) as a warning.
 
 ## Search engines and browser tabs
 

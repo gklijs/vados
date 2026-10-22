@@ -12,6 +12,9 @@
     {% if let Some(href) = favicon_href %}
     <link rel="icon" href="{{ href }}"{% if let Some(t) = favicon_type %} type="{{ t }}"{% endif %}>
     {% endif %}
+    {% for f in feeds %}
+    <link rel="alternate" type="application/atom+xml" title="{{ f.title }}" href="{{ f.href }}">
+    {% endfor %}
     {% for css_link in css_links %}
     <link href="{{ css_link }}" rel="stylesheet">
     {% endfor %}

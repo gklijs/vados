@@ -11,6 +11,8 @@ pub(crate) struct UiText {
     pub(crate) toggle_section_menu: &'static str,
     /// What a Luma register button says when page.json gives no label.
     pub(crate) luma_register: &'static str,
+    /// The link to a section's Atom feed, on the section's own page.
+    pub(crate) subscribe_feed: &'static str,
     /// Month names, January first, as they appear inside a written date.
     months: [&'static str; 12],
     /// Writes a date from its day, month name and year.
@@ -34,6 +36,7 @@ const EN: UiText = UiText {
     toggle_main_menu: "Toggle main menu",
     toggle_section_menu: "Toggle section menu",
     luma_register: "Register",
+    subscribe_feed: "Subscribe (Atom feed)",
     months: [
         "January",
         "February",
@@ -58,6 +61,7 @@ const NL: UiText = UiText {
     toggle_main_menu: "Hoofdmenu openen of sluiten",
     toggle_section_menu: "Sectiemenu openen of sluiten",
     luma_register: "Aanmelden",
+    subscribe_feed: "Abonneren (Atom-feed)",
     months: [
         "januari",
         "februari",
@@ -82,6 +86,7 @@ const DE: UiText = UiText {
     toggle_main_menu: "Hauptmenü ein- oder ausblenden",
     toggle_section_menu: "Bereichsmenü ein- oder ausblenden",
     luma_register: "Anmelden",
+    subscribe_feed: "Abonnieren (Atom-Feed)",
     months: [
         "Januar",
         "Februar",
@@ -106,6 +111,7 @@ const FR: UiText = UiText {
     toggle_main_menu: "Afficher ou masquer le menu principal",
     toggle_section_menu: "Afficher ou masquer le menu de la section",
     luma_register: "S'inscrire",
+    subscribe_feed: "S'abonner (flux Atom)",
     months: [
         "janvier",
         "février",
@@ -133,6 +139,7 @@ const ES: UiText = UiText {
     toggle_main_menu: "Mostrar u ocultar el menú principal",
     toggle_section_menu: "Mostrar u ocultar el menú de la sección",
     luma_register: "Inscribirse",
+    subscribe_feed: "Suscribirse (canal Atom)",
     months: [
         "enero",
         "febrero",

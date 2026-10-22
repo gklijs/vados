@@ -197,6 +197,7 @@ pub fn create_page(
         luma_events: None,
         date: details.date.map(|d| d.to_string()),
         child_order: details.child_order,
+        feed: None,
     };
 
     let dir = page_dir(source, given_path);

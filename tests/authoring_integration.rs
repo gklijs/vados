@@ -11,6 +11,7 @@
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use vados::authoring::feed as feed_authoring;
 use vados::authoring::image_registry;
 use vados::authoring::luma::{self as luma_authoring, LumaEventDisplay};
 use vados::authoring::menu as menu_authoring;
@@ -47,6 +48,7 @@ impl TestProject {
                 footer_text: None,
                 language: None,
                 favicon: None,
+                site_url: None,
                 socials: vec![],
             },
         )
@@ -473,4 +475,173 @@ fn a_section_ordered_by_date_lists_its_newest_posts_first() {
     // A post shows its own date under its title.
     let post = fs::read_to_string(dest.join("blog/second.html")).unwrap();
     assert!(post.contains(r#"<time datetime="2026-05-03">3 May 2026</time>"#));
+}
+
+#[test]
+fn a_section_with_a_feed_publishes_its_newest_dated_posts_as_atom() {
+    let project = TestProject::new("atom_feed");
+    let source = PathBuf::from(&project.source);
+
+    page::create_page(
+        &project.source,
+        "/blog",
+        None,
+        page::PageCreationDetails {
+            title: "Blog".to_string(),
+            sub_title: None,
+            icon: None,
+            summary: None,
+            order: None,
+            date: None,
+            child_order: Some(page::ChildOrder::DateDesc),
+            content: None,
+        },
+    )
+    .unwrap();
+
+    // `page enable-feed`, recording the site URL main.json doesn't have yet.
+    assert!(
+        feed_authoring::detect_feed_enablement_blockers(&project.source, "/blog", None).is_empty()
+    );
+    assert_eq!(feed_authoring::usable_site_url(&project.source), None);
+    let outcome = feed_authoring::enable_feed(
+        &project.source,
+        "/blog",
+        feed_authoring::FeedEnablementDetails {
+            title: None,
+            limit: Some(2),
+            site_url: Some("https://example.com/".to_string()),
+        },
+    )
+    .unwrap();
+    assert_eq!(
+        outcome.feed_url.as_deref(),
+        Some("https://example.com/blog/feed.xml")
+    );
+
+    for (slug, title, date, summary) in [
+        ("old", "Old post", "2026-01-10", None),
+        (
+            "new",
+            "Fish & <chips>",
+            "2026-10-22T09:30",
+            Some("Tasty & cheap"),
+        ),
+        ("mid", "Middle post", "2026-05-03", None),
+    ] {
+        page::create_page(
+            &project.source,
+            &format!("/blog/{slug}"),
+            None,
+            page::PageCreationDetails {
+                title: title.to_string(),
+                sub_title: None,
+                icon: None,
+                summary: summary.map(String::from),
+                order: None,
+                date: Some(date.parse().unwrap()),
+                child_order: None,
+                content: Some("post.md".to_string()),
+            },
+        )
+        .unwrap();
+        fs::write(
+            source.join(format!("blog/{slug}/post.md")),
+            format!("# {slug}\n\nSome *text* with a [link](/blog) & an ampersand.\n"),
+        )
+        .unwrap();
+    }
+
+    let report = check(&project.source, &project.img_source);
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
+
+    let dest = project.dir.join("public");
+    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+
+    let xml = fs::read_to_string(dest.join("blog/feed.xml")).unwrap();
+    let doc = roxmltree::Document::parse(&xml).expect("the feed is well-formed XML");
+    let feed = doc.root_element();
+    assert_eq!(
+        feed.tag_name().namespace(),
+        Some("http://www.w3.org/2005/Atom")
+    );
+    let child_text = |node: roxmltree::Node, name: &str| {
+        node.children()
+            .find(|c| c.has_tag_name(name))
+            .and_then(|c| c.text())
+            .map(String::from)
+    };
+    assert_eq!(
+        child_text(feed, "title").as_deref(),
+        Some("Test Site – Blog")
+    );
+    assert_eq!(
+        child_text(feed, "id").as_deref(),
+        Some("https://example.com/blog")
+    );
+    assert_eq!(
+        child_text(feed, "updated").as_deref(),
+        Some("2026-10-22T09:30:00Z")
+    );
+
+    // Newest first, capped at the limit of two.
+    let entries: Vec<_> = feed
+        .children()
+        .filter(|c| c.has_tag_name("entry"))
+        .collect();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(
+        child_text(entries[0], "title").as_deref(),
+        Some("Fish & <chips>")
+    );
+    assert_eq!(
+        child_text(entries[0], "id").as_deref(),
+        Some("https://example.com/blog/new")
+    );
+    assert_eq!(
+        child_text(entries[0], "summary").as_deref(),
+        Some("Tasty & cheap")
+    );
+    let content = child_text(entries[0], "content").unwrap();
+    assert!(content.contains("<em>text</em>"), "{content}");
+    assert!(content.contains(r#"<a href="/blog">link</a>"#), "{content}");
+    assert_eq!(
+        child_text(entries[1], "title").as_deref(),
+        Some("Middle post")
+    );
+    assert_eq!(child_text(entries[1], "summary"), None);
+
+    // Feed readers find it from the section and from every page in it; people
+    // find it on the section's own page.
+    let blog = fs::read_to_string(dest.join("blog.html")).unwrap();
+    assert!(blog.contains(r#"rel="alternate" type="application/atom+xml""#));
+    assert!(blog.contains(r#"href="/blog/feed.xml""#));
+    assert!(blog.contains("Subscribe (Atom feed)"));
+    let post = fs::read_to_string(dest.join("blog/old.html")).unwrap();
+    assert!(post
+        .contains(r#"type="application/atom+xml" title="Test Site – Blog" href="/blog/feed.xml""#));
+    assert!(!post.contains("Subscribe (Atom feed)"));
+    let home = fs::read_to_string(dest.join("index.html")).unwrap();
+    assert!(!home.contains("application/atom+xml"));
+}
+
+#[test]
+fn without_a_site_url_no_feed_is_published_or_advertised() {
+    let project = TestProject::new("feed_without_site_url");
+    fs::create_dir_all(PathBuf::from(&project.source).join("blog")).unwrap();
+    fs::write(
+        PathBuf::from(&project.source).join("blog/page.json"),
+        r#"{"title":"Blog","content":"<p>Posts</p>","feed":true}"#,
+    )
+    .unwrap();
+
+    let report = check(&project.source, &project.img_source);
+    assert!(!report.passed());
+
+    let dest = project.dir.join("public");
+    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+
+    assert!(!dest.join("blog/feed.xml").exists());
+    let blog = fs::read_to_string(dest.join("blog.html")).unwrap();
+    assert!(!blog.contains("application/atom+xml"));
 }
