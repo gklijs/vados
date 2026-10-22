@@ -28,5 +28,6 @@ webp = "0.3.1"
 
 [dev-dependencies]
 proptest = "1"
+roxmltree = "0.21.1"
 
 [features]

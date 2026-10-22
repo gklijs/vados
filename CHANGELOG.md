@@ -4,6 +4,15 @@
 
 ### Added
 
+- Atom feeds: a page with `"feed": true` (or `{ "title": ..., "limit": ... }`) in its `page.json` publishes
+  `<path>/feed.xml`, listing its dated children newest first with their summary and full content. Every page of the
+  section links the feed in its `<head>`, and the section's page shows a "Subscribe" link in the site's language.
+- `main.json` takes an optional `siteUrl`, which feeds need to give their links in full. `vados init` asks for it
+  (leave it blank to set it later).
+- `vados page enable-feed --path /blog [--title] [--limit] [--site-url]` turns on a page's feed, and records the site
+  URL in `main.json` when it has none yet.
+- `check` reports a feed without a usable `siteUrl`, and a malformed `siteUrl`, as errors, and an undated page under
+  a feed as a warning.
 - `page.json` takes an optional `date` (`YYYY-MM-DD`, optionally with `THH:MM[:SS]`), shown under the page's title
   and on side tiles advertising it, written the way the site's language writes dates.
 - `page.json` takes an optional `childOrder`: `order` (the default), `dateDesc` or `dateAsc`, so a blog or news

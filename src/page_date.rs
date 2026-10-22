@@ -50,6 +50,17 @@ impl PageDate {
         }
     }
 
+    /// The RFC 3339 timestamp feeds need, which must carry a time zone. A
+    /// page date has none, so it's read as UTC, and a date without a time as
+    /// the start of that day.
+    pub fn to_rfc3339(&self) -> String {
+        let (h, m, s) = self.time.unwrap_or_default();
+        format!(
+            "{:04}-{:02}-{:02}T{h:02}:{m:02}:{s:02}Z",
+            self.year, self.month, self.day
+        )
+    }
+
     fn sort_key(&self) -> (u16, u8, u8, (u8, u8, u8)) {
         (
             self.year,
@@ -225,6 +236,19 @@ mod tests {
         assert!(date("2026-10-22T10:00") > date("2026-10-22T09:59:59"));
         assert!(date("2026-10-22") < date("2026-10-22T00:01"));
         assert!(date("2025-12-31") < date("2026-01-01"));
+    }
+
+    #[test]
+    fn rfc3339_reads_the_date_as_utc_with_a_full_time() {
+        assert_eq!(date("2026-10-22").to_rfc3339(), "2026-10-22T00:00:00Z");
+        assert_eq!(
+            date("2026-10-22T09:30").to_rfc3339(),
+            "2026-10-22T09:30:00Z"
+        );
+        assert_eq!(
+            date("2026-10-22T09:30:15").to_rfc3339(),
+            "2026-10-22T09:30:15Z"
+        );
     }
 
     #[test]

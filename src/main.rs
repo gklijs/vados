@@ -2,11 +2,13 @@ use clap::{Parser, Subcommand, ValueEnum};
 use dialoguer::Input;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use vados::authoring::feed as feed_authoring;
 use vados::authoring::luma::{self as luma_authoring, LumaEventDisplay};
 use vados::authoring::menu::{self as menu_authoring, MenuLinkKind};
 use vados::authoring::page::{self, ChildOrder, NotificationSide, PageImageRole};
 use vados::authoring::{image_registry, social};
 use vados::check::check;
+use vados::feed::is_site_url;
 use vados::generator::generate;
 use vados::init::{self, ProjectBasics, RecognizedSocialProvider, SocialHandle};
 use vados::page_date::PageDate;
@@ -170,6 +172,25 @@ enum PageCommand {
         /// The register button's text. Defaults to "Register".
         #[arg(long = "button-label")]
         button_label: Option<String>,
+    },
+    /// Publishes an Atom feed of a page's dated children, e.g. a blog's
+    /// posts, newest first.
+    EnableFeed {
+        #[arg(long)]
+        source: String,
+        /// The page whose children the feed lists, e.g. `/blog`.
+        #[arg(long)]
+        path: String,
+        /// The feed's title. Defaults to the site title plus the page's.
+        #[arg(long)]
+        title: Option<String>,
+        /// How many of the newest pages the feed holds. Defaults to 20.
+        #[arg(long, value_parser = clap::value_parser!(u32).range(1..))]
+        limit: Option<u32>,
+        /// Where the site is published, e.g. `https://example.com`; written to
+        /// main.json. Asked for when main.json has none yet.
+        #[arg(long = "site-url")]
+        site_url: Option<String>,
     },
 }
 
@@ -470,6 +491,13 @@ fn main() -> ExitCode {
                 display.map(Into::into),
                 button_label,
             ),
+            PageCommand::EnableFeed {
+                source,
+                path,
+                title,
+                limit,
+                site_url,
+            } => run_page_enable_feed(source, path, title, limit, site_url),
         },
         Command::Image { command } => match command {
             ImageCommand::Add {
@@ -569,6 +597,7 @@ fn run_init() -> ExitCode {
     let footer_text = prompt_optional("Footer text [default: \"Built with vados.\"]");
     let language = prompt_optional("Site language, as a BCP 47 tag [default: \"en\"]");
     let favicon = prompt_favicon();
+    let site_url = prompt_optional_site_url();
 
     println!("\nSocial links -- leave any of these blank to skip it.");
     let mut socials: Vec<SocialHandle> = Vec::new();
@@ -585,6 +614,7 @@ fn run_init() -> ExitCode {
         footer_text,
         language,
         favicon,
+        site_url,
         socials,
     };
 
@@ -599,6 +629,10 @@ fn run_init() -> ExitCode {
             println!(
                 "  favicon:       {}",
                 outcome.favicon.as_deref().unwrap_or("none")
+            );
+            println!(
+                "  site URL:      {}",
+                outcome.site_url.as_deref().unwrap_or("none yet")
             );
             if outcome.socials.is_empty() {
                 println!("  socials:       none");
@@ -1237,6 +1271,98 @@ fn run_page_add_luma_event(
             eprintln!("page add-luma-event failed while writing the project: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+// -- page enable-feed --------------------------------------------------------
+
+fn run_page_enable_feed(
+    source: String,
+    path: String,
+    title: Option<String>,
+    limit: Option<u32>,
+    site_url: Option<String>,
+) -> ExitCode {
+    // Every blocker is checked in one pass before anything is asked; see
+    // vados.allium's `DetectFeedEnablementBlockers`.
+    let blocks =
+        feed_authoring::detect_feed_enablement_blockers(&source, &path, site_url.as_deref());
+    if !blocks.is_empty() {
+        println!("`page enable-feed` can't publish a feed for {path} yet:\n");
+        for b in &blocks {
+            println!("  {:<40} {}", b.reason, b.detail);
+        }
+        return ExitCode::FAILURE;
+    }
+
+    // A feed can't give its links in full without the site URL, so it's
+    // required exactly when main.json doesn't have a usable one yet.
+    let site_url = match site_url {
+        Some(url) => Some(url),
+        None if feed_authoring::usable_site_url(&source).is_none() => {
+            if !dialoguer::console::user_attended() {
+                eprintln!(
+                    "main.json has no siteUrl yet, so `--site-url` is required; no interactive terminal is available to ask for it."
+                );
+                return ExitCode::FAILURE;
+            }
+            println!("A feed needs the address the site is published at.");
+            Some(prompt_site_url())
+        }
+        None => None,
+    };
+
+    match feed_authoring::enable_feed(
+        &source,
+        &path,
+        feed_authoring::FeedEnablementDetails {
+            title,
+            limit,
+            site_url,
+        },
+    ) {
+        Ok(outcome) => {
+            println!("\nEnabled the feed of {}:", outcome.path);
+            if let Some(url) = &outcome.feed_url {
+                println!("  feed:     {}", url);
+            }
+            if let Some(title) = &outcome.title {
+                println!("  title:    {}", title);
+            }
+            println!("  holds:    the {} newest dated pages", outcome.limit);
+            if let Some(url) = &outcome.site_url_written {
+                println!("  site URL: {} (written to main.json)", url);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("page enable-feed failed while writing the project: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Asks for the site URL until an absolute http(s) one is given.
+fn prompt_site_url() -> String {
+    loop {
+        let answer = prompt_required("Site URL, e.g. https://example.com");
+        if is_site_url(&answer) {
+            return answer;
+        }
+        println!("  That isn't an absolute http(s) URL; try again.");
+    }
+}
+
+/// Asks for the site URL, which can be left blank to set later.
+fn prompt_optional_site_url() -> Option<String> {
+    loop {
+        let answer = prompt_optional(
+            "Site URL, e.g. https://example.com, needed for feeds [leave blank to set later]",
+        )?;
+        if is_site_url(&answer) {
+            return Some(answer);
+        }
+        println!("  That isn't an absolute http(s) URL; give another, or leave it blank.");
     }
 }
 

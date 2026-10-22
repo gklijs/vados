@@ -149,6 +149,10 @@ pub struct ProjectBasics {
     /// `check_favicon`. Unlike the other basics there's no default: `None`
     /// means the maintainer skipped it and the site has no icon.
     pub favicon: Option<PathBuf>,
+    /// Where the site will be published, already accepted by `is_site_url`.
+    /// No default: `None` means the maintainer will set it later, e.g. with
+    /// `page enable-feed`.
+    pub site_url: Option<String>,
     pub socials: Vec<SocialHandle>,
 }
 
@@ -194,6 +198,7 @@ pub struct InitOutcome {
     pub language: String,
     /// The favicon's file name in the source root, when one was given.
     pub favicon: Option<String>,
+    pub site_url: Option<String>,
     pub socials: Vec<SocialHandle>,
     pub repository_initialized: bool,
     pub gitignore_created: bool,
@@ -243,6 +248,7 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
         &footer_text,
         &language,
         favicon.as_deref(),
+        basics.site_url.as_deref(),
     )?;
     write_menu_config(dir, &basics.socials)?;
     write_home_page(dir, &basics.site_title, &home_intro)?;
@@ -262,6 +268,7 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
         footer_text,
         language,
         favicon,
+        site_url: basics.site_url,
         socials: basics.socials,
         repository_initialized,
         gitignore_created,
@@ -281,6 +288,8 @@ struct MainJson {
     language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     favicon: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    site_url: Option<String>,
     footer_content: String,
 }
 
@@ -290,6 +299,7 @@ fn write_site_config(
     footer_text: &str,
     language: &str,
     favicon: Option<&str>,
+    site_url: Option<&str>,
 ) -> io::Result<()> {
     // The default MDI link, kept in sync with the same one `generate` uses
     // for a site that leaves `includeDefaultCss` at its own default. Bulma
@@ -305,6 +315,7 @@ fn write_site_config(
         navbar_color: None,
         language: Some(language.to_string()),
         favicon: favicon.map(String::from),
+        site_url: site_url.map(String::from),
         footer_content: format!("<p>{}</p>", escape_html(footer_text)),
     };
     write_json_pretty(dir.join(SOURCE_DIR).join("main.json"), &json)
@@ -580,6 +591,7 @@ mod tests {
             footer_text: None,
             language: None,
             favicon: None,
+            site_url: None,
             socials: vec![],
         }
     }
@@ -780,6 +792,25 @@ mod tests {
         assert_eq!(outcome.favicon, None);
         let main_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
         assert!(!main_json.contains("favicon"));
+    }
+
+    #[test]
+    fn a_given_site_url_is_written_to_main_json_and_a_skipped_one_is_left_out() {
+        let dir = TestDir::new("site_url_given");
+        let mut b = basics("Feed Site");
+        b.site_url = Some("https://example.com".to_string());
+
+        let outcome = scaffold(&dir.path, b).unwrap();
+
+        assert_eq!(outcome.site_url.as_deref(), Some("https://example.com"));
+        let main_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
+        assert!(main_json.contains("\"siteUrl\": \"https://example.com\""));
+
+        let skipped = TestDir::new("site_url_skipped");
+        scaffold(&skipped.path, basics("No URL")).unwrap();
+        let main_json =
+            fs::read_to_string(skipped.path.join(SOURCE_DIR).join("main.json")).unwrap();
+        assert!(!main_json.contains("siteUrl"));
     }
 
     #[test]

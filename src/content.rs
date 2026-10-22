@@ -1,12 +1,13 @@
 use crate::bulma::{Color, ImageType};
 use crate::config_files::{favicon_media_type, MainConfig, MenuConfig, Notification, PageConfig};
+use crate::feed::{feed_href, feed_title};
 use crate::files::write_raw;
 use crate::image::ProcessedImage;
 use crate::luma::BUTTON_SCRIPT_URL;
 use crate::structure::{Item, SocialItem, Structure};
 use crate::templates::{
     BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate, DisplayDate,
-    ExternalNotificationTemplate, FooterTemplate, InternalImageTemplate,
+    ExternalNotificationTemplate, FeedLink, FooterTemplate, InternalImageTemplate,
     InternalNotificationTemplate, LumaEventView, LumaEventsTemplate, NavigationTemplate,
     PageTemplate, SideMenuTemplate,
 };
@@ -33,6 +34,9 @@ pub(crate) struct GenericContent {
     ui: &'static UiText,
     description: Option<String>,
     favicon: Option<Favicon>,
+    site_title: String,
+    /// Whether feeds are published at all: only with a usable `siteUrl`.
+    feeds_published: bool,
 }
 
 /// The site icon as pages link it: where it was published, and its media
@@ -82,6 +86,8 @@ impl GenericContent {
             ui,
             description,
             favicon,
+            site_title: main_config.site_title.clone(),
+            feeds_published: main_config.get_site_url().is_some(),
         }
     }
 }
@@ -127,7 +133,7 @@ impl ContentHelper<'_> {
             self.path,
             &self.item,
             self.structure,
-            generic_content.ui,
+            generic_content,
         )
     }
     pub(crate) fn get_page(
@@ -388,7 +394,7 @@ fn html_to_content(file_path: &str) -> String {
     }
 }
 
-fn get_content(source: &str, path: &str, reference: &str) -> String {
+pub(crate) fn get_content(source: &str, path: &str, reference: &str) -> String {
     let file_path = get_file_path(source, path, reference);
     match classify_content_reference(reference) {
         ContentKind::MarkdownFile => md_to_content(&file_path),
@@ -476,8 +482,9 @@ fn get_main_content(
     path: &str,
     item: &Item,
     structure: &Structure,
-    ui: &UiText,
+    generic_content: &GenericContent,
 ) -> String {
+    let ui = generic_content.ui;
     let image = match &item.image {
         None => None,
         Some(i) => structure.process_image(i, ImageType::Main),
@@ -488,9 +495,40 @@ fn get_main_content(
         date: item.date.map(|d| DisplayDate::new(&d, ui)),
         image,
         content: get_content(source, path, &item.content),
+        feed: item
+            .feed
+            .as_ref()
+            .filter(|_| generic_content.feeds_published)
+            .map(|_| feed_link(item, generic_content)),
+        ui,
     }
     .render()
     .unwrap()
+}
+
+fn feed_link(item: &Item, generic_content: &GenericContent) -> FeedLink {
+    FeedLink {
+        title: feed_title(item, &generic_content.site_title),
+        href: feed_href(&item.path),
+    }
+}
+
+/// The feeds a page sits inside: its own, and every ancestor's, nearest
+/// first. See vados.allium's `FeedsAreDiscoverable`.
+fn get_feed_links(
+    path: &str,
+    structure: &Structure,
+    generic_content: &GenericContent,
+) -> Vec<FeedLink> {
+    if !generic_content.feeds_published {
+        return vec![];
+    }
+    structure
+        .get_self_and_ancestors(path)
+        .iter()
+        .filter(|i| i.feed.is_some())
+        .map(|i| feed_link(i, generic_content))
+        .collect()
 }
 
 fn get_page(
@@ -515,6 +553,7 @@ fn get_page(
         ui: generic_content.ui,
         favicon_href: generic_content.favicon.as_ref().map(|f| f.href.as_str()),
         favicon_type: generic_content.favicon.as_ref().and_then(|f| f.media_type),
+        feeds: get_feed_links(path, structure, generic_content),
         background_class: &generic_content.background_class,
         navigation: page_helper.navigation,
         breadcrumbs: page_helper.breadcrumbs,

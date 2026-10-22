@@ -32,6 +32,10 @@ pub(crate) struct MainConfig {
     /// `vados.allium`'s `SiteConfig.favicon`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) favicon: Option<String>,
+    /// Where the site is published, e.g. `https://example.com`. Feeds need it
+    /// to give every link in full. See `vados.allium`'s `SiteConfig.site_url`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) site_url: Option<String>,
     pub(crate) footer_content: String,
 }
 
@@ -65,6 +69,15 @@ impl MainConfig {
             .map(str::trim)
             .filter(|d| !d.is_empty())
     }
+    /// The site URL without a trailing slash, if it's an absolute http(s)
+    /// URL -- the only kind a feed can build its links from.
+    pub(crate) fn get_site_url(&self) -> Option<&str> {
+        self.site_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| is_site_url(u))
+            .map(|u| u.trim_end_matches('/'))
+    }
     pub(crate) fn get_css_links(&self) -> Vec<String> {
         match self.include_default_css {
             Some(b) if !b => self.css_files.clone(),
@@ -86,6 +99,18 @@ impl MainConfig {
             }
         }
     }
+}
+
+/// Whether `url` can serve as the site URL: absolute, http or https, with a
+/// host and nothing after the path (no query or fragment). See
+/// `vados.allium`'s `is_site_url`.
+pub fn is_site_url(url: &str) -> bool {
+    let rest = match url.trim().split_once("://") {
+        Some(("http" | "https", rest)) => rest,
+        _ => return false,
+    };
+    let host = rest.split('/').next().unwrap_or_default();
+    !host.is_empty() && !rest.contains(['?', '#']) && !rest.contains(char::is_whitespace)
 }
 
 /// The media type of a favicon, by file extension, for the kinds browsers
@@ -127,6 +152,48 @@ pub(crate) struct PageConfig {
     /// `vados.allium`'s `Page.child_order`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) child_order: Option<ChildOrder>,
+    /// Whether this page publishes an Atom feed of its dated children. See
+    /// `vados.allium`'s `Page.feed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) feed: Option<FeedSetting>,
+}
+
+impl PageConfig {
+    /// The page's feed settings, if it publishes a feed at all.
+    pub(crate) fn get_feed(&self) -> Option<FeedConfig> {
+        match &self.feed {
+            None | Some(FeedSetting::Enabled(false)) => None,
+            Some(FeedSetting::Enabled(true)) => Some(FeedConfig::default()),
+            Some(FeedSetting::Configured(c)) => Some(c.clone()),
+        }
+    }
+}
+
+/// page.json's `feed`: `true`/`false`, or an object giving the feed's title
+/// and how many entries it holds.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[serde(untagged)]
+pub(crate) enum FeedSetting {
+    Enabled(bool),
+    Configured(FeedConfig),
+}
+
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FeedConfig {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) limit: Option<u32>,
+}
+
+impl FeedConfig {
+    /// How many entries a feed holds when page.json doesn't say.
+    pub(crate) const DEFAULT_LIMIT: u32 = 20;
+
+    pub(crate) fn get_limit(&self) -> u32 {
+        self.limit.unwrap_or(Self::DEFAULT_LIMIT)
+    }
 }
 
 /// How a page orders its children -- in menus, side menus and side
@@ -159,6 +226,7 @@ impl PageConfig {
             luma_events: None,
             date: None,
             child_order: None,
+            feed: None,
         }
     }
 }

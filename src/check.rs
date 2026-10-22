@@ -6,7 +6,7 @@
 //! every check below runs regardless of what earlier checks found.
 
 use crate::config_files::{
-    ChildOrder, ImageList, MainConfig, MenuConfig, Notification, PageConfig,
+    is_site_url, ChildOrder, ImageList, MainConfig, MenuConfig, Notification, PageConfig,
 };
 use crate::content::{classify_content_reference, get_file_path, ContentKind};
 use crate::files::get_all_directory_paths;
@@ -66,6 +66,9 @@ pub enum FindingKind {
     UntranslatedInterfaceLanguage,
     UnreadablePageDate,
     UndatedPageInDateOrderedSection,
+    MalformedSiteUrl,
+    FeedWithoutSiteUrl,
+    UndatedPageLeftOutOfFeed,
 }
 
 impl FindingKind {
@@ -82,7 +85,9 @@ impl FindingKind {
             | ImageWithoutAlternativeText
             | MalformedLumaEventId
             | LumaEventWithoutTitle
-            | UnreadablePageDate => Severity::Error,
+            | UnreadablePageDate
+            | MalformedSiteUrl
+            | FeedWithoutSiteUrl => Severity::Error,
             ImagesManifestUnreadable
             | MissingContentFile
             | UnresolvedMenuLink
@@ -93,7 +98,8 @@ impl FindingKind {
             | DuplicateLumaEvent
             | MissingFaviconFile
             | UntranslatedInterfaceLanguage
-            | UndatedPageInDateOrderedSection => Severity::Warning,
+            | UndatedPageInDateOrderedSection
+            | UndatedPageLeftOutOfFeed => Severity::Warning,
         }
     }
 }
@@ -133,6 +139,13 @@ impl fmt::Display for FindingKind {
             UnreadablePageDate => "page date is not of the form YYYY-MM-DD or YYYY-MM-DDTHH:MM",
             UndatedPageInDateOrderedSection => {
                 "page has no date, but its parent orders its children by date, so it is listed last"
+            }
+            MalformedSiteUrl => "site URL is not an absolute http(s) URL",
+            FeedWithoutSiteUrl => {
+                "page publishes a feed, but main.json has no usable siteUrl, so no feed is written"
+            }
+            UndatedPageLeftOutOfFeed => {
+                "page has no date, so it is left out of its parent's feed"
             }
         })
     }
@@ -316,6 +329,30 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                     kind: FindingKind::MissingFaviconFile,
                     location: format!("{}/main.json", source),
                     detail: Some(favicon.clone()),
+                });
+            }
+        }
+        if let Some(url) = &main_config.site_url {
+            if !is_site_url(url) {
+                findings.push(Finding {
+                    kind: FindingKind::MalformedSiteUrl,
+                    location: format!("{}/main.json", source),
+                    detail: Some(url.clone()),
+                });
+            }
+        }
+        if main_config.get_site_url().is_none() {
+            let mut feed_paths: Vec<&String> = pages
+                .iter()
+                .filter(|(_, c)| c.get_feed().is_some())
+                .map(|(p, _)| p)
+                .collect();
+            feed_paths.sort();
+            for path in feed_paths {
+                findings.push(Finding {
+                    kind: FindingKind::FeedWithoutSiteUrl,
+                    location: path.clone(),
+                    detail: None,
                 });
             }
         }
@@ -507,13 +544,23 @@ fn check_page_date(
             }
         }
         None => {
-            let parent_orders_by_date = parent_path(page_path)
-                .and_then(|p| pages.get(&p))
+            let parent = parent_path(page_path).and_then(|p| pages.get(&p));
+            let parent_orders_by_date = parent
                 .and_then(|p| p.child_order)
                 .is_some_and(|o| o != ChildOrder::Order);
-            if parent_orders_by_date {
+            let parent_publishes_feed = parent.is_some_and(|p| p.get_feed().is_some());
+            // One warning per undated page: being left out of a feed is the
+            // more consequential of the two.
+            let kind = if parent_publishes_feed {
+                Some(FindingKind::UndatedPageLeftOutOfFeed)
+            } else if parent_orders_by_date {
+                Some(FindingKind::UndatedPageInDateOrderedSection)
+            } else {
+                None
+            };
+            if let Some(kind) = kind {
                 findings.push(Finding {
-                    kind: FindingKind::UndatedPageInDateOrderedSection,
+                    kind,
                     location: String::from(page_path),
                     detail: None,
                 });
@@ -1197,5 +1244,96 @@ mod tests {
         );
 
         assert!(site.check().findings.is_empty());
+    }
+
+    fn main_json_with_site_url(site_url: &str) -> String {
+        VALID_MAIN_JSON.replacen(
+            r#""footerContent""#,
+            &format!(r#""siteUrl": "{site_url}", "footerContent""#),
+            1,
+        )
+    }
+
+    fn feed_site(name: &str, main_json: &str, post_json: &str) -> TestSite {
+        let site = TestSite::new(name);
+        site.write_source("main.json", main_json);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site.write_source(
+            "blog/page.json",
+            r#"{"title":"Blog","content":"<p>hi</p>","childOrder":"dateDesc","feed":true}"#,
+        );
+        site.write_source("blog/post/page.json", post_json);
+        site
+    }
+
+    const DATED_POST: &str = r#"{"title":"Post","content":"<p>hi</p>","date":"2026-10-22"}"#;
+
+    #[test]
+    fn feed_with_a_usable_site_url_and_dated_posts_has_no_findings() {
+        let site = feed_site(
+            "feed_ok",
+            &main_json_with_site_url("https://example.com"),
+            DATED_POST,
+        );
+
+        let report = site.check();
+
+        assert!(report.findings.is_empty(), "{:?}", report.findings);
+    }
+
+    #[test]
+    fn feed_without_a_site_url_is_an_error() {
+        let site = feed_site("feed_no_url", VALID_MAIN_JSON, DATED_POST);
+
+        let report = site.check();
+
+        assert!(has_kind_at(
+            &report,
+            FindingKind::FeedWithoutSiteUrl,
+            "/blog"
+        ));
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn malformed_site_url_is_an_error_and_leaves_feeds_without_one() {
+        let site = feed_site(
+            "feed_bad_url",
+            &main_json_with_site_url("example.com"),
+            DATED_POST,
+        );
+
+        let report = site.check();
+
+        assert_eq!(count_kind(&report, FindingKind::MalformedSiteUrl), 1);
+        assert!(has_kind_at(
+            &report,
+            FindingKind::FeedWithoutSiteUrl,
+            "/blog"
+        ));
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn undated_page_under_a_feed_gets_one_warning_about_the_feed() {
+        let site = feed_site(
+            "feed_undated",
+            &main_json_with_site_url("https://example.com"),
+            r#"{"title":"Post","content":"<p>hi</p>"}"#,
+        );
+
+        let report = site.check();
+
+        assert!(has_kind_at(
+            &report,
+            FindingKind::UndatedPageLeftOutOfFeed,
+            "/blog/post"
+        ));
+        assert_eq!(
+            count_kind(&report, FindingKind::UndatedPageInDateOrderedSection),
+            0
+        );
+        assert!(report.passed());
     }
 }

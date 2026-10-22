@@ -1,5 +1,7 @@
 use crate::bulma::ImageType;
-use crate::config_files::{ChildOrder, MenuConfig, PageConfig, RawMenuItem, RawSocialItem};
+use crate::config_files::{
+    ChildOrder, FeedConfig, MenuConfig, PageConfig, RawMenuItem, RawSocialItem,
+};
 use crate::content::{items_to_side_notifications, to_internal_image};
 use crate::image::ProcessedImage;
 use crate::luma::{is_luma_event_id, LumaEvent};
@@ -46,10 +48,13 @@ pub(crate) struct Item {
     /// can't be read; see `vados.allium`'s `Page.published_date`.
     pub(crate) date: Option<PageDate>,
     pub(crate) child_order: ChildOrder,
+    /// Set when this page publishes a feed of its dated children.
+    pub(crate) feed: Option<FeedConfig>,
 }
 
 impl Item {
     pub(crate) fn new(path: String, page_config: PageConfig) -> Item {
+        let feed = page_config.get_feed();
         let luma_events = published_luma_events(&path, page_config.luma_events);
         let date = published_date(&path, page_config.date.as_deref());
         Item {
@@ -64,6 +69,7 @@ impl Item {
             luma_events,
             date,
             child_order: page_config.child_order.unwrap_or_default(),
+            feed,
         }
     }
 }
@@ -415,6 +421,34 @@ impl Structure {
     }
     pub(crate) fn get_item(&self, path: &str) -> Arc<Item> {
         self.by_path.get(path).unwrap().clone()
+    }
+    /// Every page that publishes a feed.
+    pub(crate) fn get_feed_items(&self) -> Vec<Arc<Item>> {
+        self.by_path
+            .iter()
+            .filter(|i| i.feed.is_some())
+            .map(|i| i.value().clone())
+            .collect()
+    }
+    /// A page's direct children, in display order.
+    pub(crate) fn get_children(&self, path: &str) -> Vec<Arc<Item>> {
+        self.by_parent
+            .get(path)
+            .map(|c| c.value().clone())
+            .unwrap_or_default()
+    }
+    /// The page at `path` and its ancestors, nearest first -- the pages
+    /// whose feeds `path` sits inside.
+    pub(crate) fn get_self_and_ancestors(&self, path: &str) -> Vec<Arc<Item>> {
+        let mut result = vec![];
+        let mut current = Some(String::from(path));
+        while let Some(p) = current {
+            if let Some(item) = self.by_path.get(&p) {
+                result.push(item.value().clone());
+            }
+            current = parent_path(&p);
+        }
+        result
     }
     pub(crate) fn process_image(
         &self,
