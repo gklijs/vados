@@ -1,8 +1,10 @@
 use crate::bulma::ImageType;
-use crate::config_files::{MenuConfig, PageConfig, RawMenuItem, RawSocialItem};
+use crate::config_files::{ChildOrder, MenuConfig, PageConfig, RawMenuItem, RawSocialItem};
 use crate::content::{items_to_side_notifications, to_internal_image};
 use crate::image::ProcessedImage;
 use crate::luma::{is_luma_event_id, LumaEvent};
+use crate::page_date::PageDate;
+use crate::ui_text::UiText;
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use std::cmp::Ordering;
@@ -24,6 +26,9 @@ pub fn parent_path(path: &str) -> Option<String> {
     }
 }
 
+/// See `vados.allium`'s `config.max_side_notifications`.
+const MAX_SIDE_NOTIFICATIONS: usize = 3;
+
 #[derive(Debug, Eq)]
 pub(crate) struct Item {
     pub(crate) path: String,
@@ -37,11 +42,16 @@ pub(crate) struct Item {
     /// Only the events that can actually be shown; see `vados.allium`'s
     /// `Page.published_luma_events`.
     pub(crate) luma_events: Vec<LumaEvent>,
+    /// `None` both when page.json gives no date and when the one it gives
+    /// can't be read; see `vados.allium`'s `Page.published_date`.
+    pub(crate) date: Option<PageDate>,
+    pub(crate) child_order: ChildOrder,
 }
 
 impl Item {
     pub(crate) fn new(path: String, page_config: PageConfig) -> Item {
         let luma_events = published_luma_events(&path, page_config.luma_events);
+        let date = published_date(&path, page_config.date.as_deref());
         Item {
             path,
             title: page_config.title,
@@ -52,8 +62,43 @@ impl Item {
             content: page_config.content,
             order: page_config.order.unwrap_or(u32::MAX),
             luma_events,
+            date,
+            child_order: page_config.child_order.unwrap_or_default(),
         }
     }
+}
+
+/// The page's date, if it gives one that can be read. A malformed date is
+/// reported and the page treated as undated, the same way a malformed Luma
+/// event is reported and dropped; `check` reports it as an error.
+fn published_date(path: &str, declared: Option<&str>) -> Option<PageDate> {
+    match declared?.parse() {
+        Ok(date) => Some(date),
+        Err(e) => {
+            println!(
+                "Page {} has an unreadable date: {}; treating it as undated.",
+                path, e
+            );
+            None
+        }
+    }
+}
+
+/// Where `a` goes relative to `b` among the children of a page that orders
+/// them by `child_order`. Ordering by date puts dated children first, newest
+/// or oldest first as asked, and undated ones after them; whatever the date
+/// leaves tied falls back to the `order`-then-title ordering. See
+/// `vados.allium`'s `Page.precedes`.
+fn display_order(child_order: ChildOrder, a: &Item, b: &Item) -> Ordering {
+    let by_date = match (child_order, &a.date, &b.date) {
+        (ChildOrder::Order, _, _) => Ordering::Equal,
+        (_, Some(_), None) => Ordering::Less,
+        (_, None, Some(_)) => Ordering::Greater,
+        (_, None, None) => Ordering::Equal,
+        (ChildOrder::DateAsc, Some(x), Some(y)) => x.cmp(y),
+        (ChildOrder::DateDesc, Some(x), Some(y)) => y.cmp(x),
+    };
+    by_date.then_with(|| a.cmp(b))
 }
 
 /// Drops the Luma events that can't be shown -- a malformed ID or no title
@@ -195,7 +240,17 @@ impl Structure {
             .insert(String::from(path), Arc::new(notifications));
     }
     pub(crate) fn sort(&self) {
-        self.by_parent.iter_mut().for_each(|mut r| r.sort())
+        self.by_parent.iter_mut().for_each(|mut r| {
+            let child_order = self.child_order_of(r.key());
+            r.value_mut()
+                .sort_by(|a, b| display_order(child_order, a, b))
+        })
+    }
+    fn child_order_of(&self, path: &str) -> ChildOrder {
+        self.by_path
+            .get(path)
+            .map(|p| p.child_order)
+            .unwrap_or_default()
     }
     pub(crate) fn get_main_menu_items(&self, menu_config: &MenuConfig) -> Vec<MenuItem> {
         let mut result = vec![];
@@ -325,27 +380,35 @@ impl Structure {
             }
         }
     }
-    pub(crate) fn get_side_notifications(&self, path: &str) -> Vec<String> {
+    pub(crate) fn get_side_notifications(&self, path: &str, ui: &UiText) -> Vec<String> {
         // Children first, falling back to siblings; see vados.allium's
         // `side_notification_source`. A childless root page has no parent to
         // take siblings from either -- per the spec's `siblings: Page with
         // parent = this.parent`, a page with no parent has no siblings, so
         // there is nothing to show rather than something to panic over.
-        let own_children = self.by_parent.get(path);
-        let items = match own_children
-            .or_else(|| parent_path(path).and_then(|parent| self.by_parent.get(&*parent)))
-        {
-            Some(items) => items,
-            None => return vec![],
+        let source = if self.by_parent.contains_key(path) {
+            Some(String::from(path))
+        } else {
+            parent_path(path)
         };
-        let mut result = vec![];
-        for item in items.value().iter().rev().take(4) {
-            if result.len() < 3 && item.path != path {
-                result.push(item.clone())
-            }
-        }
-        result.reverse();
-        items_to_side_notifications(result, self)
+        let Some(items) = source.as_deref().and_then(|s| self.by_parent.get(s)) else {
+            return vec![];
+        };
+        let others: Vec<Arc<Item>> = items
+            .value()
+            .iter()
+            .filter(|item| item.path != path)
+            .cloned()
+            .collect();
+        // Taken from the newest end of display order: the start when the
+        // source is ordered newest first, the end otherwise. See
+        // vados.allium's `side_notification_pages`.
+        let result = if self.child_order_of(source.as_deref().unwrap()) == ChildOrder::DateDesc {
+            others.into_iter().take(MAX_SIDE_NOTIFICATIONS).collect()
+        } else {
+            others[others.len().saturating_sub(MAX_SIDE_NOTIFICATIONS)..].to_vec()
+        };
+        items_to_side_notifications(result, self, ui)
     }
     pub(crate) fn get_menu_item(&self, path: &str) -> MenuItem {
         self.by_path.get(path).unwrap().to_side_menu_item(None)
@@ -626,4 +689,157 @@ pub(crate) struct MenuItem {
     pub(crate) title: String,
     pub(crate) icon: Option<String>,
     pub(crate) children: Option<Vec<MenuItem>>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ui_text::ui_text;
+
+    fn page(path: &str, date: Option<&str>, order: Option<u32>) -> Item {
+        let mut config = PageConfig::new(path);
+        config.date = date.map(String::from);
+        config.order = order;
+        Item::new(String::from(path), config)
+    }
+
+    fn section(child_order: ChildOrder, children: Vec<Item>) -> Structure {
+        let structure = Structure::new(DashMap::new());
+        let mut root = PageConfig::new("/blog");
+        root.child_order = Some(child_order);
+        structure.add_item(Item::new(String::from("/blog"), root));
+        children.into_iter().for_each(|c| structure.add_item(c));
+        structure.sort();
+        structure
+    }
+
+    fn child_paths(structure: &Structure) -> Vec<String> {
+        structure
+            .by_parent
+            .get("/blog")
+            .unwrap()
+            .iter()
+            .map(|i| i.path.clone())
+            .collect()
+    }
+
+    fn posts() -> Vec<Item> {
+        vec![
+            page("/blog/b-undated", None, None),
+            page("/blog/old", Some("2025-01-05"), None),
+            page("/blog/new", Some("2026-10-22"), None),
+            page("/blog/a-undated", None, None),
+            page("/blog/same-day-later", Some("2026-03-01T18:00"), None),
+            page("/blog/same-day", Some("2026-03-01"), None),
+        ]
+    }
+
+    #[test]
+    fn date_desc_puts_the_newest_first_and_undated_last() {
+        let structure = section(ChildOrder::DateDesc, posts());
+        assert_eq!(
+            child_paths(&structure),
+            [
+                "/blog/new",
+                "/blog/same-day-later",
+                "/blog/same-day",
+                "/blog/old",
+                "/blog/a-undated",
+                "/blog/b-undated"
+            ]
+        );
+    }
+
+    #[test]
+    fn date_asc_puts_the_oldest_first_and_undated_last() {
+        let structure = section(ChildOrder::DateAsc, posts());
+        assert_eq!(
+            child_paths(&structure),
+            [
+                "/blog/old",
+                "/blog/same-day",
+                "/blog/same-day-later",
+                "/blog/new",
+                "/blog/a-undated",
+                "/blog/b-undated"
+            ]
+        );
+    }
+
+    #[test]
+    fn order_ignores_dates_entirely() {
+        let structure = section(
+            ChildOrder::Order,
+            vec![
+                page("/blog/new", Some("2026-10-22"), None),
+                page("/blog/old", Some("2025-01-05"), Some(1)),
+            ],
+        );
+        assert_eq!(child_paths(&structure), ["/blog/old", "/blog/new"]);
+    }
+
+    #[test]
+    fn same_dates_fall_back_to_order_then_title() {
+        let structure = section(
+            ChildOrder::DateDesc,
+            vec![
+                page("/blog/b", Some("2026-10-22"), None),
+                page("/blog/a", Some("2026-10-22"), None),
+                page("/blog/c", Some("2026-10-22"), Some(1)),
+            ],
+        );
+        assert_eq!(child_paths(&structure), ["/blog/c", "/blog/a", "/blog/b"]);
+    }
+
+    #[test]
+    fn an_unreadable_date_counts_as_undated() {
+        assert_eq!(page("/blog/x", Some("yesterday"), None).date, None);
+    }
+
+    fn side_notification_paths(structure: &Structure, path: &str) -> Vec<String> {
+        structure
+            .get_side_notifications(path, ui_text("en"))
+            .iter()
+            .map(|html| {
+                let start = html.find("href=\"").unwrap() + 6;
+                let end = start + html[start..].find('"').unwrap();
+                html[start..end].to_string()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn side_notifications_show_the_newest_pages_when_ordered_newest_first() {
+        let structure = section(ChildOrder::DateDesc, posts());
+        assert_eq!(
+            side_notification_paths(&structure, "/blog"),
+            ["/blog/new", "/blog/same-day-later", "/blog/same-day"]
+        );
+        assert_eq!(
+            side_notification_paths(&structure, "/blog/new"),
+            ["/blog/same-day-later", "/blog/same-day", "/blog/old"]
+        );
+    }
+
+    #[test]
+    fn side_notifications_otherwise_come_from_the_end() {
+        let structure = section(ChildOrder::DateAsc, posts());
+        assert_eq!(
+            side_notification_paths(&structure, "/blog"),
+            ["/blog/new", "/blog/a-undated", "/blog/b-undated"]
+        );
+        assert_eq!(
+            side_notification_paths(&structure, "/blog/b-undated"),
+            ["/blog/same-day-later", "/blog/new", "/blog/a-undated"]
+        );
+    }
+
+    #[test]
+    fn side_notifications_show_each_pages_date() {
+        let structure = section(ChildOrder::DateDesc, posts());
+        let html = structure
+            .get_side_notifications("/blog", ui_text("en"))
+            .join("");
+        assert!(html.contains(r#"<time datetime="2026-10-22">22 October 2026</time>"#));
+    }
 }

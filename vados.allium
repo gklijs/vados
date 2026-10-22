@@ -41,7 +41,8 @@
 --     the default Bulma/Material-Design-icon stylesheets are first-class here,
 --     because the project is built around Bulma (see README)
 --   - Content structure: one page per source directory, page hierarchy,
---     sibling display order
+--     sibling display order -- by explicit order, or by publication date for
+--     a section that asks for it
 --   - Menus and navigation: main menu with dropdowns, side menu, breadcrumbs,
 --     social links with provider auto-detection
 --   - Notifications: configured left/right notifications, subtree inheritance,
@@ -157,6 +158,17 @@ value ContentReference {
     html: resolve_content(reference, kind)
 }
 
+-- When a page was published, as page.json gives it: a calendar date,
+-- optionally with a time of day so pages published on the same day can still
+-- be told apart. There is no time zone; the date is the site's own local one.
+-- A date without a time counts as the start of that day. The text form
+-- (`YYYY-MM-DD`, optionally `THH:MM` or `THH:MM:SS`) is implementation, the
+-- same way JSON parsing mechanics are excluded above; only its readability
+-- and chronological order are domain.
+value PageDate {
+    text: String
+}
+
 -- One social handle the maintainer gave `init` for a recognised provider.
 -- Turning a handle into the platform's full profile URL is implementation,
 -- the same way JSON parsing mechanics are excluded elsewhere in this spec.
@@ -232,6 +244,10 @@ enum FindingKind {
     malformed_luma_event_id
     luma_event_without_title
     duplicate_luma_event
+
+    -- Page dates.
+    unreadable_page_date
+    undated_page_in_date_ordered_section
 }
 
 enum MenuLinkKind { internal | external }
@@ -280,6 +296,12 @@ enum PageImageAttachmentBlockReason {
     target_page_missing | source_file_unreadable | reference_key_already_used |
     image_reference_unresolved | hero_already_present
 }
+
+-- How a page orders its children, wherever they are listed: the main menu's
+-- dropdowns, the side menu and side notifications alike. `order` is the
+-- default and ignores dates; the two date orders suit a blog or news section,
+-- where the newest post should come first without anyone renumbering.
+enum ChildOrder { order | date_desc | date_asc }
 
 -- Whether an image `page add-image` attaches fills a page's one hero slot or
 -- joins its notifications instead. See PageImageAttachmentRun.effective_role.
@@ -463,7 +485,14 @@ entity Page {
     summary: String?
     image_reference: String?
     order: Integer?
+    date: PageDate?
+    child_order: ChildOrder
     status: discovered | published
+
+    -- A date that can't be read is reported and the page treated as
+    -- undated, the same way a malformed Luma event is reported and dropped.
+    date_readable: date = null or is_page_date(date)
+    published_date: if date_readable: date else: null
 
     -- What search engines and link previews show for this page: its own
     -- summary, or the site's description when it has none. See
@@ -493,14 +522,32 @@ entity Page {
     -- "/a/b" as 2, and so on.
     depth: segment_count(path)
 
-    -- Sibling display order: pages with an explicit order come first, in
+    -- How this page is ordered among its siblings: as its parent orders its
+    -- children. The root has no siblings, so its own is moot.
+    sibling_order: parent?.child_order ?? order
+
+    -- Ordering by `order`: pages with an explicit order come first, in
     -- ascending order; pages without one come last; ties break alphabetically
     -- by title.
-    precedes(other):
+    precedes_by_order(other):
         if order != null and other.order = null: true
         else if order = null and other.order != null: false
         else if order != null and other.order != null and order != other.order: order < other.order
         else: title < other.title
+
+    -- Sibling display order. By date, dated pages come first -- newest first
+    -- for date_desc, oldest first for date_asc -- and undated pages after
+    -- them; whatever the dates leave tied (including two undated pages)
+    -- falls back to ordering by `order`.
+    precedes(other):
+        if sibling_order = order: precedes_by_order(other)
+        else if published_date != null and other.published_date = null: true
+        else if published_date = null and other.published_date != null: false
+        else if published_date != null and earlier(other.published_date, published_date):
+            sibling_order = date_desc
+        else if published_date != null and earlier(published_date, other.published_date):
+            sibling_order = date_asc
+        else: precedes_by_order(other)
 
     ordered_children: in_display_order(children)
     ordered_siblings: in_display_order(siblings)
@@ -531,15 +578,21 @@ entity Page {
 
     -- Separately from configured notifications, every page advertises a few
     -- neighbouring pages: its own children when it has any, otherwise its
-    -- siblings. Taken from the end of display order, never including itself.
+    -- siblings. Taken from the newest end of display order, never including
+    -- itself: the start when that order is newest first (date_desc), the end
+    -- otherwise -- where a maintainer numbering pages by hand, or a section
+    -- ordered oldest first, puts the latest.
     --
     -- Children-first is deliberate, not a fallback ordering that happens to
     -- exist. A page that has a section beneath it points readers down into
     -- that section, because that is where the site continues. Only a childless
     -- page, having nothing below it to offer, points sideways at its peers.
     side_notification_source: if children.count > 0: ordered_children else: ordered_siblings
+    side_notification_source_order: if children.count > 0: child_order else: sibling_order
     side_notification_pages:
-        last_excluding(side_notification_source, this, config.max_side_notifications)
+        if side_notification_source_order = date_desc:
+            first_excluding(side_notification_source, this, config.max_side_notifications)
+        else: last_excluding(side_notification_source, this, config.max_side_notifications)
     side_notification_image_placement: config.side_notification_image_placement
     side_notification_color: config.side_notification_color
 
@@ -877,7 +930,17 @@ entity PageCreationRun {
     icon: String? when status = page_created
     summary: String? when status = page_created
     order: Integer? when status = page_created
+    date: PageDate? when status = page_created
+    -- How the new page will order its own children; `order` when not given,
+    -- which page.json records by leaving it out.
+    child_order: ChildOrder? when status = page_created
     given_content: ContentReference? when status = page_created
+
+    -- A new page in a section ordered by date needs a date to be placed at
+    -- all, so it gets today's unless the maintainer gives another. Anywhere
+    -- else a date stays opt-in. A parent with no page.json orders by `order`.
+    parent_orders_by_date:
+        parent_child_order(source_location, given_path) in {date_desc, date_asc}
 
     -- A page.json with no content reference gets the same fallback a
     -- directory with no page.json gets at generate/check time: a bare
@@ -1188,7 +1251,8 @@ config {
         duplicate_image_reference,
         image_without_alternative_text,
         malformed_luma_event_id,
-        luma_event_without_title
+        luma_event_without_title,
+        unreadable_page_date
     }
 
     -- The two severities themselves. Neither is adjustable; they are named here
@@ -1342,7 +1406,8 @@ rule RegisterSocialLink {
 -- content is a bare heading.
 rule DiscoverPage {
     when: PageDeclared(
-        run, path, title?, sub_title?, image?, icon?, summary?, content?, order?
+        run, path, title?, sub_title?, image?, icon?, summary?, content?, order?,
+        date?, child_order?
     )
     requires: run.status = configured
     let parent = Page{run: run, path: parent_path(path)}
@@ -1357,6 +1422,8 @@ rule DiscoverPage {
         icon: icon,
         summary: summary,
         order: order,
+        date: date,
+        child_order: child_order ?? order,
         status: discovered
     )
 }
@@ -1642,6 +1709,14 @@ rule RunStructuralChecks {
                 detail: e.event_id
             )
 
+        for p in run.pages where not p.date_readable:
+            Finding.created(
+                run: run,
+                kind: unreadable_page_date,
+                location: p.path,
+                detail: p.date.text
+            )
+
         -- Warnings: each of these is something generation already tolerates by
         -- dropping or degrading, so it is reported but does not fail the check.
 
@@ -1679,6 +1754,16 @@ rule RunStructuralChecks {
                 kind: duplicate_luma_event,
                 location: e.page.path,
                 detail: e.event_id
+            )
+
+        -- An undated page in a section ordered by date still publishes; it is
+        -- just listed after every dated one, which is rarely what was meant.
+        for p in run.pages
+            where p.sibling_order != order and p.parent != null and p.date = null:
+            Finding.created(
+                run: run,
+                kind: undated_page_in_date_ordered_section,
+                location: p.path
             )
 
         for n in run.notifications where n.links_nowhere:
@@ -1866,14 +1951,19 @@ rule DetectPageCreationBlockers {
 }
 
 rule ProvidePageCreationDetails {
-    when: PageCreationDetailsProvided(run, title, sub_title?, icon?, summary?, order?, content?)
+    when: PageCreationDetailsProvided(
+        run, title, sub_title?, icon?, summary?, order?, date?, child_order?, content?
+    )
     requires: run.status = page_creation_requested
+    let effective_date = date ?? (if run.parent_orders_by_date: today() else: null)
     ensures:
         run.title = title
         run.sub_title = sub_title
         run.icon = icon
         run.summary = summary
         run.order = order
+        run.date = effective_date
+        run.child_order = child_order
         run.given_content = content
         run.status = page_created
         PageFileWritten(
@@ -1885,6 +1975,8 @@ rule ProvidePageCreationDetails {
             icon: icon,
             summary: summary,
             order: order,
+            date: effective_date,
+            child_order: child_order,
             image_reference: run.given_image_reference
         )
 }
@@ -2618,7 +2710,9 @@ surface PageCreationDetails {
     context run: PageCreationRun where status = page_creation_requested
 
     provides:
-        PageCreationDetailsProvided(run, title, sub_title?, icon?, summary?, order?, content?)
+        PageCreationDetailsProvided(
+            run, title, sub_title?, icon?, summary?, order?, date?, child_order?, content?
+        )
 }
 
 -- What `page new` created, once it has.
@@ -2634,6 +2728,8 @@ surface PageCreatedOutcome {
         run.icon
         run.summary
         run.order
+        run.date
+        run.child_order
         run.content
         run.content_was_defaulted
         run.given_image_reference
@@ -2904,7 +3000,8 @@ surface SourceTree {
         SocialLinkDeclared(run, position, url, icon?, brand_color?, label?)
             when run.status = configured
         PageDeclared(
-            run, path, title?, sub_title?, image?, icon?, summary?, content?, order?
+            run, path, title?, sub_title?, image?, icon?, summary?, content?, order?,
+            date?, child_order?
         ) when run.status = configured
         ImageDeclared(run, reference_key, source_file, alt_text, title?)
             when run.status = configured
@@ -2988,6 +3085,7 @@ surface PublishedPage {
 
         page.title
         page.sub_title
+        page.published_date
         page.summary
         page.description
         page.content.html
@@ -3045,6 +3143,7 @@ surface PublishedPage {
             neighbour.path
             neighbour.title
             neighbour.sub_title
+            neighbour.published_date
             neighbour.main_image
         page.side_notification_image_placement
         page.side_notification_color
@@ -3054,6 +3153,14 @@ surface PublishedPage {
         -- inside notifications are placed as `sub` and images inside side
         -- notifications as `side`, and both are deferred. Placement also
         -- determines the display size.
+
+    @guarantee DatesAreReadable
+        -- A page's date, wherever it is shown -- under the page's own title
+        -- and on the side notifications advertising it -- is written out the
+        -- way a reader of the site's interface language writes a date, and
+        -- also carried in machine-readable form for assistive technology and
+        -- other software. The time of day, when there is one, only breaks
+        -- ties in ordering and is not shown.
 
     @guarantee SideNotificationsAreNotConfigurable
         -- Side notifications are always styled with the side notification

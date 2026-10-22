@@ -41,7 +41,7 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
     for path in &all_paths {
         let content_helper = ContentHelper::new(path, &structure);
         let navigation = content_helper.get_navigation(&main_config, &menu_config);
-        let main_content = content_helper.get_main_content(source);
+        let main_content = content_helper.get_main_content(source, &generic_content);
         let page = content_helper.get_page(&navigation, &main_content, &generic_content);
 
         //generating the end html and writing it to file

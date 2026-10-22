@@ -76,7 +76,9 @@ fails fast with a clear message instead of hanging.
 - **`vados page new --source root --path /blog/my-post --title "My Post"`** -- creates a `page.json` for a path not
   yet in the source tree. `--content` names a `.md`/`.html` file or inline HTML; omitted, the page gets a bare
   `<h1>` heading. `--image` attaches an already-declared image as the hero, given `--img-source` to resolve it
-  against.
+  against. `--date 2026-10-22` (or `2026-10-22T09:30`) sets its publication date; under a parent ordered by date
+  (see [Blogs and dated pages](#blogs-and-dated-pages)) it defaults to today. `--child-order date-desc` (or
+  `date-asc`, or `order`, the default) sets how the new page lists its own children -- e.g. for a new blog section.
 - **`vados image add --img-source imgroot --dir team --file-name alice.jpg --alt-text "Alice smiling"`** -- registers
   one image in an `images.json`, creating the file if the directory has none yet. `--alt-text` is required; images
   without it fail `check`.
@@ -137,6 +139,33 @@ pages that show a register button; pages without a Luma event make no requests t
 ID that isn't of the form `evt-...` or an event without a title as errors (`generate` leaves such an event off the
 page), and the same event listed twice on one page as a warning. Nothing is fetched from Luma by `check` or
 `generate`, so whether the event actually exists isn't checked.
+
+## Blogs and dated pages
+
+A page can carry a publication date in its `page.json`, and a section can list its pages by that date instead of by
+`order`, so a new post appears first without renumbering anything:
+
+```jsonc
+// blog/page.json
+{ "title": "Blog", "content": "posts.md", "childOrder": "dateDesc" }
+
+// blog/my-post/page.json
+{ "title": "My post", "content": "post.md", "date": "2026-10-22" }
+```
+
+- `date` is `YYYY-MM-DD`, optionally with a time (`2026-10-22T09:30`) to order posts published the same day. It's
+  shown under the page's title and on the tiles advertising it, written the way the site's language writes dates
+  (`22 October 2026`, `22 oktober 2026`, ...).
+- `childOrder` is `order` (the default: by `order`, then title), `dateDesc` (newest first) or `dateAsc` (oldest
+  first). It applies wherever the section's pages are listed: the main menu dropdown, the side menu and the side
+  tiles. Undated pages come after the dated ones; pages with the same date fall back to `order`, then title.
+- In a `dateDesc` section, the side tiles show the newest pages.
+
+`vados page new --path /blog --title Blog --child-order date-desc` creates such a section; every `page new` beneath it
+then gets today's date unless `--date` says otherwise.
+
+`check` reports a `date` it can't read as an error (`generate` treats that page as undated), and an undated page
+under a parent ordered by date as a warning.
 
 ## Search engines and browser tabs
 

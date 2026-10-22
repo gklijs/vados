@@ -1,4 +1,5 @@
 use crate::bulma::ImageType;
+use crate::page_date::PageDate;
 use crate::structure::MenuType::Internal;
 use crate::structure::{MenuItem, SocialItem};
 use crate::ui_text::UiText;
@@ -72,11 +73,28 @@ pub(crate) struct SideMenuTemplate<'a> {
     pub(crate) menu_item: &'a MenuItem,
 }
 
+/// A page's date, both machine-readable (for `<time datetime>`) and as the
+/// reader sees it.
+pub(crate) struct DisplayDate {
+    pub(crate) iso: String,
+    pub(crate) text: String,
+}
+
+impl DisplayDate {
+    pub(crate) fn new(date: &PageDate, ui: &UiText) -> DisplayDate {
+        DisplayDate {
+            iso: date.to_string(),
+            text: ui.format_date(date),
+        }
+    }
+}
+
 #[derive(Template)]
 #[template(path = "content.html")]
 pub(crate) struct ContentTemplate<'a> {
     pub(crate) title: &'a str,
     pub(crate) sub_title: &'a Option<String>,
+    pub(crate) date: Option<DisplayDate>,
     pub(crate) image: Option<String>,
     pub(crate) content: String,
 }
@@ -86,6 +104,7 @@ pub(crate) struct ContentTemplate<'a> {
 pub(crate) struct InternalNotificationTemplate<'a> {
     pub(crate) title: &'a Option<String>,
     pub(crate) sub_title: &'a Option<String>,
+    pub(crate) date: Option<DisplayDate>,
     pub(crate) color: &'a str,
     pub(crate) url: &'a str,
     pub(crate) image: Option<String>,

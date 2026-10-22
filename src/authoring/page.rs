@@ -3,9 +3,11 @@
 //! `vados.allium`'s `PageCreationRun` and `PageImageAttachmentRun`.
 
 use super::image_registry;
+pub use crate::config_files::ChildOrder;
 use crate::config_files::{Notification, PageConfig};
 use crate::content::{ensure_content_reference, escape_html};
 use crate::json_files::{read_json, read_json_or, write_json_pretty};
+use crate::page_date::PageDate;
 use crate::structure::parent_path;
 use std::fmt;
 use std::fs;
@@ -28,6 +30,20 @@ pub fn page_dir(source: &str, path: &str) -> PathBuf {
 /// not the file.
 pub fn page_exists_at(source: &str, path: &str) -> bool {
     page_dir(source, path).is_dir()
+}
+
+/// Whether the page that would be `path`'s parent orders its children by
+/// date, so a new page there should get one. A parent without a readable
+/// page.json orders by `order`, the default. See `vados.allium`'s
+/// `PageCreationRun.parent_orders_by_date`.
+pub fn parent_orders_by_date(source: &str, path: &str) -> bool {
+    let Some(parent) = parent_path(path) else {
+        return false;
+    };
+    read_json::<PageConfig>(&page_dir(source, &parent).join("page.json"))
+        .ok()
+        .and_then(|c| c.child_order)
+        .is_some_and(|o| o != ChildOrder::Order)
 }
 
 /// A page.json with no content reference gets the same fallback a directory
@@ -129,6 +145,10 @@ pub struct PageCreationDetails {
     pub icon: Option<String>,
     pub summary: Option<String>,
     pub order: Option<u32>,
+    pub date: Option<PageDate>,
+    /// How the new page will order its own children; left out of page.json
+    /// (meaning `order`) when not given.
+    pub child_order: Option<ChildOrder>,
     pub content: Option<String>,
 }
 
@@ -142,6 +162,8 @@ pub struct PageCreatedOutcome {
     pub icon: Option<String>,
     pub summary: Option<String>,
     pub order: Option<u32>,
+    pub date: Option<PageDate>,
+    pub child_order: Option<ChildOrder>,
     pub content: String,
     pub content_was_defaulted: bool,
     pub image_reference: Option<String>,
@@ -173,6 +195,8 @@ pub fn create_page(
         left_notifications: None,
         right_notifications: None,
         luma_events: None,
+        date: details.date.map(|d| d.to_string()),
+        child_order: details.child_order,
     };
 
     let dir = page_dir(source, given_path);
@@ -186,6 +210,8 @@ pub fn create_page(
         icon: details.icon,
         summary: details.summary,
         order: details.order,
+        date: details.date,
+        child_order: details.child_order,
         content,
         content_was_defaulted,
         image_reference: given_image_reference,
@@ -645,6 +671,8 @@ mod tests {
                 icon: Some("pencil".to_string()),
                 summary: Some("A blog".to_string()),
                 order: Some(1),
+                date: Some("2026-10-22T09:30".parse().unwrap()),
+                child_order: Some(ChildOrder::DateDesc),
                 content: Some("posts.md".to_string()),
             },
         )
@@ -658,6 +686,61 @@ mod tests {
             crate::json_files::read_json(&site.source.join("blog/page.json")).unwrap();
         assert_eq!(config.title, "Blog");
         assert_eq!(config.content, "posts.md");
+        assert_eq!(config.date.as_deref(), Some("2026-10-22T09:30"));
+        assert_eq!(config.child_order, Some(ChildOrder::DateDesc));
+        assert!(parent_orders_by_date(site.source(), "/blog/first-post"));
+    }
+
+    #[test]
+    fn create_page_leaves_date_and_child_order_out_of_page_json_when_absent() {
+        let site = TestSite::new("create_undated");
+
+        create_page(
+            site.source(),
+            "/about",
+            None,
+            PageCreationDetails {
+                title: "About".to_string(),
+                sub_title: None,
+                icon: None,
+                summary: None,
+                order: None,
+                date: None,
+                child_order: None,
+                content: None,
+            },
+        )
+        .unwrap();
+
+        let written = fs::read_to_string(site.source.join("about/page.json")).unwrap();
+        assert!(!written.contains("date"), "{written}");
+        assert!(!written.contains("childOrder"), "{written}");
+    }
+
+    #[test]
+    fn parent_orders_by_date_follows_the_parents_child_order() {
+        let site = TestSite::new("parent_orders_by_date");
+        site.write_page(
+            "/blog",
+            r#"{"title":"Blog","content":"<p>hi</p>","childOrder":"dateDesc"}"#,
+        );
+        site.write_page(
+            "/news",
+            r#"{"title":"News","content":"<p>hi</p>","childOrder":"dateAsc"}"#,
+        );
+        site.write_page(
+            "/about",
+            r#"{"title":"About","content":"<p>hi</p>","childOrder":"order"}"#,
+        );
+        site.write_page("/team", r#"{"title":"Team","content":"<p>hi</p>"}"#);
+        site.mkdir("/bare");
+
+        assert!(parent_orders_by_date(site.source(), "/blog/post"));
+        assert!(parent_orders_by_date(site.source(), "/news/item"));
+        assert!(!parent_orders_by_date(site.source(), "/about/x"));
+        assert!(!parent_orders_by_date(site.source(), "/team/x"));
+        assert!(!parent_orders_by_date(site.source(), "/bare/x"));
+        assert!(!parent_orders_by_date(site.source(), "/"));
     }
 
     #[test]
@@ -674,6 +757,8 @@ mod tests {
                 icon: None,
                 summary: None,
                 order: None,
+                date: None,
+                child_order: None,
                 content: None,
             },
         )
@@ -697,6 +782,8 @@ mod tests {
                 icon: None,
                 summary: None,
                 order: None,
+                date: None,
+                child_order: None,
                 content: None,
             },
         )

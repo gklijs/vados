@@ -1,3 +1,5 @@
+use crate::page_date::PageDate;
+
 /// The text vados itself puts on every page -- as opposed to the text the
 /// maintainer authors -- in the site's language. See `vados.allium`'s
 /// `InterfaceTextFollowsSiteLanguage`.
@@ -9,6 +11,20 @@ pub(crate) struct UiText {
     pub(crate) toggle_section_menu: &'static str,
     /// What a Luma register button says when page.json gives no label.
     pub(crate) luma_register: &'static str,
+    /// Month names, January first, as they appear inside a written date.
+    months: [&'static str; 12],
+    /// Writes a date from its day, month name and year.
+    date_pattern: fn(u8, &str, u16) -> String,
+}
+
+impl UiText {
+    /// A page's date as a reader of the site's language would write it. The
+    /// time of day, when there is one, only breaks ties in ordering and is
+    /// not shown. See `vados.allium`'s `DatesAreReadable`.
+    pub(crate) fn format_date(&self, date: &PageDate) -> String {
+        let month = self.months[usize::from(date.month() - 1)];
+        (self.date_pattern)(date.day(), month, date.year())
+    }
 }
 
 const EN: UiText = UiText {
@@ -18,6 +34,21 @@ const EN: UiText = UiText {
     toggle_main_menu: "Toggle main menu",
     toggle_section_menu: "Toggle section menu",
     luma_register: "Register",
+    months: [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+    ],
+    date_pattern: |d, m, y| format!("{d} {m} {y}"),
 };
 
 const NL: UiText = UiText {
@@ -27,6 +58,21 @@ const NL: UiText = UiText {
     toggle_main_menu: "Hoofdmenu openen of sluiten",
     toggle_section_menu: "Sectiemenu openen of sluiten",
     luma_register: "Aanmelden",
+    months: [
+        "januari",
+        "februari",
+        "maart",
+        "april",
+        "mei",
+        "juni",
+        "juli",
+        "augustus",
+        "september",
+        "oktober",
+        "november",
+        "december",
+    ],
+    date_pattern: |d, m, y| format!("{d} {m} {y}"),
 };
 
 const DE: UiText = UiText {
@@ -36,6 +82,21 @@ const DE: UiText = UiText {
     toggle_main_menu: "Hauptmenü ein- oder ausblenden",
     toggle_section_menu: "Bereichsmenü ein- oder ausblenden",
     luma_register: "Anmelden",
+    months: [
+        "Januar",
+        "Februar",
+        "März",
+        "April",
+        "Mai",
+        "Juni",
+        "Juli",
+        "August",
+        "September",
+        "Oktober",
+        "November",
+        "Dezember",
+    ],
+    date_pattern: |d, m, y| format!("{d}. {m} {y}"),
 };
 
 const FR: UiText = UiText {
@@ -45,6 +106,24 @@ const FR: UiText = UiText {
     toggle_main_menu: "Afficher ou masquer le menu principal",
     toggle_section_menu: "Afficher ou masquer le menu de la section",
     luma_register: "S'inscrire",
+    months: [
+        "janvier",
+        "février",
+        "mars",
+        "avril",
+        "mai",
+        "juin",
+        "juillet",
+        "août",
+        "septembre",
+        "octobre",
+        "novembre",
+        "décembre",
+    ],
+    date_pattern: |d, m, y| match d {
+        1 => format!("1er {m} {y}"),
+        _ => format!("{d} {m} {y}"),
+    },
 };
 
 const ES: UiText = UiText {
@@ -54,6 +133,21 @@ const ES: UiText = UiText {
     toggle_main_menu: "Mostrar u ocultar el menú principal",
     toggle_section_menu: "Mostrar u ocultar el menú de la sección",
     luma_register: "Inscribirse",
+    months: [
+        "enero",
+        "febrero",
+        "marzo",
+        "abril",
+        "mayo",
+        "junio",
+        "julio",
+        "agosto",
+        "septiembre",
+        "octubre",
+        "noviembre",
+        "diciembre",
+    ],
+    date_pattern: |d, m, y| format!("{d} de {m} de {y}"),
 };
 
 /// The interface text for a BCP 47 tag, chosen by its primary language
@@ -92,6 +186,18 @@ mod tests {
         assert_eq!(ui_text("nl-BE").skip_link, NL.skip_link);
         assert_eq!(ui_text("NL").skip_link, NL.skip_link);
         assert_eq!(ui_text("fr-CA").skip_link, FR.skip_link);
+    }
+
+    #[test]
+    fn dates_are_written_the_way_each_language_writes_them() {
+        let date: PageDate = "2026-10-22T09:30".parse().unwrap();
+        assert_eq!(ui_text("en").format_date(&date), "22 October 2026");
+        assert_eq!(ui_text("nl").format_date(&date), "22 oktober 2026");
+        assert_eq!(ui_text("de").format_date(&date), "22. Oktober 2026");
+        assert_eq!(ui_text("fr").format_date(&date), "22 octobre 2026");
+        assert_eq!(ui_text("es").format_date(&date), "22 de octubre de 2026");
+        let first: PageDate = "2026-03-01".parse().unwrap();
+        assert_eq!(ui_text("fr").format_date(&first), "1er mars 2026");
     }
 
     #[test]

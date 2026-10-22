@@ -126,6 +126,8 @@ fn authoring_every_kind_of_content_still_checks_clean() {
             icon: None,
             summary: Some("Meet the team".to_string()),
             order: None,
+            date: None,
+            child_order: None,
             content: None,
         },
     )
@@ -145,6 +147,8 @@ fn authoring_every_kind_of_content_still_checks_clean() {
             icon: None,
             summary: None,
             order: None,
+            date: None,
+            child_order: None,
             content: None,
         },
     )
@@ -269,6 +273,8 @@ fn a_linked_luma_event_is_published_on_its_own_page_only() {
             icon: None,
             summary: None,
             order: None,
+            date: None,
+            child_order: None,
             content: None,
         },
     )
@@ -283,6 +289,8 @@ fn a_linked_luma_event_is_published_on_its_own_page_only() {
             icon: None,
             summary: None,
             order: None,
+            date: None,
+            child_order: None,
             content: None,
         },
     )
@@ -364,6 +372,8 @@ fn a_dutch_site_with_a_description_and_favicon_is_published_in_dutch() {
                 icon: None,
                 summary: summary.map(String::from),
                 order: None,
+                date: None,
+                child_order: None,
                 content: None,
             },
         )
@@ -390,4 +400,77 @@ fn a_dutch_site_with_a_description_and_favicon_is_published_in_dutch() {
     let team = fs::read_to_string(dest.join("over/team.html")).unwrap();
     assert!(team.contains(r#"aria-label="Kruimelpad""#));
     assert!(team.contains(r#"aria-current="page""#));
+}
+
+#[test]
+fn a_section_ordered_by_date_lists_its_newest_posts_first() {
+    let project = TestProject::new("date_ordered_blog");
+
+    // `page new --child-order date-desc`: a section listing its newest post
+    // first.
+    page::create_page(
+        &project.source,
+        "/blog",
+        None,
+        page::PageCreationDetails {
+            title: "Blog".to_string(),
+            sub_title: None,
+            icon: None,
+            summary: None,
+            order: None,
+            date: None,
+            child_order: Some(page::ChildOrder::DateDesc),
+            content: None,
+        },
+    )
+    .unwrap();
+    assert!(page::parent_orders_by_date(
+        &project.source,
+        "/blog/anything"
+    ));
+
+    for (slug, title, date) in [
+        ("first", "First post", "2026-01-10"),
+        ("third", "Third post", "2026-10-22T09:30"),
+        ("second", "Second post", "2026-05-03"),
+        ("fourth", "Fourth post", "2026-10-22T17:00"),
+    ] {
+        page::create_page(
+            &project.source,
+            &format!("/blog/{slug}"),
+            None,
+            page::PageCreationDetails {
+                title: title.to_string(),
+                sub_title: None,
+                icon: None,
+                summary: None,
+                order: None,
+                date: Some(date.parse().unwrap()),
+                child_order: None,
+                content: None,
+            },
+        )
+        .unwrap();
+    }
+
+    let report = check(&project.source, &project.img_source);
+    assert!(report.findings.is_empty(), "{:?}", report.findings);
+
+    let dest = project.dir.join("public");
+    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+
+    // The section page advertises its three newest posts, newest first.
+    let blog = fs::read_to_string(dest.join("blog.html")).unwrap();
+    let position = |needle: &str| {
+        blog.find(needle)
+            .unwrap_or_else(|| panic!("{needle} missing"))
+    };
+    assert!(position("Fourth post") < position("Third post"));
+    assert!(position("Third post") < position("Second post"));
+    assert!(!blog.contains("First post"));
+    assert!(blog.contains(r#"<time datetime="2026-10-22T17:00">22 October 2026</time>"#));
+
+    // A post shows its own date under its title.
+    let post = fs::read_to_string(dest.join("blog/second.html")).unwrap();
+    assert!(post.contains(r#"<time datetime="2026-05-03">3 May 2026</time>"#));
 }

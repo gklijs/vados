@@ -5,7 +5,7 @@ use crate::image::ProcessedImage;
 use crate::luma::BUTTON_SCRIPT_URL;
 use crate::structure::{Item, SocialItem, Structure};
 use crate::templates::{
-    BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate,
+    BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate, DisplayDate,
     ExternalNotificationTemplate, FooterTemplate, InternalImageTemplate,
     InternalNotificationTemplate, LumaEventView, LumaEventsTemplate, NavigationTemplate,
     PageTemplate, SideMenuTemplate,
@@ -117,8 +117,18 @@ impl ContentHelper<'_> {
             self.side_menu.as_ref(),
         )
     }
-    pub(crate) fn get_main_content(&self, source: &str) -> String {
-        get_main_content(source, self.path, &self.item, self.structure)
+    pub(crate) fn get_main_content(
+        &self,
+        source: &str,
+        generic_content: &GenericContent,
+    ) -> String {
+        get_main_content(
+            source,
+            self.path,
+            &self.item,
+            self.structure,
+            generic_content.ui,
+        )
     }
     pub(crate) fn get_page(
         &self,
@@ -236,6 +246,7 @@ fn resolve_notification(
             InternalNotificationTemplate {
                 title: &notification.title,
                 sub_title: &None,
+                date: None,
                 color,
                 url: &internal,
                 image,
@@ -264,6 +275,7 @@ fn resolve_notification(
 pub(crate) fn items_to_side_notifications(
     items: Vec<Arc<Item>>,
     structure: &Structure,
+    ui: &UiText,
 ) -> Vec<String> {
     let mut result = vec![];
     for (i, item) in items.iter().enumerate() {
@@ -276,6 +288,7 @@ pub(crate) fn items_to_side_notifications(
         let notification = InternalNotificationTemplate {
             title: &Some(item.title.clone()),
             sub_title: &item.sub_title,
+            date: item.date.map(|d| DisplayDate::new(&d, ui)),
             color,
             url: &item.path,
             image,
@@ -458,7 +471,13 @@ fn get_breadcrumbs(path: &str, structure: &Structure, ui: &UiText) -> Option<Str
     })
 }
 
-fn get_main_content(source: &str, path: &str, item: &Item, structure: &Structure) -> String {
+fn get_main_content(
+    source: &str,
+    path: &str,
+    item: &Item,
+    structure: &Structure,
+    ui: &UiText,
+) -> String {
     let image = match &item.image {
         None => None,
         Some(i) => structure.process_image(i, ImageType::Main),
@@ -466,6 +485,7 @@ fn get_main_content(source: &str, path: &str, item: &Item, structure: &Structure
     ContentTemplate {
         title: &item.title,
         sub_title: &item.sub_title,
+        date: item.date.map(|d| DisplayDate::new(&d, ui)),
         image,
         content: get_content(source, path, &item.content),
     }
@@ -503,7 +523,7 @@ fn get_page(
         luma_events: get_luma_events(item, generic_content.ui),
         left_sub_notifications: &structure.get_left_sub_notifications(path),
         right_sub_notifications: &structure.get_right_sub_notifications(path),
-        side_notifications: &structure.get_side_notifications(path),
+        side_notifications: &structure.get_side_notifications(path, generic_content.ui),
         footer: &generic_content.footer,
         css_links: &generic_content.css_links,
         js_links: &generic_content.js_links,

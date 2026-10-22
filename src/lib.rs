@@ -9,6 +9,7 @@ mod image;
 pub mod init;
 mod json_files;
 pub mod luma;
+pub mod page_date;
 mod structure;
 mod templates;
 mod ui_text;
