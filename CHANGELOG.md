@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `page.json` takes an optional `date` (`YYYY-MM-DD`, optionally with `THH:MM[:SS]`), shown under the page's title
+  and on side tiles advertising it, written the way the site's language writes dates.
+- `page.json` takes an optional `childOrder`: `order` (the default), `dateDesc` or `dateAsc`, so a blog or news
+  section can list its newest posts first without setting `order` by hand. Undated pages come last. In a `dateDesc`
+  section the side tiles show the newest pages.
+- `vados page new --date` and `--child-order order|date-desc|date-asc`; under a parent ordered by date the date
+  defaults to today.
+- `check` reports an unreadable `date` as an error, and an undated page under a parent ordered by date as a
+  warning.
+
 ## 0.2.0 - 2026-10-14
 
 ### Added

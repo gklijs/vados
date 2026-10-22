@@ -5,12 +5,15 @@
 //! find every problem in one pass instead of stopping at the first one, so
 //! every check below runs regardless of what earlier checks found.
 
-use crate::config_files::{ImageList, MainConfig, MenuConfig, Notification, PageConfig};
+use crate::config_files::{
+    ChildOrder, ImageList, MainConfig, MenuConfig, Notification, PageConfig,
+};
 use crate::content::{classify_content_reference, get_file_path, ContentKind};
 use crate::files::get_all_directory_paths;
 use crate::image::reference_key_for;
 use crate::luma::{is_luma_event_id, LumaEvent};
-use crate::structure::is_recognized_social_provider;
+use crate::page_date::PageDate;
+use crate::structure::{is_recognized_social_provider, parent_path};
 use crate::ui_text::is_translated;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -61,6 +64,8 @@ pub enum FindingKind {
     DuplicateLumaEvent,
     MissingFaviconFile,
     UntranslatedInterfaceLanguage,
+    UnreadablePageDate,
+    UndatedPageInDateOrderedSection,
 }
 
 impl FindingKind {
@@ -76,7 +81,8 @@ impl FindingKind {
             | DuplicateImageReference
             | ImageWithoutAlternativeText
             | MalformedLumaEventId
-            | LumaEventWithoutTitle => Severity::Error,
+            | LumaEventWithoutTitle
+            | UnreadablePageDate => Severity::Error,
             ImagesManifestUnreadable
             | MissingContentFile
             | UnresolvedMenuLink
@@ -86,7 +92,8 @@ impl FindingKind {
             | DeadInternalNotificationLink
             | DuplicateLumaEvent
             | MissingFaviconFile
-            | UntranslatedInterfaceLanguage => Severity::Warning,
+            | UntranslatedInterfaceLanguage
+            | UndatedPageInDateOrderedSection => Severity::Warning,
         }
     }
 }
@@ -122,6 +129,10 @@ impl fmt::Display for FindingKind {
             MissingFaviconFile => "favicon file does not exist",
             UntranslatedInterfaceLanguage => {
                 "vados has no interface text in the site language, so it falls back to English"
+            }
+            UnreadablePageDate => "page date is not of the form YYYY-MM-DD or YYYY-MM-DDTHH:MM",
+            UndatedPageInDateOrderedSection => {
+                "page has no date, but its parent orders its children by date, so it is listed last"
             }
         })
     }
@@ -294,6 +305,7 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
             page_config.luma_events.as_deref().unwrap_or_default(),
             &mut findings,
         );
+        check_page_date(path, page_config, &pages, &mut findings);
     }
 
     if let Some(main_config) = &main_config {
@@ -474,6 +486,38 @@ fn check_notification(
                 location: String::from(page_path),
                 detail: Some(url.clone()),
             });
+        }
+    }
+}
+
+fn check_page_date(
+    page_path: &str,
+    page_config: &PageConfig,
+    pages: &HashMap<String, PageConfig>,
+    findings: &mut Vec<Finding>,
+) {
+    match &page_config.date {
+        Some(date) => {
+            if date.parse::<PageDate>().is_err() {
+                findings.push(Finding {
+                    kind: FindingKind::UnreadablePageDate,
+                    location: String::from(page_path),
+                    detail: Some(date.clone()),
+                });
+            }
+        }
+        None => {
+            let parent_orders_by_date = parent_path(page_path)
+                .and_then(|p| pages.get(&p))
+                .and_then(|p| p.child_order)
+                .is_some_and(|o| o != ChildOrder::Order);
+            if parent_orders_by_date {
+                findings.push(Finding {
+                    kind: FindingKind::UndatedPageInDateOrderedSection,
+                    location: String::from(page_path),
+                    detail: None,
+                });
+            }
         }
     }
 }
@@ -1084,6 +1128,73 @@ mod tests {
     #[test]
     fn translated_site_language_is_not_flagged() {
         let site = site_with_main_json_extra("language_translated", r#""language": "nl-BE""#);
+
+        assert!(site.check().findings.is_empty());
+    }
+
+    fn date_ordered_blog(post_json: &str) -> TestSite {
+        let site = TestSite::new("date_ordered_blog");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site.write_source(
+            "blog/page.json",
+            r#"{"title":"Blog","content":"<p>hi</p>","childOrder":"dateDesc"}"#,
+        );
+        site.write_source("blog/post/page.json", post_json);
+        site
+    }
+
+    #[test]
+    fn dated_page_in_a_date_ordered_section_has_no_findings() {
+        let site = date_ordered_blog(
+            r#"{"title":"Post","content":"<p>hi</p>","date":"2026-10-22T09:30"}"#,
+        );
+
+        let report = site.check();
+
+        assert!(report.findings.is_empty(), "{:?}", report.findings);
+    }
+
+    #[test]
+    fn unreadable_page_date_is_an_error() {
+        let site =
+            date_ordered_blog(r#"{"title":"Post","content":"<p>hi</p>","date":"22-10-2026"}"#);
+
+        let report = site.check();
+
+        assert!(has_kind_at(
+            &report,
+            FindingKind::UnreadablePageDate,
+            "/blog/post"
+        ));
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn undated_page_in_a_date_ordered_section_is_a_warning() {
+        let site = date_ordered_blog(r#"{"title":"Post","content":"<p>hi</p>"}"#);
+
+        let report = site.check();
+
+        assert!(has_kind_at(
+            &report,
+            FindingKind::UndatedPageInDateOrderedSection,
+            "/blog/post"
+        ));
+        assert!(report.passed());
+    }
+
+    #[test]
+    fn undated_page_under_an_order_ordered_parent_has_no_findings() {
+        let site = TestSite::new("undated_order_parent");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site.write_source(
+            "about/page.json",
+            r#"{"title":"About","content":"<p>hi</p>"}"#,
+        );
 
         assert!(site.check().findings.is_empty());
     }

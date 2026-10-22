@@ -4,11 +4,12 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use vados::authoring::luma::{self as luma_authoring, LumaEventDisplay};
 use vados::authoring::menu::{self as menu_authoring, MenuLinkKind};
-use vados::authoring::page::{self, NotificationSide, PageImageRole};
+use vados::authoring::page::{self, ChildOrder, NotificationSide, PageImageRole};
 use vados::authoring::{image_registry, social};
 use vados::check::check;
 use vados::generator::generate;
 use vados::init::{self, ProjectBasics, RecognizedSocialProvider, SocialHandle};
+use vados::page_date::PageDate;
 
 #[derive(Parser)]
 #[command(
@@ -100,6 +101,14 @@ enum PageCommand {
         summary: Option<String>,
         #[arg(long)]
         order: Option<u32>,
+        /// Publication date, `YYYY-MM-DD` or `YYYY-MM-DDTHH:MM`. Defaults to
+        /// today when the parent page orders its children by date.
+        #[arg(long)]
+        date: Option<PageDate>,
+        /// How the new page orders its own children: by `order` (the
+        /// default), or by date, newest or oldest first -- e.g. for a blog.
+        #[arg(long = "child-order")]
+        child_order: Option<ChildOrderArg>,
         /// A `.md`/`.html` file, inline HTML, or omit for a bare heading.
         #[arg(long)]
         content: Option<String>,
@@ -317,6 +326,23 @@ impl From<PageImageRoleArg> for PageImageRole {
 }
 
 #[derive(Clone, Copy, ValueEnum)]
+enum ChildOrderArg {
+    Order,
+    DateDesc,
+    DateAsc,
+}
+
+impl From<ChildOrderArg> for ChildOrder {
+    fn from(value: ChildOrderArg) -> Self {
+        match value {
+            ChildOrderArg::Order => ChildOrder::Order,
+            ChildOrderArg::DateDesc => ChildOrder::DateDesc,
+            ChildOrderArg::DateAsc => ChildOrder::DateAsc,
+        }
+    }
+}
+
+#[derive(Clone, Copy, ValueEnum)]
 enum LumaEventDisplayArg {
     EventPage,
     RegisterButton,
@@ -389,9 +415,22 @@ fn main() -> ExitCode {
                 icon,
                 summary,
                 order,
+                date,
+                child_order,
                 content,
             } => run_page_new(
-                source, img_source, path, image, title, sub_title, icon, summary, order, content,
+                source,
+                img_source,
+                path,
+                image,
+                title,
+                sub_title,
+                icon,
+                summary,
+                order,
+                date,
+                child_order.map(ChildOrder::from),
+                content,
             ),
             PageCommand::AddImage {
                 source,
@@ -607,6 +646,8 @@ fn run_page_new(
     icon: Option<String>,
     summary: Option<String>,
     order: Option<u32>,
+    date: Option<PageDate>,
+    child_order: Option<ChildOrder>,
     content: Option<String>,
 ) -> ExitCode {
     if image.is_some() && img_source.is_none() {
@@ -638,6 +679,13 @@ fn run_page_new(
     let sub_title = optional_flag(sub_title, "Subtitle");
     let icon = optional_flag(icon, "Icon (Material Design Icons name)");
     let summary = optional_flag(summary, "Summary");
+    // A page in a section ordered by date needs one to be placed at all, so
+    // it gets today's unless told otherwise; elsewhere a date stays opt-in.
+    let date = match date {
+        Some(d) => Some(d),
+        None if page::parent_orders_by_date(&source, &path) => Some(prompt_date()),
+        None => None,
+    };
     let content = optional_flag(
         content,
         "Content reference (a .md/.html file, inline HTML, or leave blank for a bare heading)",
@@ -653,6 +701,8 @@ fn run_page_new(
             icon,
             summary,
             order,
+            date,
+            child_order,
             content,
         },
     ) {
@@ -661,6 +711,19 @@ fn run_page_new(
             println!("  title:   {}", outcome.title);
             if let Some(sub_title) = &outcome.sub_title {
                 println!("  subtitle: {}", sub_title);
+            }
+            if let Some(date) = &outcome.date {
+                println!("  date:    {}", date);
+            }
+            if let Some(child_order) = &outcome.child_order {
+                println!(
+                    "  children: {}",
+                    match child_order {
+                        ChildOrder::Order => "by order",
+                        ChildOrder::DateDesc => "by date, newest first",
+                        ChildOrder::DateAsc => "by date, oldest first",
+                    }
+                );
             }
             println!(
                 "  content: {}{}",
@@ -1209,6 +1272,20 @@ fn optional_flag(value: Option<String>, prompt: &str) -> Option<String> {
         return None;
     }
     prompt_optional(prompt)
+}
+
+/// Asks for a page date, offering today's; without a terminal, takes
+/// today's outright.
+fn prompt_date() -> PageDate {
+    let today = PageDate::today();
+    if !dialoguer::console::user_attended() {
+        return today;
+    }
+    Input::new()
+        .with_prompt("Date (YYYY-MM-DD)")
+        .default(today)
+        .interact_text()
+        .unwrap_or(today)
 }
 
 /// Prompts until a non-blank answer is given. Used only where there truly is

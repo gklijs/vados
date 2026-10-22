@@ -5,6 +5,9 @@
     {% if let Some(s) = sub_title %}
     <p class="subtitle">{{ s }}</p>
     {% endif %}
+    {% if let Some(d) = date %}
+    <p class="mb-2"><time datetime="{{ d.iso }}">{{ d.text }}</time></p>
+    {% endif %}
     {% if let Some(i) = image %}
     {{ i|safe }}
     {% endif %}

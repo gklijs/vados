@@ -117,6 +117,30 @@ pub(crate) struct PageConfig {
     /// use Luma don't grow a `"lumaEvents": null` line on every rewrite.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) luma_events: Option<Vec<LumaEvent>>,
+    /// When the page was published, as `YYYY-MM-DD` with an optional
+    /// `THH:MM[:SS]`. Kept as the raw text so a malformed date is reported
+    /// against this one field instead of making the whole page.json
+    /// unreadable. See `vados.allium`'s `Page.date`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) date: Option<String>,
+    /// How this page's children are ordered; `order` when absent. See
+    /// `vados.allium`'s `Page.child_order`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) child_order: Option<ChildOrder>,
+}
+
+/// How a page orders its children -- in menus, side menus and side
+/// notifications alike. See `vados.allium`'s `ChildOrder`.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum ChildOrder {
+    /// By `order`, then title.
+    #[default]
+    Order,
+    /// Newest first; children without a date come last.
+    DateDesc,
+    /// Oldest first; children without a date come last.
+    DateAsc,
 }
 
 impl PageConfig {
@@ -133,6 +157,8 @@ impl PageConfig {
             left_notifications: None,
             right_notifications: None,
             luma_events: None,
+            date: None,
+            child_order: None,
         }
     }
 }
