@@ -49,6 +49,8 @@ pub(crate) struct Item {
     pub(crate) date: Option<PageDate>,
     /// Read the same way as `date`.
     pub(crate) updated: Option<PageDate>,
+    /// Whether the page shows up wherever pages are listed.
+    pub(crate) listed: bool,
     pub(crate) child_order: ChildOrder,
     /// Set when this page publishes a feed of its dated children.
     pub(crate) feed: Option<FeedConfig>,
@@ -72,6 +74,7 @@ impl Item {
             luma_events,
             date,
             updated,
+            listed: page_config.listed.unwrap_or(true),
             child_order: page_config.child_order.unwrap_or_default(),
             feed,
         }
@@ -233,6 +236,12 @@ impl Structure {
     pub(crate) fn add_item(&self, item: Item) {
         let i = Arc::new(item);
         self.by_path.insert(i.path.clone(), i.clone());
+        // An unlisted page is no one's child as far as listing goes, so it
+        // stays out of menus, side tiles and feeds without each of them
+        // having to know. See vados.allium's `Page.listed`.
+        if !i.listed {
+            return;
+        }
         match parent_path(&i.path) {
             None => {}
             Some(p) => {

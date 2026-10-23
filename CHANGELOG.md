@@ -36,6 +36,11 @@
   `updated` date, used as the modified date in structured data and feeds. `check` warns about a dated page without
   a `summary`, and reports an unreadable `updated` like an unreadable `date`.
 
+- Static files and unlisted pages (#19): `main.json`'s optional `staticDir` names a directory whose files are
+  published as they are at the site root (`robots.txt`, `.well-known/...`, verification files, downloads). A
+  `page.json` with `"listed": false` publishes the page but keeps it out of menus, side tiles, feeds and the sitemap,
+  e.g. a `404` page. `check` warns about a missing `staticDir` and a static file a generated page replaces.
+
 ### Changed
 
 - Every page's `<title>` now ends with the site title (`My post · My site`), except the home page's, which is just

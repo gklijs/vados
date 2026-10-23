@@ -11,7 +11,9 @@ use crate::config_files::{
 use crate::content::{
     classify_content_reference, get_file_path, has_top_level_heading, ContentKind,
 };
-use crate::files::get_all_directory_paths;
+use crate::files::{
+    get_all_directory_paths, get_page_directory_paths, get_static_files, static_dir_path,
+};
 use crate::image::reference_key_for;
 use crate::luma::{is_luma_event_id, LumaEvent};
 use crate::page_date::PageDate;
@@ -75,6 +77,8 @@ pub enum FindingKind {
     PreviewImageWithoutSiteUrl,
     UnknownDefaultImageReference,
     DatedPageWithoutSummary,
+    MissingStaticDir,
+    StaticFileShadowedByPage,
 }
 
 impl FindingKind {
@@ -109,7 +113,9 @@ impl FindingKind {
             | UndatedPageLeftOutOfFeed
             | PreviewImageWithoutSiteUrl
             | UnknownDefaultImageReference
-            | DatedPageWithoutSummary => Severity::Warning,
+            | DatedPageWithoutSummary
+            | MissingStaticDir
+            | StaticFileShadowedByPage => Severity::Warning,
         }
     }
 }
@@ -164,6 +170,10 @@ impl fmt::Display for FindingKind {
                 "pages have images, but main.json has no usable siteUrl, so link previews show none"
             }
             UnknownDefaultImageReference => "default image reference matches no declared image",
+            MissingStaticDir => "static directory does not exist",
+            StaticFileShadowedByPage => {
+                "static file has the same path as a generated page, which replaces it"
+            }
             DatedPageWithoutSummary => {
                 "dated page has no summary, so search engines and feeds have no description of it"
             }
@@ -273,7 +283,8 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
     }
     let image_keys: HashSet<&str> = images.iter().map(|i| i.reference_key.as_str()).collect();
 
-    let pages = collect_pages(source, &mut findings);
+    let static_dir = main_config.as_ref().and_then(|c| c.static_dir.as_deref());
+    let pages = collect_pages(source, static_dir, &mut findings);
     let page_paths: HashSet<&str> = pages.keys().map(|p| p.as_str()).collect();
 
     if let Some(menu_config) = &menu_config {
@@ -380,6 +391,35 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                     kind: FindingKind::FeedWithoutSiteUrl,
                     location: path.clone(),
                     detail: None,
+                });
+            }
+        }
+        if let Some(static_dir) = &main_config.static_dir {
+            if !static_dir_path(source, static_dir).is_dir() {
+                findings.push(Finding {
+                    kind: FindingKind::MissingStaticDir,
+                    location: format!("{}/main.json", source),
+                    detail: Some(static_dir.clone()),
+                });
+            }
+            let mut shadowed: Vec<(String, String)> = get_static_files(source, static_dir)
+                .into_iter()
+                .filter_map(|(published, from)| {
+                    let page = match published.as_str() {
+                        "/index.html" => "/",
+                        p => p.strip_suffix(".html")?,
+                    };
+                    pages
+                        .contains_key(page)
+                        .then(|| (from.display().to_string(), String::from(page)))
+                })
+                .collect();
+            shadowed.sort();
+            for (file, page) in shadowed {
+                findings.push(Finding {
+                    kind: FindingKind::StaticFileShadowedByPage,
+                    location: file,
+                    detail: Some(page),
                 });
             }
         }
@@ -491,9 +531,13 @@ fn duplicate_image_findings(images: &[CheckedImage]) -> Vec<Finding> {
         .collect()
 }
 
-fn collect_pages(source: &str, findings: &mut Vec<Finding>) -> HashMap<String, PageConfig> {
+fn collect_pages(
+    source: &str,
+    static_dir: Option<&str>,
+    findings: &mut Vec<Finding>,
+) -> HashMap<String, PageConfig> {
     let mut pages = HashMap::new();
-    for dir in get_all_directory_paths(source) {
+    for dir in get_page_directory_paths(source, static_dir) {
         let page_path = if dir == source {
             String::from("/")
         } else {

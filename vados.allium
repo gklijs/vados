@@ -267,6 +267,10 @@ enum FindingKind {
 
     -- Structured data.
     dated_page_without_summary
+
+    -- Static files.
+    missing_static_dir
+    static_file_shadowed_by_page
 }
 
 enum MenuLinkKind { internal | external }
@@ -484,6 +488,13 @@ entity SiteConfig {
     -- author_url is given.
     author_name: String?
     author_url: String?
+
+    -- A directory, relative to the source root, whose files are published
+    -- as they are, at the same paths under the site root: robots.txt,
+    -- verification files, .well-known, downloads. When it sits inside the
+    -- source root it is not a page, nor is anything in it. Static files are
+    -- published before pages, so a page at the same path replaces one.
+    static_dir: String?
     effective_author_name: author_name ?? site_title
     effective_title_separator: title_separator ?? config.default_title_separator
 
@@ -536,6 +547,10 @@ entity Page {
     date: PageDate?
     -- When the page last changed meaningfully, read the same way as date.
     updated: PageDate?
+    -- An unlisted page is published in the site's layout but listed
+    -- nowhere: not in menus, side menus, side notifications, feeds or the
+    -- sitemap. A 404 page or a page only linked by hand is one.
+    listed: Boolean
     child_order: ChildOrder
     publishes_feed: Boolean
     given_feed_title: String?
@@ -2024,6 +2039,23 @@ rule RunStructuralChecks {
                 kind: unknown_default_image_reference,
                 location: run.source_location,
                 detail: site.default_image
+            )
+
+        if site != null and site.static_dir != null
+            and not directory_readable(site.static_dir):
+            Finding.created(
+                run: run,
+                kind: missing_static_dir,
+                location: run.source_location,
+                detail: site.static_dir
+            )
+
+        for f in static_files_of(site.static_dir)
+            where exists p in run.pages where page_file_path(p.path) = f:
+            Finding.created(
+                run: run,
+                kind: static_file_shadowed_by_page,
+                location: f
             )
 
         -- A dated page still publishes without a summary; search engines and
@@ -3637,6 +3669,11 @@ surface PublishedPage {
         -- shows WebP. Only images used this way get such a crop. Without a
         -- site URL a page gives no address in full and no preview image.
         -- Every page allows search engines to show a large image preview.
+
+    @guarantee UnlistedPagesAreListedNowhere
+        -- A page that is not listed is published like any other, in the
+        -- site's own layout, but no menu, side menu, side notification,
+        -- feed or sitemap ever names it. Only a link written by hand does.
 
     @guarantee PagesCarryStructuredData
         -- Every dated page describes itself to search engines as a blog

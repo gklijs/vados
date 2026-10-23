@@ -49,6 +49,11 @@ pub(crate) struct MainConfig {
     /// title when absent. See `vados.allium`'s `SiteConfig.author`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) author: Option<AuthorConfig>,
+    /// A directory, relative to the source root, whose files are published
+    /// as they are at the site root. See `vados.allium`'s
+    /// `SiteConfig.static_dir`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) static_dir: Option<String>,
     pub(crate) footer_content: String,
 }
 
@@ -186,6 +191,10 @@ pub(crate) struct PageConfig {
     /// See `vados.allium`'s `Page.updated`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) updated: Option<String>,
+    /// `false` keeps the page out of menus, side tiles, feeds and the
+    /// sitemap while still publishing it. See `vados.allium`'s `Page.listed`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) listed: Option<bool>,
     /// How this page's children are ordered; `order` when absent. See
     /// `vados.allium`'s `Page.child_order`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -264,6 +273,7 @@ impl PageConfig {
             luma_events: None,
             date: None,
             updated: None,
+            listed: None,
             child_order: None,
             feed: None,
         }

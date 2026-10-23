@@ -198,6 +198,7 @@ pub fn create_page(
         luma_events: None,
         date: details.date.map(|d| d.to_string()),
         updated: None,
+        listed: None,
         child_order: details.child_order,
         feed: None,
     };
