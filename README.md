@@ -89,7 +89,8 @@ fails fast with a clear message instead of hanging.
 - **`vados social add --source root --provider github --handle gklijs`** -- adds a social link, named either by
   `--provider`/`--handle` for a recognised provider (github, linkedin, facebook, youtube, twitter) or by `--url`
   (plus `--icon`/`--brand-color`/`--label` for one vados doesn't recognise automatically -- `--label` is the link's
-  accessible name, since it's rendered as an icon with no visible text).
+  accessible name, since it's rendered as an icon with no visible text). `--brand-color` (hex, with or without `#`)
+  also overrides a recognised provider's own color, for example to show every icon in white on a dark navbar.
 - **`vados social update --source root --match github --url https://github.com/newhandle`** -- replaces an existing
   social link wholesale (same naming rules as `add`). `--match` is a substring of the existing link's url; `--index`
   disambiguates when more than one matches.

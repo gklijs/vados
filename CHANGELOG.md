@@ -23,6 +23,18 @@
 - `check` reports an unreadable `date` as an error, and an undated page under a parent ordered by date as a
   warning.
 
+### Fixed
+
+- A social link `color` written with a leading `#` (`"#ffffff"`) rendered as `##ffffff` and was dropped; it is now
+  read with or without the `#`, and `social add`/`update --brand-color` store it without (#21).
+- An explicit `color` on a recognised provider's social link (GitHub, LinkedIn, ...) is no longer ignored, so a site
+  can show all its social icons in one color (#21).
+- X/Twitter links show a boxed X in black instead of the old bird in Twitter blue (#21).
+- On phones, child tiles read in the order they pair up on wider screens (left 0, right 0, left 1, ...) instead of
+  the whole left column first (#24).
+- On phones, at most two social icons sit next to the site title; the others are in the burger menu, as a row. The
+  burger can no longer be pushed off-screen, and a long site title is cut off with an ellipsis instead (#25).
+
 ## 0.2.0 - 2026-10-14
 
 ### Added

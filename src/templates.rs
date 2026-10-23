@@ -120,6 +120,11 @@ pub(crate) struct InternalNotificationTemplate<'a> {
     pub(crate) image: Option<String>,
     pub(crate) content: Option<String>,
     pub(crate) id: String,
+    /// The tile's place among a page's child tiles once both columns are
+    /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
+    /// `2i + 1`, so they read in the order they pair up on wider screens.
+    /// `None` for side tiles.
+    pub(crate) order: Option<usize>,
 }
 
 #[derive(Template)]
@@ -131,6 +136,11 @@ pub(crate) struct ExternalNotificationTemplate<'a> {
     pub(crate) image: Option<String>,
     pub(crate) content: String,
     pub(crate) id: String,
+    /// The tile's place among a page's child tiles once both columns are
+    /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
+    /// `2i + 1`, so they read in the order they pair up on wider screens.
+    /// `None` for side tiles.
+    pub(crate) order: Option<usize>,
 }
 
 #[derive(Template)]
@@ -141,6 +151,11 @@ pub(crate) struct ContentNotificationTemplate<'a> {
     pub(crate) image: Option<String>,
     pub(crate) content: String,
     pub(crate) id: String,
+    /// The tile's place among a page's child tiles once both columns are
+    /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
+    /// `2i + 1`, so they read in the order they pair up on wider screens.
+    /// `None` for side tiles.
+    pub(crate) order: Option<usize>,
 }
 
 #[derive(Template)]

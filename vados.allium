@@ -662,7 +662,9 @@ entity Page {
 }
 
 -- A notification the maintainer attached to a page, in the left or right
--- column. Notifications are inherited by the page's whole subtree.
+-- column. Notifications are inherited by the page's whole subtree. Where the
+-- two columns stack into one (on a phone) they read in pairs: left 0, right
+-- 0, left 1, right 1, ... -- the same order they pair up in side by side.
 entity Notification {
     page: Page
     side: NotificationSide
@@ -789,9 +791,12 @@ entity SocialLink {
 
     -- Recognised providers carry a canonical icon, brand colour and label
     -- (their own name: "GitHub", "LinkedIn", ...). Note the brand colour is
-    -- a brand colour, not a Bulma semantic Color.
+    -- a brand colour, not a Bulma semantic Color. A given brand colour wins
+    -- even for a recognised provider, so a site can render every icon in
+    -- one colour (for example on a dark navbar). It is hex digits without a
+    -- leading `#`: one given with it ("#ffffff") is read as without it.
     icon: if provider = other: given_icon else: canonical_icon(provider)
-    brand_color: if provider = other: given_brand_color else: canonical_brand_color(provider)
+    brand_color: given_brand_color ?? canonical_brand_color(provider)
     label: if provider = other: given_label else: canonical_label(provider)
 }
 

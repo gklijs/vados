@@ -142,11 +142,20 @@ fn generated_pages_match_facts_observed_on_the_live_site() {
     assert!(index.contains(">TC Electronic combo<"));
     assert!(index.contains(">Yamaha TRBX304<"));
     assert!(index.contains(">2022<"));
-    // Social links: two recognised providers plus one unrecognised provider
-    // (Twitter) that supplied its own icon and color.
+    // Social links: three recognised providers. Twitter's menu.json entry
+    // still gives its own icon and color: the icon is replaced by X's, the
+    // explicit color wins over X's own.
     assert!(index.contains("https://github.com/gklijs"));
     assert!(index.contains("https://twitter.com/GKlijs"));
-    assert!(index.contains("mdi-twitter"));
+    assert!(index.contains("mdi-alpha-x-box"));
+    assert!(index.contains("color: #1DA1F2;"));
+    // Only the first two social links sit in the brand on a phone, so the
+    // burger stays on screen; the third is in the burger menu instead.
+    assert_eq!(index.matches("navbar-item is-hidden-desktop").count(), 2);
+    // Child tiles carry their reading order for the stacked mobile layout:
+    // left tile i is 2i, right tile i is 2i + 1.
+    assert!(index.contains(r#"id="sub-l-0" style="order: 0;""#));
+    assert!(index.contains(r#"id="sub-r-0" style="order: 1;""#));
     // Footer, shared site-wide from main.json's footerContent.
     assert!(index.contains("Creative Commons Attribution-NonCommercial-ShareAlike"));
     assert!(index.contains("vados_bass"));

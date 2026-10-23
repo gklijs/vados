@@ -544,8 +544,10 @@ const PROVIDERS: &[ProviderSpec] = &[
         kind: SocialProviderKind::Twitter,
         url_prefixes: &["https://x.com/", "https://twitter.com/"],
         profile_url_suffix: "",
-        icon: "twitter",
-        brand_color: "1DA1F2",
+        // MDI 6.5.95 has no X logo; a boxed X in X's black is closer to
+        // the current brand than the old bird in Twitter blue.
+        icon: "alpha-x-box",
+        brand_color: "000000",
         label: "X",
     },
 ];
@@ -583,6 +585,13 @@ pub fn canonical_brand_color(provider: SocialProviderKind) -> Option<&'static st
     provider_spec(provider).map(|p| p.brand_color)
 }
 
+/// A brand color as the template wants it: hex digits without a leading
+/// `#`, since `navigation.html` writes its own. `"#ffffff"` and `"ffffff"`
+/// both become `"ffffff"`.
+pub fn normalize_brand_color(color: &str) -> String {
+    color.trim().trim_start_matches('#').to_string()
+}
+
 /// The accessible name a recognised provider always uses. `None` for
 /// `Other`, the same way as `canonical_icon`. See `vados.allium`'s
 /// `SocialLink.label`.
@@ -617,13 +626,14 @@ impl SocialItem {
                     .clone()
                     .expect("Other social links should have icon.")
             });
-        let brand_color = canonical_brand_color(provider)
-            .map(String::from)
-            .unwrap_or_else(|| {
-                raw.color
-                    .clone()
-                    .expect("Other social links should have color.")
-            });
+        // An explicit color wins over the provider's brand color, so a site
+        // can render every icon in one color (for example on a dark navbar).
+        let brand_color = raw
+            .color
+            .as_deref()
+            .map(normalize_brand_color)
+            .or_else(|| canonical_brand_color(provider).map(String::from))
+            .expect("Other social links should have color.");
         let label = canonical_label(provider)
             .map(String::from)
             .unwrap_or_else(|| {
@@ -729,6 +739,44 @@ pub(crate) struct MenuItem {
 mod tests {
     use super::*;
     use crate::ui_text::ui_text;
+
+    fn raw_social(url: &str, icon: Option<&str>, color: Option<&str>) -> RawSocialItem {
+        RawSocialItem {
+            url: url.to_string(),
+            icon: icon.map(String::from),
+            color: color.map(String::from),
+            label: Some("Label".to_string()),
+        }
+    }
+
+    #[test]
+    fn a_social_color_with_a_leading_hash_is_rendered_without_it() {
+        let item = SocialItem::new(&raw_social(
+            "https://hachyderm.io/@gklijs",
+            Some("mastodon"),
+            Some("#ffffff"),
+        ));
+        assert_eq!(item.get_color(), "ffffff");
+    }
+
+    #[test]
+    fn an_explicit_social_color_wins_over_the_brand_color() {
+        let item = SocialItem::new(&raw_social(
+            "https://github.com/gklijs",
+            None,
+            Some("eeeeee"),
+        ));
+        assert_eq!(item.get_color(), "eeeeee");
+        let item = SocialItem::new(&raw_social("https://github.com/gklijs", None, None));
+        assert_eq!(item.get_color(), "171515");
+    }
+
+    #[test]
+    fn x_links_get_the_x_icon_and_color() {
+        let item = SocialItem::new(&raw_social("https://x.com/gklijs", None, None));
+        assert_eq!(item.get_icon(), "alpha-x-box");
+        assert_eq!(item.get_color(), "000000");
+    }
 
     fn page(path: &str, date: Option<&str>, order: Option<u32>) -> Item {
         let mut config = PageConfig::new(path);

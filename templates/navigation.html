@@ -5,15 +5,18 @@
             <span></span><span></span><span></span>
         </button>
         {% endif %}
-        <a class="{% if path.len() <= 1 %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="/">
+        <a class="{% if path.len() <= 1 %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="/" id="nav-site-title">
             <span class="is-large">{{ site_title }}</span>
         </a>
+        {# Only the first two fit next to the title and burger on a phone; the rest are in the burger menu. #}
         {% for s in socials %}
+        {% if loop.index0 < 2 %}
         <a class="navbar-item is-hidden-desktop" href="{{ s.get_url() }}" target="_blank" aria-label="{{ s.get_label() }}">
             <span class="icon" style="color: #{{ s.get_color() }};">
                 <em class="mdi mdi-24px mdi-{{ s.get_icon() }}"></em>
             </span>
         </a>
+        {% endif %}
         {% endfor %}
         <button class="button navbar-burger" id="burger-menu" aria-label="{{ ui.toggle_main_menu }}" aria-expanded="false" aria-controls="main-menu"><span></span><span></span><span></span></button>
     </div>
@@ -50,9 +53,9 @@
             {% endmatch %}
             {% endfor %}
         </div>
-        <div class="navbar-end">
+        <div class="navbar-end" id="nav-socials">
             {% for s in socials %}
-            <a class="navbar-item is-hidden-touch" href="{{ s.get_url() }}" target="_blank" aria-label="{{ s.get_label() }}">
+            <a class="{% if loop.index0 < 2 %}navbar-item is-hidden-touch{% else %}navbar-item{% endif %}" href="{{ s.get_url() }}" target="_blank" aria-label="{{ s.get_label() }}">
                 <span class="icon" style="color: #{{ s.get_color() }};">
                 <em class="mdi mdi-36px mdi-{{ s.get_icon() }}"></em></span>
             </a>
