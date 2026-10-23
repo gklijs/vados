@@ -8,7 +8,9 @@
 use crate::config_files::{
     is_site_url, ChildOrder, ImageList, MainConfig, MenuConfig, Notification, PageConfig,
 };
-use crate::content::{classify_content_reference, get_file_path, ContentKind};
+use crate::content::{
+    classify_content_reference, get_file_path, has_top_level_heading, ContentKind,
+};
 use crate::files::get_all_directory_paths;
 use crate::image::reference_key_for;
 use crate::luma::{is_luma_event_id, LumaEvent};
@@ -50,6 +52,7 @@ pub enum FindingKind {
     ImagesManifestUnreadable,
     UnrecognisedContentReference,
     MissingContentFile,
+    TopLevelHeadingInContent,
     ExternalMenuLinkWithoutTitle,
     UnresolvedMenuLink,
     UnrecognisedSocialLinkIncomplete,
@@ -90,6 +93,7 @@ impl FindingKind {
             | FeedWithoutSiteUrl => Severity::Error,
             ImagesManifestUnreadable
             | MissingContentFile
+            | TopLevelHeadingInContent
             | UnresolvedMenuLink
             | UnknownPageImageReference
             | UnknownNotificationImageReference
@@ -116,6 +120,9 @@ impl fmt::Display for FindingKind {
                 "content reference is not a Markdown file, an HTML file, or inline HTML"
             }
             MissingContentFile => "content file does not exist",
+            TopLevelHeadingInContent => {
+                "content has a top-level heading, a second one after the page title"
+            }
             ExternalMenuLinkWithoutTitle => "external menu link has no title",
             UnresolvedMenuLink => "menu link matches no page",
             UnrecognisedSocialLinkIncomplete => {
@@ -289,6 +296,13 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
 
     for (path, page_config) in &pages {
         check_content_reference(source, path, &page_config.content, &mut findings);
+        if has_top_level_heading(source, path, &page_config.content) {
+            findings.push(Finding {
+                kind: FindingKind::TopLevelHeadingInContent,
+                location: path.clone(),
+                detail: Some(page_config.content.clone()),
+            });
+        }
         if let Some(image_ref) = &page_config.image {
             if !image_keys.contains(image_ref.as_str()) {
                 findings.push(Finding {
@@ -907,6 +921,33 @@ mod tests {
         let report = site.check();
 
         assert!(has_kind_at(&report, FindingKind::MissingContentFile, "/"));
+        assert!(report.passed());
+    }
+
+    #[test]
+    fn top_level_heading_in_page_content_is_a_warning() {
+        let site = TestSite::new("content_top_level_heading");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", r#"{"title":"Home","content":"home.md"}"#);
+        site.write_source("home.md", "Intro\n\n# Home again\n\n## Fine\n");
+        site.write_source(
+            "about/page.json",
+            r#"{"title":"About","content":"<h2>Fine</h2><p>```\n# not a heading\n```</p>"}"#,
+        );
+
+        let report = site.check();
+
+        assert!(has_kind_at(
+            &report,
+            FindingKind::TopLevelHeadingInContent,
+            "/"
+        ));
+        assert!(!has_kind_at(
+            &report,
+            FindingKind::TopLevelHeadingInContent,
+            "/about"
+        ));
         assert!(report.passed());
     }
 

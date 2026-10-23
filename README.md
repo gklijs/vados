@@ -114,7 +114,7 @@ A vados project is two plain-text trees plus generated output:
 - **Source tree** (`--source`): `main.json` (site title, footer, extra CSS/JS, background, navbar color, language,
   description, favicon, site URL) and `menu.json` (main menu, social links) at the root, and one `page.json` per content directory. Every directory
   under the root is a page, whether or not it has its own `page.json` -- one without gets a title from its directory
-  name and a bare heading for content.
+  name and a placeholder paragraph for content.
 - **Image tree** (`--img-source`): one `images.json` per directory of images to publish. Each declared image is
   centre-cropped to the closest standard aspect ratio and published as a set of responsively sized WebP variants.
 - **Destination** (`--destination`, `generate` only): the published site. Variants already there are reused rather
@@ -218,6 +218,10 @@ element, offers a skip-to-content link and marked-up navigation/main/footer land
 control (social links, the menu toggles) an accessible name -- a social link's is its provider's own name, or an
 explicit `--label` for one vados doesn't recognise. Every declared image requires alternative text; `check` flags
 one that doesn't.
+
+A page's title is its one `<h1>`, and the titles of its tiles and Luma events are `<h2>`s under it, so headings
+outline the page for search engines and for screen-reader users jumping between headings. Start a page's own content
+at `##` (or `<h2>`): `check` warns about a `#` heading or `<h1>` in it, since that would make a second one.
 
 The text vados adds itself -- the skip link, the names of the navigation landmarks and menu toggles, and a Luma
 register button's default label -- follows the site language. It's available in English, Dutch, German, French and

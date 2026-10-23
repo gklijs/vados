@@ -23,6 +23,13 @@
 - `check` reports an unreadable `date` as an error, and an undated page under a parent ordered by date as a
   warning.
 
+### Changed
+
+- A page's title is now an `<h1>`, and the titles of tiles and Luma events are `<h2>`s, so the headings outline the
+  page (#14). Bulma styles them by class, so nothing looks different. `check` warns about a top-level heading (`#` or
+  `<h1>`) in a page's content, since that would make a second one.
+- A page without content of its own gets a placeholder paragraph instead of a heading.
+
 ### Fixed
 
 - A social link `color` written with a leading `#` (`"#ffffff"`) rendered as `##ffffff` and was dropped; it is now

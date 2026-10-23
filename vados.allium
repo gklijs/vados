@@ -226,6 +226,7 @@ enum FindingKind {
     -- Content references.
     unrecognised_content_reference
     missing_content_file
+    top_level_heading_in_content
 
     -- Menus and social links.
     external_menu_link_without_title
@@ -998,8 +999,8 @@ entity PageCreationRun {
         parent_child_order(source_location, given_path) in {date_desc, date_asc}
 
     -- A page.json with no content reference gets the same fallback a
-    -- directory with no page.json gets at generate/check time: a bare
-    -- heading. See DiscoverPage.
+    -- directory with no page.json gets at generate/check time: a placeholder
+    -- paragraph. See DiscoverPage.
     content: given_content ?? default_page_content(given_path)
     content_was_defaulted: given_content = null
 }
@@ -1501,7 +1502,7 @@ rule RegisterSocialLink {
 
 -- Every directory under the source root becomes a page. A directory without a
 -- page.json still becomes a page: it is titled after the directory and its
--- content is a bare heading.
+-- content is a placeholder paragraph naming it.
 rule DiscoverPage {
     when: PageDeclared(
         run, path, title?, sub_title?, image?, icon?, summary?, content?, order?,
@@ -1927,6 +1928,16 @@ rule RunStructuralChecks {
             Finding.created(
                 run: run,
                 kind: missing_content_file,
+                location: p.path,
+                detail: p.content.reference
+            )
+
+        -- The page's title is its one top-level heading; a top-level
+        -- heading in its content would make a second. It still publishes.
+        for p in run.pages where content_has_top_level_heading(p.content):
+            Finding.created(
+                run: run,
+                kind: top_level_heading_in_content,
                 location: p.path,
                 detail: p.content.reference
             )
@@ -3268,7 +3279,8 @@ surface SourceTree {
 
     @guarantee PageJsonIsOptional
         -- A content directory with no page.json still becomes a page: it is
-        -- titled after the directory and its content is a bare heading.
+        -- titled after the directory and its content is a placeholder
+        -- paragraph naming it.
 
     @guarantee DiscoveryIsTheSameInBothModes
         -- A check run walks exactly the trees a generate run would and declares
@@ -3533,6 +3545,14 @@ surface PublishedPage {
         -- Luma's register-button script is loaded only by pages that show a
         -- register button, once per page however many they show. Pages
         -- without a Luma event make no request to Luma at all.
+
+    @guarantee HeadingsOutlineThePage
+        -- The page's title is its one top-level heading, so search engines
+        -- and screen-reader visitors navigating by heading both find what
+        -- the page is about first. Every notification title and Luma event
+        -- title is a heading one level below it, so a page listing other
+        -- pages forms an outline under its own title. A subtitle or date is
+        -- not a heading.
 
     @guarantee IconOnlyControlsCarryAnAccessibleName
         -- A control that carries no visible text of its own has an

@@ -1,8 +1,8 @@
 {% for e in events %}
 <section class="tile is-child box p-2" aria-labelledby="luma-event-{{ loop.index }}">
-    <p class="title is-4" id="luma-event-{{ loop.index }}">
+    <h2 class="title is-4" id="luma-event-{{ loop.index }}">
         <a href="{{ e.event_url }}">{{ e.title }}</a>
-    </p>
+    </h2>
     {% if e.shows_event_page %}
     <iframe src="{{ e.embed_url }}" title="{{ e.title }}" loading="lazy" width="100%" height="450"
             style="border: 1px solid #bfcbda88; border-radius: 4px;" allow="fullscreen; payment"></iframe>

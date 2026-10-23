@@ -1,6 +1,6 @@
 <div class="notification tile is-child {{ color }}" id="{{ id }}"{% if let Some(o) = order %} style="order: {{ o }};"{% endif %}>
     {% if let Some(t) = title %}
-    <p class="title">{{ t }}</p>
+    <h2 class="title">{{ t }}</h2>
     {% endif %}
     {% if let Some(i) = image %}
     {{ i|safe }}

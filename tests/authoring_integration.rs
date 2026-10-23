@@ -547,7 +547,7 @@ fn a_section_with_a_feed_publishes_its_newest_dated_posts_as_atom() {
         .unwrap();
         fs::write(
             source.join(format!("blog/{slug}/post.md")),
-            format!("# {slug}\n\nSome *text* with a [link](/blog) & an ampersand.\n"),
+            format!("## {slug}\n\nSome *text* with a [link](/blog) & an ampersand.\n"),
         )
         .unwrap();
     }
