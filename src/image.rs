@@ -35,6 +35,10 @@ pub(crate) struct ProcessedImage {
     pub(crate) ratio: ImageRatio,
     pub(crate) srcset: String,
     pub(crate) src: String,
+    /// The size of the `src` variant, given on the `<img>` so the browser
+    /// can reserve its space before it loads.
+    pub(crate) src_width: u32,
+    pub(crate) src_height: u32,
     /// The image as link previews show it, when it's used as one.
     pub(crate) preview: Option<PreviewImage>,
 }
@@ -162,8 +166,17 @@ impl<'a> ImageProcessor<'a> {
         let resize_options =
             ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3));
         let mut srcset_part = vec![];
+        let widths = all_widths(width);
+        // `src` is the fallback for browsers and crawlers that don't read
+        // srcset, so it's a variant worth looking at: the widest up to
+        // FALLBACK_WIDTH, or the narrowest when every one is wider.
+        let src_width = widths
+            .iter()
+            .map(|(w, _)| *w)
+            .find(|w| *w <= FALLBACK_WIDTH)
+            .unwrap_or_else(|| widths.last().unwrap().0);
         let mut src = String::new();
-        for (width, quality) in all_widths(width) {
+        for (width, quality) in widths {
             let path = format!("/img{}/{}-w{}.webp", path_start, file_base, width);
             if empty(self.destination, &path) {
                 let height = ratio.get_height(&width);
@@ -182,11 +195,13 @@ impl<'a> ImageProcessor<'a> {
                 write_raw(self.destination, &path, result.iter_mut());
             }
             srcset_part.push(format!("{} {}w", path, width));
-            // `src` is the fallback for browsers without srcset support, so it
-            // must be a bare URL: the width descriptor only belongs in srcset.
-            src = path;
+            // A bare URL: the width descriptor only belongs in srcset.
+            if width == src_width {
+                src = path;
+            }
         }
         let srcset = srcset_part.join(", ");
+        let src_height = ratio.get_height(&src_width);
         Ok((
             base_path,
             Arc::new(ProcessedImage {
@@ -195,6 +210,8 @@ impl<'a> ImageProcessor<'a> {
                 ratio,
                 srcset,
                 src,
+                src_width,
+                src_height,
                 preview,
             }),
         ))
@@ -272,6 +289,9 @@ pub(crate) fn reference_key_for(path_start: &str, file_name: &str) -> Option<Str
         format!("{}/{}", path_start, file_base)
     })
 }
+
+/// The widest variant `src` falls back to.
+const FALLBACK_WIDTH: u32 = 986;
 
 const ALL_VARIANTS: [(u32, f32); 7] = [
     (1972, 75_f32),

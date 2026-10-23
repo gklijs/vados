@@ -361,3 +361,52 @@ fn social_links_verify_as_the_site_owners_and_mastodon_names_the_creator() {
         .published("index.html")
         .contains(r#"<meta name="fediverse:creator" content="@jo@mastodon.social""#));
 }
+
+/// The `<img>` tag whose `src` starts with `src_prefix`.
+fn img_tag<'a>(html: &'a str, src_prefix: &str) -> &'a str {
+    let at = html
+        .find(&format!(r#"src="{src_prefix}"#))
+        .unwrap_or_else(|| panic!("no <img> with src {src_prefix}..."));
+    let start = html[..at].rfind("<img").unwrap();
+    let end = at + html[at..].find("/>").unwrap();
+    &html[start..end]
+}
+
+#[test]
+fn the_largest_images_load_first_and_fall_back_to_a_mid_size_variant() {
+    let site = blog("lcp", "");
+    site.write_source(
+        "blog/page.json",
+        r#"{"title":"Blog","content":"<p>posts</p>","childOrder":"dateDesc",
+            "leftNotifications":[
+              {"content":"<p>a</p>","image":"/batman"},
+              {"content":"<p>b</p>","image":"/logo"}],
+            "rightNotifications":[{"content":"<p>c</p>","image":"/logo"}]}"#,
+    );
+    site.generate();
+
+    // The 1600 x 1000 hero is cropped to 5:3; its fallback is the 986 wide
+    // variant, not the 159 wide thumbnail.
+    let post = site.published("blog/post.html");
+    let hero = img_tag(&post, "/img/batman-");
+    assert!(hero.contains(r#"src="/img/batman-w986.webp""#), "{hero}");
+    // The minifier drops the quotes around a bare number.
+    assert!(hero.contains("width=986 height=591"), "{hero}");
+    assert!(hero.contains(r#"loading="eager""#), "{hero}");
+    assert!(hero.contains(r#"fetchpriority="high""#), "{hero}");
+
+    // The first row of child tiles loads eagerly, the rest lazily, and none
+    // jumps the queue. The 400 x 400 logo's widest variant up to 986 is 318.
+    let blog = site.published("blog.html");
+    let first = img_tag(&blog, "/img/batman-");
+    assert!(first.contains(r#"loading="eager""#), "{first}");
+    assert!(!first.contains("fetchpriority"), "{first}");
+    let tiles: Vec<&str> = blog
+        .split("<img")
+        .skip(1)
+        .filter(|t| t.contains(r#"src="/img/logo-w318.webp""#))
+        .collect();
+    assert_eq!(tiles.len(), 2);
+    assert!(tiles.iter().any(|t| t.contains(r#"loading="eager""#)));
+    assert!(tiles.iter().any(|t| t.contains(r#"loading="lazy""#)));
+}

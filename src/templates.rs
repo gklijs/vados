@@ -202,5 +202,7 @@ pub(crate) struct InternalImageTemplate<'a> {
     pub(crate) image_type: ImageType,
     pub(crate) src: &'a str,
     pub(crate) srcset: &'a str,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
     pub(crate) alt: &'a str,
 }

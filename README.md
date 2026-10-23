@@ -118,6 +118,8 @@ A vados project is two plain-text trees plus generated output:
   name and a placeholder paragraph for content.
 - **Image tree** (`--img-source`): one `images.json` per directory of images to publish. Each declared image is
   centre-cropped to the closest standard aspect ratio and published as a set of responsively sized WebP variants.
+  A page's hero image is fetched first (`fetchpriority="high"`), and the first row of its tile images eagerly; the
+  rest load lazily.
 - **Destination** (`--destination`, `generate` only): the published site. Variants already there are reused rather
   than regenerated across runs, and anything belonging to an image no longer declared is pruned.
 

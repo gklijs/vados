@@ -274,9 +274,10 @@ fn resolve_notification(
     structure: &Structure,
 ) -> String {
     let content = get_content(source, path, &notification.content);
-    let image = notification
-        .image
-        .and_then(|i| structure.process_image(&i, ImageType::Sub));
+    let image = notification.image.and_then(|i| {
+        // The first row of child tiles is above the fold.
+        structure.process_image(&i, ImageType::Sub { eager: order < 2 })
+    });
     match notification.url {
         None => {
             let color = notification.color.unwrap_or(Color::Info).to_css_class();
@@ -502,6 +503,8 @@ pub(crate) fn to_internal_image(
         image_type,
         src: &processed_image.src,
         srcset: &processed_image.srcset,
+        width: processed_image.src_width,
+        height: processed_image.src_height,
         alt: &processed_image.alt,
     }
     .render()
