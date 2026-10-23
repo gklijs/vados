@@ -87,6 +87,50 @@ impl GivenSocialLink {
     }
 }
 
+/// The icon, brand color and label a Mastodon link gets when named by its
+/// handle. Mastodon isn't recognised from a url, since every instance has its
+/// own address and the `/@user` form is shared by Medium, TikTok, Threads and
+/// YouTube, so its link carries all three itself.
+pub const MASTODON_ICON: &str = "mastodon";
+pub const MASTODON_BRAND_COLOR: &str = "6364FF";
+pub const MASTODON_LABEL: &str = "Mastodon";
+
+/// A Mastodon profile url from a handle, `user@instance` or `@user@instance`:
+/// `https://instance/@user`. `None` when the handle doesn't name both.
+pub fn mastodon_profile_url(handle: &str) -> Option<String> {
+    let (user, instance) = handle.trim().trim_start_matches('@').split_once('@')?;
+    let valid = |s: &str| !s.is_empty() && !s.contains(['@', '/', ' ']);
+    (valid(user) && valid(instance)).then(|| format!("https://{instance}/@{user}"))
+}
+
+/// The `fediverse:creator` handle, `@user@instance`, of a Mastodon profile
+/// url, `https://instance/@user`. See `vados.allium`'s
+/// `SiteConfig.effective_fediverse_creator`.
+pub fn fediverse_handle_of(url: &str) -> Option<String> {
+    let rest = url.trim().strip_prefix("https://")?;
+    let (instance, path) = rest.split_once('/')?;
+    let user = path.trim_end_matches('/').strip_prefix('@')?;
+    let valid = |s: &str| !s.is_empty() && !s.contains(['@', '/', ' ', '?', '#']);
+    (valid(instance) && valid(user)).then(|| format!("@{user}@{instance}"))
+}
+
+/// A complete Mastodon link from a handle, with the icon, brand color and
+/// label any of `icon`/`brand_color`/`label` leave out.
+pub fn mastodon_link(
+    handle: &str,
+    icon: Option<String>,
+    brand_color: Option<String>,
+    label: Option<String>,
+) -> Option<GivenSocialLink> {
+    Some(GivenSocialLink {
+        handle: None,
+        url: Some(mastodon_profile_url(handle)?),
+        icon: icon.or_else(|| Some(MASTODON_ICON.to_string())),
+        brand_color: brand_color.or_else(|| Some(MASTODON_BRAND_COLOR.to_string())),
+        label: label.or_else(|| Some(MASTODON_LABEL.to_string())),
+    })
+}
+
 fn provider_is_complete(
     provider: SocialProviderKind,
     icon: &Option<String>,
@@ -283,6 +327,41 @@ pub fn remove_social_link(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn a_mastodon_handle_names_a_profile_on_its_instance() {
+        let expected = Some("https://hachyderm.io/@gklijs".to_string());
+        assert_eq!(mastodon_profile_url("gklijs@hachyderm.io"), expected);
+        assert_eq!(mastodon_profile_url("@gklijs@hachyderm.io"), expected);
+        assert_eq!(mastodon_profile_url("gklijs"), None);
+        assert_eq!(mastodon_profile_url("@hachyderm.io"), None);
+    }
+
+    #[test]
+    fn a_mastodon_profile_url_gives_its_fediverse_handle() {
+        assert_eq!(
+            fediverse_handle_of("https://hachyderm.io/@gklijs"),
+            Some("@gklijs@hachyderm.io".to_string())
+        );
+        assert_eq!(
+            fediverse_handle_of("https://hachyderm.io/@gklijs/"),
+            Some("@gklijs@hachyderm.io".to_string())
+        );
+        assert_eq!(fediverse_handle_of("https://hachyderm.io/gklijs"), None);
+        assert_eq!(
+            fediverse_handle_of("https://hachyderm.io/@gklijs/123"),
+            None
+        );
+    }
+
+    #[test]
+    fn a_mastodon_link_is_complete_and_keeps_what_was_given() {
+        let link = mastodon_link("gklijs@hachyderm.io", None, Some("ffffff".into()), None).unwrap();
+        assert_eq!(link.url.as_deref(), Some("https://hachyderm.io/@gklijs"));
+        assert_eq!(link.icon.as_deref(), Some("mastodon"));
+        assert_eq!(link.brand_color.as_deref(), Some("ffffff"));
+        assert_eq!(link.label.as_deref(), Some("Mastodon"));
+    }
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     static NEXT_ID: AtomicUsize = AtomicUsize::new(0);

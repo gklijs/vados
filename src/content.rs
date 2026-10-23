@@ -1,3 +1,4 @@
+use crate::authoring::social::{fediverse_handle_of, MASTODON_ICON};
 use crate::bulma::{Color, ImageType};
 use crate::config_files::{favicon_media_type, MainConfig, MenuConfig, Notification, PageConfig};
 use crate::feed::{feed_href, feed_title, page_url};
@@ -44,6 +45,7 @@ pub(crate) struct GenericContent {
     author_url: Option<String>,
     /// The social links' URLs: the site owner's own profiles elsewhere.
     social_urls: Vec<String>,
+    fediverse_creator: Option<String>,
     /// Whether feeds are published at all: only with a usable `siteUrl`.
     feeds_published: bool,
 }
@@ -107,9 +109,29 @@ impl GenericContent {
             author_name: main_config.get_author_name().to_string(),
             author_url: main_config.author.as_ref().and_then(|a| a.url.clone()),
             social_urls: menu_config.socials.iter().map(|s| s.url.clone()).collect(),
+            fediverse_creator: fediverse_creator(main_config, menu_config),
             feeds_published: main_config.get_site_url().is_some(),
         }
     }
+}
+
+/// main.json's `fediverseCreator`, or else the handle of the first social
+/// link with the Mastodon icon. See vados.allium's
+/// `SiteConfig.effective_fediverse_creator`.
+fn fediverse_creator(main_config: &MainConfig, menu_config: &MenuConfig) -> Option<String> {
+    let given = main_config
+        .fediverse_creator
+        .as_deref()
+        .map(str::trim)
+        .filter(|h| !h.is_empty())
+        .map(|h| format!("@{}", h.trim_start_matches('@')));
+    given.or_else(|| {
+        menu_config
+            .socials
+            .iter()
+            .filter(|s| s.icon.as_deref() == Some(MASTODON_ICON))
+            .find_map(|s| fediverse_handle_of(&s.url))
+    })
 }
 
 pub(crate) struct ContentHelper<'a> {
@@ -634,6 +656,7 @@ fn get_page(
             &generic_content.title_separator,
         ),
         site_title: &generic_content.site_title,
+        fediverse_creator: generic_content.fediverse_creator.as_deref(),
         preview,
         structured_data,
         description,

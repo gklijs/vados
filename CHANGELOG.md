@@ -39,6 +39,10 @@
 - `sitemap.xml` and `robots.txt` (#18): with a `siteUrl`, the sitemap lists every listed page, with a `<lastmod>`
   only for pages that give a `date` or `updated`. The robots.txt allows all crawlers and names the sitemap, unless
   the static directory has its own.
+- Mastodon (#20): social links carry `rel="me"`, so Mastodon can verify the site as the profile's. Pages declare
+  `fediverse:creator` from `main.json`'s new `fediverseCreator`, or from a social link with the `mastodon` icon.
+  `social add`/`update --provider mastodon --handle user@instance` writes such a link with the Mastodon icon,
+  colour and label.
 - Static files and unlisted pages (#19): `main.json`'s optional `staticDir` names a directory whose files are
   published as they are at the site root (`robots.txt`, `.well-known/...`, verification files, downloads). A
   `page.json` with `"listed": false` publishes the page but keeps it out of menus, side tiles, feeds and the sitemap,

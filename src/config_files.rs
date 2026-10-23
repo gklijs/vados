@@ -54,6 +54,11 @@ pub(crate) struct MainConfig {
     /// `SiteConfig.static_dir`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) static_dir: Option<String>,
+    /// The site owner's fediverse handle, `@user@instance`, which Mastodon
+    /// shows as the author of link previews. See `vados.allium`'s
+    /// `SiteConfig.fediverse_creator`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) fediverse_creator: Option<String>,
     pub(crate) footer_content: String,
 }
 

@@ -495,6 +495,13 @@ entity SiteConfig {
     -- source root it is not a page, nor is anything in it. Static files are
     -- published before pages, so a page at the same path replaces one.
     static_dir: String?
+
+    -- The site owner's fediverse handle (`@user@instance`), which Mastodon
+    -- shows as the author under link previews of the site's pages. Without
+    -- one, the first social link with the Mastodon icon names it.
+    fediverse_creator: String?
+    effective_fediverse_creator:
+        fediverse_creator ?? fediverse_handle_of(first_mastodon_social_link_url)
     effective_author_name: author_name ?? site_title
     effective_title_separator: title_separator ?? config.default_title_separator
 
@@ -1193,6 +1200,11 @@ entity SocialLinkChangeRun {
 
     -- add/update: exactly one of these two ways of naming the link.
     given_handle: SocialHandle?
+    -- A Mastodon handle (`user@instance`) is given as a url instead: every
+    -- instance has its own address, so Mastodon is not recognised from a
+    -- url, and its link carries the Mastodon icon, brand colour and label
+    -- itself unless the maintainer gives others. See
+    -- SiteConfig.effective_fediverse_creator.
     given_url: String?
     given_icon: String?
     given_brand_color: String?
@@ -3695,6 +3707,13 @@ surface PublishedPage {
         -- shows WebP. Only images used this way get such a crop. Without a
         -- site URL a page gives no address in full and no preview image.
         -- Every page allows search engines to show a large image preview.
+
+    @guarantee SocialLinksVerifyAsTheOwners
+        -- Every social link is marked as the site owner's own profile
+        -- (rel="me"), so Mastodon and similar services can verify the site
+        -- as belonging to that profile, and every page names the site's
+        -- effective fediverse creator, when there is one, as its author for
+        -- Mastodon's link previews.
 
     @guarantee UnlistedPagesAreListedNowhere
         -- A page that is not listed is published like any other, in the

@@ -91,6 +91,7 @@ fails fast with a clear message instead of hanging.
   (plus `--icon`/`--brand-color`/`--label` for one vados doesn't recognise automatically -- `--label` is the link's
   accessible name, since it's rendered as an icon with no visible text). `--brand-color` (hex, with or without `#`)
   also overrides a recognised provider's own color, for example to show every icon in white on a dark navbar.
+  `--provider mastodon --handle you@instance` adds a Mastodon link with its icon, color and label filled in.
 - **`vados social update --source root --match github --url https://github.com/newhandle`** -- replaces an existing
   social link wholesale (same naming rules as `add`). `--match` is a substring of the existing link's url; `--index`
   disambiguates when more than one matches.
@@ -221,6 +222,10 @@ Two optional `main.json` settings describe the site to search engines and browse
   author. The author is `main.json`'s `"author": { "name": "...", "url": "..." }` (both optional, defaulting to the
   site title and home page), with the social links as their other profiles. A page's optional `updated` date (same
   form as `date`) becomes its modified date there and in feeds. `check` warns about a dated page without a `summary`.
+- Social links carry `rel="me"`, so Mastodon can verify the site as yours (the green checkmark on your profile).
+  Every page also names your fediverse handle as `fediverse:creator`, which Mastodon shows as the author under link
+  previews: `main.json`'s `"fediverseCreator": "@you@instance"`, or else taken from a social link with the
+  `mastodon` icon. `vados social add --source root --provider mastodon --handle you@hachyderm.io` adds such a link.
 - `favicon` is a file in the source root -- SVG, PNG or ICO -- published at the site root and linked as every
   page's icon. `vados init` asks for one (leave it blank to skip). `check` warns when the file is missing; `generate` then publishes the site without an icon.
 
