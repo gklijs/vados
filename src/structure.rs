@@ -439,6 +439,14 @@ impl Structure {
     pub(crate) fn get_item(&self, path: &str) -> Arc<Item> {
         self.by_path.get(path).unwrap().clone()
     }
+    /// Every page that is listed; see vados.allium's `Page.listed`.
+    pub(crate) fn get_listed_items(&self) -> Vec<Arc<Item>> {
+        self.by_path
+            .iter()
+            .filter(|i| i.listed)
+            .map(|i| i.value().clone())
+            .collect()
+    }
     /// Every page that publishes a feed.
     pub(crate) fn get_feed_items(&self) -> Vec<Arc<Item>> {
         self.by_path

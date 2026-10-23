@@ -7,6 +7,7 @@ use crate::files::{
     get_main_config, get_menu_config, get_page_directory_paths, write_html,
 };
 use crate::image::{prune_orphaned_variants, ImageProcessor};
+use crate::sitemap::write_sitemap;
 use crate::structure::Structure;
 
 /// The core function to call, if the files at the source are valid, the static site will be
@@ -35,9 +36,10 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
     let structure = Structure::new(image_processor.meta_cache);
     let mut all_paths = vec![];
     // Static files go first, so a generated page at the same path wins.
-    if let Some(static_dir) = &main_config.static_dir {
-        copy_static_files(source, static_dir, destination);
-    }
+    let static_files = match &main_config.static_dir {
+        Some(static_dir) => copy_static_files(source, static_dir, destination),
+        None => vec![],
+    };
 
     for directory_path in get_page_directory_paths(source, main_config.static_dir.as_deref()) {
         let content_items = to_content_items(source, directory_path, &structure);
@@ -64,4 +66,7 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
         write_html(destination, path, &page);
     }
     write_feeds(source, destination, &main_config, &structure);
+    if let Some(site_url) = main_config.get_site_url() {
+        write_sitemap(destination, site_url, &structure, &static_files);
+    }
 }

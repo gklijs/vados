@@ -227,7 +227,10 @@ fn dated_pages_and_the_home_page_carry_structured_data() {
 
 #[test]
 fn static_files_are_published_as_they_are_and_unlisted_pages_stay_unlisted() {
-    let site = blog("static_and_unlisted", r#", "staticDir": "static""#);
+    let site = blog(
+        "static_and_unlisted",
+        r#", "staticDir": "static", "siteUrl": "https://example.com""#,
+    );
     site.write_source("static/robots.txt", "User-agent: *\nDisallow: /drafts\n");
     site.write_source(
         "static/.well-known/security.txt",
@@ -260,6 +263,12 @@ fn static_files_are_published_as_they_are_and_unlisted_pages_stay_unlisted() {
         "Contact: mailto:jo@example.com\n"
     );
     assert!(site.published("blog.html").contains("<h1"));
+    // The static robots.txt wins over the generated one; the sitemap
+    // leaves out the unlisted pages.
+    let sitemap = site.published("sitemap.xml");
+    assert!(sitemap.contains("<loc>https://example.com/blog/post</loc>"));
+    assert!(!sitemap.contains("/404"));
+    assert!(!sitemap.contains("/blog/draft"));
 
     // Unlisted pages are published in the site's own layout...
     let not_found = site.published("404.html");
@@ -278,4 +287,49 @@ fn static_files_are_published_as_they_are_and_unlisted_pages_stay_unlisted() {
             "{page} links the draft"
         );
     }
+}
+
+#[test]
+fn with_a_site_url_a_sitemap_and_robots_txt_are_published() {
+    let site = blog("sitemap", r#", "siteUrl": "https://example.com/""#);
+    site.generate();
+
+    let sitemap = site.published("sitemap.xml");
+    let doc = roxmltree::Document::parse(&sitemap).expect("the sitemap is well-formed XML");
+    let urls: Vec<(String, Option<String>)> = doc
+        .descendants()
+        .filter(|n| n.has_tag_name("url"))
+        .map(|url| {
+            let child = |name| {
+                url.children()
+                    .find(|c| c.has_tag_name(name))
+                    .and_then(|c| c.text())
+                    .map(String::from)
+            };
+            (child("loc").unwrap(), child("lastmod"))
+        })
+        .collect();
+    assert_eq!(
+        urls,
+        [
+            ("https://example.com/".to_string(), None),
+            ("https://example.com/blog".to_string(), None),
+            (
+                "https://example.com/blog/post".to_string(),
+                Some("2026-10-22T09:30:00Z".to_string())
+            ),
+        ]
+    );
+    assert_eq!(
+        site.published("robots.txt"),
+        "User-agent: *\nAllow: /\n\nSitemap: https://example.com/sitemap.xml\n"
+    );
+}
+
+#[test]
+fn without_a_site_url_there_is_no_sitemap() {
+    let site = blog("no_sitemap", "");
+    site.generate();
+    assert!(!site.destination.join("sitemap.xml").exists());
+    assert!(!site.destination.join("robots.txt").exists());
 }
