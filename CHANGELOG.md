@@ -53,6 +53,11 @@
 
 ### Changed
 
+- Icons are inlined as SVG instead of loaded from the Material Design Icons web font (#22): no more ~400 KB of
+  render-blocking CSS and font from a CDN for a handful of icons. The default CSS no longer includes the icon font,
+  and `vados init` no longer adds it to `cssFiles`. **Content that uses the font's classes itself**
+  (`<span class="mdi mdi-github">`) now needs the stylesheet in `cssFiles`. Icons come from `@mdi/svg` 7.4.47, so
+  names renamed since 6.5.95 still work by their old name. `check` warns about an unknown icon name.
 - Faster Largest Contentful Paint (#23): a page's hero image is fetched with `fetchpriority="high"`, and the first row
   of child-tile images loads eagerly instead of lazily. Every `<img>` gives `width` and `height`, and its fallback
   `src` is the widest variant up to 986 pixels instead of the 159 pixel thumbnail, for browsers and crawlers that

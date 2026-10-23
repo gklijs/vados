@@ -15,7 +15,7 @@
     {% if let Some(f) = feed %}
     <p class="mt-4">
         <a href="{{ f.href }}" type="application/atom+xml">
-            <span class="icon"><i class="mdi mdi-rss" aria-hidden="true"></i></span>
+            <span class="icon">{{ crate::icons::icon_svg("rss", 24)|safe }}</span>
             <span>{{ ui.subscribe_feed }}</span>
         </a>
     </p>

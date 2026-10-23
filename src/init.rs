@@ -9,7 +9,6 @@
 //! excludes the prompt sequence itself from the domain while keeping the
 //! bundle of basics gathered as a first-class type here.
 
-use crate::bulma::default_css_links;
 use crate::config_files::favicon_media_type;
 use crate::content::escape_html;
 use crate::json_files::write_json_pretty;
@@ -301,15 +300,14 @@ fn write_site_config(
     favicon: Option<&str>,
     site_url: Option<&str>,
 ) -> io::Result<()> {
-    // The default MDI link, kept in sync with the same one `generate` uses
-    // for a site that leaves `includeDefaultCss` at its own default. Bulma
-    // itself is compiled locally instead, so `$primary` can be overridden.
-    let mdi_link = default_css_links().remove(0);
+    // Bulma is compiled locally instead of taken from the default CDN link,
+    // so `$primary` can be overridden. Icons are inlined, so need no
+    // stylesheet.
     let json = MainJson {
         site_title: site_title.to_string(),
         js_files: vec![],
         include_default_js: None,
-        css_files: vec![String::from("/css/main.min.css"), mdi_link],
+        css_files: vec![String::from("/css/main.min.css")],
         include_default_css: Some(false),
         background_class: None,
         navbar_color: None,

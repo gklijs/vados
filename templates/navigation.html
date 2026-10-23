@@ -13,7 +13,7 @@
         {% if loop.index0 < 2 %}
         <a class="navbar-item is-hidden-desktop" href="{{ s.get_url() }}" target="_blank" rel="me noopener" aria-label="{{ s.get_label() }}">
             <span class="icon" style="color: #{{ s.get_color() }};">
-                <em class="mdi mdi-24px mdi-{{ s.get_icon() }}"></em>
+                {{ crate::icons::icon_svg(s.get_icon(), 24)|safe }}
             </span>
         </a>
         {% endif %}
@@ -28,7 +28,7 @@
             <div class="navbar-item has-dropdown is-hoverable">
                 <a class="{% if path.starts_with(menu_item.url) %}navbar-link is-active{% else %}navbar-link{% endif %}" href="{{ menu_item.url }}" target="_self">
                     {% if let Some(icon) = menu_item.icon %}
-                    <span class="icon"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                    <span class="icon">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
                     {% endif %}
                     <span>{{ menu_item.title }}</span>
                 </a>
@@ -36,7 +36,7 @@
                     {% for child in children %}
                     <a class="{% if path.starts_with(child.url) %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="{{ child.url }}" target="_self">
                         {% if let Some(icon) = child.icon %}
-                        <span class="icon"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                        <span class="icon">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
                         {% endif %}
                         <span>{{ child.title }}</span>
                     </a>
@@ -46,7 +46,7 @@
             {% when None %}
             <a class="{% if path.starts_with(menu_item.url) %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="{{ menu_item.url }}" target="{% if menu_item.menu_type == Internal %}_self{% else %}_blank{% endif %}">
                 {% if let Some(icon) = menu_item.icon %}
-                <span class="icon"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                <span class="icon">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
                 {% endif %}
                 <span>{{ menu_item.title }}</span>
             </a>
@@ -57,7 +57,7 @@
             {% for s in socials %}
             <a class="{% if loop.index0 < 2 %}navbar-item is-hidden-touch{% else %}navbar-item{% endif %}" href="{{ s.get_url() }}" target="_blank" rel="me noopener" aria-label="{{ s.get_label() }}">
                 <span class="icon" style="color: #{{ s.get_color() }};">
-                <em class="mdi mdi-36px mdi-{{ s.get_icon() }}"></em></span>
+                {{ crate::icons::icon_svg(s.get_icon(), 36)|safe }}</span>
             </a>
             {% endfor %}
         </div>

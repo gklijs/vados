@@ -14,6 +14,7 @@ use crate::content::{
 use crate::files::{
     get_all_directory_paths, get_page_directory_paths, get_static_files, static_dir_path,
 };
+use crate::icons::is_known_icon;
 use crate::image::reference_key_for;
 use crate::luma::{is_luma_event_id, LumaEvent};
 use crate::page_date::PageDate;
@@ -80,6 +81,7 @@ pub enum FindingKind {
     MissingStaticDir,
     StaticFileShadowedByPage,
     UnresolvedLatestSource,
+    UnknownIcon,
 }
 
 impl FindingKind {
@@ -117,7 +119,8 @@ impl FindingKind {
             | DatedPageWithoutSummary
             | MissingStaticDir
             | StaticFileShadowedByPage
-            | UnresolvedLatestSource => Severity::Warning,
+            | UnresolvedLatestSource
+            | UnknownIcon => Severity::Warning,
         }
     }
 }
@@ -173,6 +176,7 @@ impl fmt::Display for FindingKind {
             }
             UnknownDefaultImageReference => "default image reference matches no declared image",
             MissingStaticDir => "static directory does not exist",
+            UnknownIcon => "icon is not a Material Design Icons name, so it is left out",
             UnresolvedLatestSource => "page shows the latest pages from a path that matches no page",
             StaticFileShadowedByPage => {
                 "static file has the same path as a generated page, which replaces it"
@@ -308,6 +312,23 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                 });
             }
         }
+        let menu_icons = menu_config
+            .main_menu
+            .iter()
+            .map(|i| (&i.url, &i.icon))
+            .chain(menu_config.socials.iter().map(|s| (&s.url, &s.icon)));
+        for (url, icon) in menu_icons {
+            // A recognised provider's icon is its own, whatever menu.json says.
+            let shown = !menu_config.socials.iter().any(|s| &s.url == url)
+                || !is_recognized_social_provider(url);
+            if let Some(icon) = icon.as_ref().filter(|i| shown && !is_known_icon(i)) {
+                findings.push(Finding {
+                    kind: FindingKind::UnknownIcon,
+                    location: url.clone(),
+                    detail: Some(icon.clone()),
+                });
+            }
+        }
         for social in &menu_config.socials {
             if !is_recognized_social_provider(&social.url)
                 && (social.icon.is_none() || social.color.is_none() || social.label.is_none())
@@ -323,6 +344,13 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
 
     for (path, page_config) in &pages {
         check_content_reference(source, path, &page_config.content, &mut findings);
+        if let Some(icon) = page_config.icon.as_ref().filter(|i| !is_known_icon(i)) {
+            findings.push(Finding {
+                kind: FindingKind::UnknownIcon,
+                location: path.clone(),
+                detail: Some(icon.clone()),
+            });
+        }
         if has_top_level_heading(source, path, &page_config.content) {
             findings.push(Finding {
                 kind: FindingKind::TopLevelHeadingInContent,
@@ -1328,6 +1356,41 @@ mod tests {
             "/"
         ));
         assert_eq!(count_kind(&report, FindingKind::UnresolvedLatestSource), 1);
+        assert!(report.passed());
+    }
+
+    #[test]
+    fn unknown_icons_are_a_warning() {
+        let site = TestSite::new("icons_unknown");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source(
+            "menu.json",
+            r#"{"mainMenu":[{"url":"/","icon":"hom"}],"socials":[
+                {"url":"https://github.com/x","icon":"whatever"},
+                {"url":"https://hachyderm.io/@x","icon":"mastodon","color":"6364FF","label":"Mastodon"},
+                {"url":"https://example.com/x","icon":"nope","color":"000000","label":"X"}]}"#,
+        );
+        site.write_source(
+            "page.json",
+            r#"{"title":"Home","content":"<p>hi</p>","icon":"mdi-home"}"#,
+        );
+        site.write_source(
+            "about/page.json",
+            r#"{"title":"About","content":"<p>hi</p>","icon":"no-such-icon"}"#,
+        );
+
+        let report = site.check();
+
+        assert!(has_kind_at(&report, FindingKind::UnknownIcon, "/"));
+        assert!(has_kind_at(
+            &report,
+            FindingKind::UnknownIcon,
+            "https://example.com/x"
+        ));
+        assert!(has_kind_at(&report, FindingKind::UnknownIcon, "/about"));
+        // The home page's own icon is fine, so is a recognised provider's,
+        // whatever menu.json says.
+        assert_eq!(count_kind(&report, FindingKind::UnknownIcon), 3);
         assert!(report.passed());
     }
 
