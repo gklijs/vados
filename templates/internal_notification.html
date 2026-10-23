@@ -1,4 +1,4 @@
-<a class="notification tile is-child {{ color }}" href="{{ url }}" target="_self" id="{{ id }}">
+<a class="notification tile is-child {{ color }}" href="{{ url }}" target="_self" id="{{ id }}"{% if let Some(o) = order %} style="order: {{ o }};"{% endif %}>
     {% if let Some(t) = title %}
     <p class="title">{{ t }}</p>
     {% endif %}

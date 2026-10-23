@@ -181,40 +181,14 @@ pub(crate) fn to_content_items(
         root if root == source => String::from("/"),
         mut d => d.split_off(source.len()),
     };
-    let left_sub_notifications = match &page_config.left_notifications {
-        None => None,
-        Some(notifications) => {
-            let mut result = vec![];
-            for (i, notification) in notifications.iter().enumerate() {
-                let id = format!("sub-l-{}", i);
-                result.push(resolve_notification(
-                    source,
-                    &path,
-                    notification.clone(),
-                    id,
-                    structure,
-                ))
-            }
-            Some(result)
-        }
-    };
-    let right_sub_notifications = match &page_config.right_notifications {
-        None => None,
-        Some(notifications) => {
-            let mut result = vec![];
-            for (i, notification) in notifications.iter().enumerate() {
-                let id = format!("sub-r-{}", i);
-                result.push(resolve_notification(
-                    source,
-                    &path,
-                    notification.clone(),
-                    id,
-                    structure,
-                ))
-            }
-            Some(result)
-        }
-    };
+    let left_sub_notifications = page_config
+        .left_notifications
+        .as_ref()
+        .map(|n| resolve_notifications(source, &path, n, NotificationSide::Left, structure));
+    let right_sub_notifications = page_config
+        .right_notifications
+        .as_ref()
+        .map(|n| resolve_notifications(source, &path, n, NotificationSide::Right, structure));
     let item = Item::new(path, page_config);
     ContentItems {
         item,
@@ -223,11 +197,38 @@ pub(crate) fn to_content_items(
     }
 }
 
+#[derive(Clone, Copy)]
+enum NotificationSide {
+    Left,
+    Right,
+}
+
+fn resolve_notifications(
+    source: &str,
+    path: &str,
+    notifications: &[Notification],
+    side: NotificationSide,
+    structure: &Structure,
+) -> Vec<String> {
+    notifications
+        .iter()
+        .enumerate()
+        .map(|(i, notification)| {
+            let (id, order) = match side {
+                NotificationSide::Left => (format!("sub-l-{}", i), 2 * i),
+                NotificationSide::Right => (format!("sub-r-{}", i), 2 * i + 1),
+            };
+            resolve_notification(source, path, notification.clone(), id, order, structure)
+        })
+        .collect()
+}
+
 fn resolve_notification(
     source: &str,
     path: &str,
     notification: Notification,
     id: String,
+    order: usize,
     structure: &Structure,
 ) -> String {
     let content = get_content(source, path, &notification.content);
@@ -243,6 +244,7 @@ fn resolve_notification(
                 image,
                 content,
                 id,
+                order: Some(order),
             }
             .render()
             .unwrap()
@@ -258,6 +260,7 @@ fn resolve_notification(
                 image,
                 content: Some(content),
                 id,
+                order: Some(order),
             }
             .render()
             .unwrap()
@@ -271,6 +274,7 @@ fn resolve_notification(
                 image,
                 content,
                 id,
+                order: Some(order),
             }
             .render()
             .unwrap()
@@ -300,6 +304,7 @@ pub(crate) fn items_to_side_notifications(
             image,
             content: None,
             id,
+            order: None,
         }
         .render()
         .unwrap();

@@ -3,7 +3,9 @@
 
 use crate::config_files::{MenuConfig, RawSocialItem};
 use crate::json_files::{read_json, write_json_pretty};
-use crate::structure::{canonical_brand_color, canonical_icon, canonical_label};
+use crate::structure::{
+    canonical_brand_color, canonical_icon, canonical_label, normalize_brand_color,
+};
 pub use crate::structure::{
     classify_social_provider, RecognizedSocialProvider, SocialProviderKind,
 };
@@ -114,10 +116,18 @@ fn resolved_icon(provider: SocialProviderKind, given: &Option<String>) -> Option
         .or_else(|| given.clone())
 }
 
+/// Unlike the icon and label, a given brand color wins over a recognised
+/// provider's own, the same as when generating (`SocialItem::new`).
 fn resolved_brand_color(provider: SocialProviderKind, given: &Option<String>) -> Option<String> {
-    canonical_brand_color(provider)
-        .map(String::from)
-        .or_else(|| given.clone())
+    given
+        .clone()
+        .or_else(|| canonical_brand_color(provider).map(String::from))
+}
+
+/// The given brand color as stored in menu.json: without a leading `#`, which
+/// `navigation.html` adds itself.
+fn given_brand_color(given: &GivenSocialLink) -> Option<String> {
+    given.brand_color.as_deref().map(normalize_brand_color)
 }
 
 fn resolved_label(provider: SocialProviderKind, given: &Option<String>) -> Option<String> {
@@ -139,8 +149,9 @@ pub fn add_social_link(
     let mut menu_config: MenuConfig = read_json(&path)?;
 
     let url = given.resulting_url();
+    let brand_color = given_brand_color(&given);
     let provider = classify_social_provider(&url);
-    if !provider_is_complete(provider, &given.icon, &given.brand_color, &given.label) {
+    if !provider_is_complete(provider, &given.icon, &brand_color, &given.label) {
         return Ok(Err(
             SocialLinkChangeRejectionReason::UnrecognisedProviderIncomplete,
         ));
@@ -152,14 +163,14 @@ pub fn add_social_link(
     menu_config.socials.push(RawSocialItem {
         url: url.clone(),
         icon: given.icon.clone(),
-        color: given.brand_color.clone(),
+        color: brand_color.clone(),
         label: given.label.clone(),
     });
     write_json_pretty(path, &menu_config)?;
 
     Ok(Ok(SocialLinkChangedOutcome {
         icon: resolved_icon(provider, &given.icon),
-        brand_color: resolved_brand_color(provider, &given.brand_color),
+        brand_color: resolved_brand_color(provider, &brand_color),
         label: resolved_label(provider, &given.label),
         url,
         provider,
@@ -221,8 +232,9 @@ pub fn update_social_link(
     };
 
     let url = given.resulting_url();
+    let brand_color = given_brand_color(&given);
     let provider = classify_social_provider(&url);
-    if !provider_is_complete(provider, &given.icon, &given.brand_color, &given.label) {
+    if !provider_is_complete(provider, &given.icon, &brand_color, &given.label) {
         return Ok(Err(
             SocialLinkChangeRejectionReason::UnrecognisedProviderIncomplete,
         ));
@@ -232,14 +244,14 @@ pub fn update_social_link(
     menu_config.socials[index] = RawSocialItem {
         url: url.clone(),
         icon: given.icon.clone(),
-        color: given.brand_color.clone(),
+        color: brand_color.clone(),
         label: given.label.clone(),
     };
     write_json_pretty(path, &menu_config)?;
 
     Ok(Ok(SocialLinkChangedOutcome {
         icon: resolved_icon(provider, &given.icon),
-        brand_color: resolved_brand_color(provider, &given.brand_color),
+        brand_color: resolved_brand_color(provider, &brand_color),
         label: resolved_label(provider, &given.label),
         url,
         provider,
@@ -340,6 +352,42 @@ mod tests {
         assert_eq!(source.menu_config().socials.len(), 1);
     }
 
+    #[test]
+    fn a_brand_color_given_with_a_leading_hash_is_stored_without_it() {
+        let source = TestSource::new("add_hash_color", EMPTY_MENU);
+
+        let result = add_social_link(
+            source.root(),
+            GivenSocialLink {
+                icon: Some("mastodon".to_string()),
+                brand_color: Some("#6364FF".to_string()),
+                label: Some("Mastodon".to_string()),
+                ..url_link("https://hachyderm.io/@gklijs")
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.unwrap().brand_color, Some("6364FF".to_string()));
+        assert_eq!(
+            source.menu_config().socials[0].color,
+            Some("6364FF".to_string())
+        );
+    }
+    #[test]
+    fn a_given_brand_color_wins_over_a_recognised_providers_own() {
+        let source = TestSource::new("add_recognised_color", EMPTY_MENU);
+
+        let result = add_social_link(
+            source.root(),
+            GivenSocialLink {
+                brand_color: Some("ffffff".to_string()),
+                ..url_link("https://github.com/gklijs")
+            },
+        )
+        .unwrap();
+
+        assert_eq!(result.unwrap().brand_color, Some("ffffff".to_string()));
+    }
     #[test]
     fn a_handle_with_stray_whitespace_is_trimmed_before_building_the_url() {
         let source = TestSource::new("add_handle_untrimmed", EMPTY_MENU);
