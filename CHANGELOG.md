@@ -25,6 +25,9 @@
 
 ### Changed
 
+- Every page's `<title>` now ends with the site title (`My post · My site`), except the home page's, which is just
+  the site title, and pages declare the site title as `og:site_name` (#15). `main.json`'s optional `titleSeparator`
+  changes the ` · `.
 - A page's title is now an `<h1>`, and the titles of tiles and Luma events are `<h2>`s, so the headings outline the
   page (#14). Bulma styles them by class, so nothing looks different. `check` warns about a top-level heading (`#` or
   `<h1>`) in a page's content, since that would make a second one.

@@ -173,7 +173,14 @@ fn generated_pages_match_facts_observed_on_the_live_site() {
     assert!(index.contains("Creative Commons Attribution-NonCommercial-ShareAlike"));
     assert!(index.contains("vados_bass"));
 
+    // The home page's `<title>` is the site title; every other page's ends
+    // with it.
+    assert!(index.contains("<title>Bass - gklijs</title>"));
+    assert!(index.contains(r#"<meta property="og:site_name" content="Bass - gklijs""#));
+
     let gear = std::fs::read_to_string(dest.join("gear.html")).unwrap();
+    assert!(gear.contains("<title>Gear · Bass - gklijs</title>"));
+    assert!(gear.contains(r#"<meta property="og:title" content="Gear""#));
     assert!(gear.contains("Something about the equipment I use"));
 }
 
