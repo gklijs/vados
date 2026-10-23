@@ -1,6 +1,6 @@
 use crate::bulma::ImageType;
 use crate::config_files::{
-    ChildOrder, FeedConfig, MenuConfig, PageConfig, RawMenuItem, RawSocialItem,
+    ChildOrder, FeedConfig, LatestConfig, MenuConfig, PageConfig, RawMenuItem, RawSocialItem,
 };
 use crate::content::{items_to_side_notifications, to_internal_image};
 use crate::image::ProcessedImage;
@@ -54,6 +54,7 @@ pub(crate) struct Item {
     pub(crate) child_order: ChildOrder,
     /// Set when this page publishes a feed of its dated children.
     pub(crate) feed: Option<FeedConfig>,
+    pub(crate) latest: Option<LatestConfig>,
 }
 
 impl Item {
@@ -77,6 +78,7 @@ impl Item {
             listed: page_config.listed.unwrap_or(true),
             child_order: page_config.child_order.unwrap_or_default(),
             feed,
+            latest: page_config.latest,
         }
     }
     /// When the page last changed: its `updated` date, or else its `date`.
@@ -438,6 +440,40 @@ impl Structure {
     }
     pub(crate) fn get_item(&self, path: &str) -> Arc<Item> {
         self.by_path.get(path).unwrap().clone()
+    }
+    /// The newest listed, dated pages below any of `sources`, at most
+    /// `depth` levels down when given, newest first, leaving out `path`
+    /// itself. See vados.allium's `Page.latest_pages`.
+    pub(crate) fn get_latest(
+        &self,
+        path: &str,
+        sources: &[&str],
+        depth: Option<u32>,
+        limit: u32,
+    ) -> Vec<Arc<Item>> {
+        let below = |item: &Item, source: &str| {
+            let rest = if source == "/" {
+                item.path.strip_prefix('/')
+            } else {
+                item.path
+                    .strip_prefix(source)
+                    .and_then(|r| r.strip_prefix('/'))
+            };
+            rest.filter(|r| !r.is_empty())
+                .is_some_and(|r| depth.is_none_or(|d| r.split('/').count() as u32 <= d))
+        };
+        let mut latest: Vec<Arc<Item>> = self
+            .by_path
+            .iter()
+            .filter(|i| i.listed && i.date.is_some() && i.path != path)
+            .filter(|i| sources.iter().any(|s| below(i, s)))
+            .map(|i| i.value().clone())
+            .collect();
+        // Newest first; the path settles ties, so the result is the same on
+        // every run.
+        latest.sort_by(|a, b| b.date.cmp(&a.date).then_with(|| a.path.cmp(&b.path)));
+        latest.truncate(limit as usize);
+        latest
     }
     /// Every page that is listed; see vados.allium's `Page.listed`.
     pub(crate) fn get_listed_items(&self) -> Vec<Arc<Item>> {

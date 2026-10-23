@@ -208,6 +208,45 @@ pub(crate) struct PageConfig {
     /// `vados.allium`'s `Page.feed`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) feed: Option<FeedSetting>,
+    /// Shows the newest dated pages from elsewhere in the site as child
+    /// tiles. See `vados.allium`'s `Page.latest_sources`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) latest: Option<LatestConfig>,
+}
+
+/// page.json's `latest`: which sections to take the newest dated pages
+/// from, how many, and how deep below each to look.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct LatestConfig {
+    pub(crate) from: OneOrMany,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) limit: Option<u32>,
+    /// How many levels below a section to look; any depth when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) depth: Option<u32>,
+}
+
+impl LatestConfig {
+    /// How many pages are shown when page.json doesn't say.
+    pub(crate) const DEFAULT_LIMIT: u32 = 4;
+
+    pub(crate) fn get_limit(&self) -> u32 {
+        self.limit.unwrap_or(Self::DEFAULT_LIMIT)
+    }
+    pub(crate) fn sources(&self) -> Vec<&str> {
+        match &self.from {
+            OneOrMany::One(s) => vec![s.as_str()],
+            OneOrMany::Many(v) => v.iter().map(String::as_str).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[serde(untagged)]
+pub(crate) enum OneOrMany {
+    One(String),
+    Many(Vec<String>),
 }
 
 impl PageConfig {
@@ -281,6 +320,7 @@ impl PageConfig {
             listed: None,
             child_order: None,
             feed: None,
+            latest: None,
         }
     }
 }

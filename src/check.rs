@@ -79,6 +79,7 @@ pub enum FindingKind {
     DatedPageWithoutSummary,
     MissingStaticDir,
     StaticFileShadowedByPage,
+    UnresolvedLatestSource,
 }
 
 impl FindingKind {
@@ -115,7 +116,8 @@ impl FindingKind {
             | UnknownDefaultImageReference
             | DatedPageWithoutSummary
             | MissingStaticDir
-            | StaticFileShadowedByPage => Severity::Warning,
+            | StaticFileShadowedByPage
+            | UnresolvedLatestSource => Severity::Warning,
         }
     }
 }
@@ -171,6 +173,7 @@ impl fmt::Display for FindingKind {
             }
             UnknownDefaultImageReference => "default image reference matches no declared image",
             MissingStaticDir => "static directory does not exist",
+            UnresolvedLatestSource => "page shows the latest pages from a path that matches no page",
             StaticFileShadowedByPage => {
                 "static file has the same path as a generated page, which replaces it"
             }
@@ -357,6 +360,15 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
             &mut findings,
         );
         check_page_date(path, page_config, &pages, &mut findings);
+        for source in page_config.latest.iter().flat_map(|l| l.sources()) {
+            if !page_paths.contains(source) {
+                findings.push(Finding {
+                    kind: FindingKind::UnresolvedLatestSource,
+                    location: path.clone(),
+                    detail: Some(source.to_string()),
+                });
+            }
+        }
     }
 
     if let Some(main_config) = &main_config {
@@ -1298,6 +1310,25 @@ mod tests {
             "/blog/post"
         ));
         assert!(!report.passed());
+    }
+
+    #[test]
+    fn latest_pages_from_a_path_with_no_page_is_a_warning() {
+        let site = date_ordered_blog(r#"{"title":"Post","content":"<p>hi</p>"}"#);
+        site.write_source(
+            "page.json",
+            r#"{"title":"Home","content":"<p>home</p>","latest":{"from":["/blog","/nope"]}}"#,
+        );
+
+        let report = site.check();
+
+        assert!(has_kind_at(
+            &report,
+            FindingKind::UnresolvedLatestSource,
+            "/"
+        ));
+        assert_eq!(count_kind(&report, FindingKind::UnresolvedLatestSource), 1);
+        assert!(report.passed());
     }
 
     #[test]

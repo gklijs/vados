@@ -168,6 +168,17 @@ A page can carry a publication date in its `page.json`, and a section can list i
   tiles. Undated pages come after the dated ones; pages with the same date fall back to `order`, then title.
 - In a `dateDesc` section, the side tiles show the newest pages.
 
+A page can also show the newest dated pages from elsewhere -- a home page showing the blog's latest posts, at any
+depth below it (`/blog/2026/my-post`):
+
+```json
+"latest": { "from": "/blog", "limit": 4, "depth": 2 }
+```
+
+`from` is a path or a list of them; `limit` defaults to 4, and `depth` (how many levels below `from` to look) to any.
+They're shown as tiles with their date, summary and image, newest first, before the page's own notifications. `check`
+warns about a `from` that matches no page.
+
 `vados page new --path /blog --title Blog --child-order date-desc` creates such a section; every `page new` beneath it
 then gets today's date unless `--date` says otherwise.
 

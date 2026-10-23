@@ -201,6 +201,7 @@ pub fn create_page(
         listed: None,
         child_order: details.child_order,
         feed: None,
+        latest: None,
     };
 
     let dir = page_dir(source, given_path);

@@ -410,3 +410,63 @@ fn the_largest_images_load_first_and_fall_back_to_a_mid_size_variant() {
     assert!(tiles.iter().any(|t| t.contains(r#"loading="eager""#)));
     assert!(tiles.iter().any(|t| t.contains(r#"loading="lazy""#)));
 }
+
+#[test]
+fn a_page_shows_the_latest_dated_pages_from_elsewhere_first() {
+    let site = blog("latest", "");
+    site.write_source(
+        "page.json",
+        r#"{"title":"Home","content":"<p>home</p>",
+            "latest":{"from":["/blog","/talks"],"limit":3},
+            "leftNotifications":[{"content":"<p>own tile</p>","title":"Own"}]}"#,
+    );
+    site.write_source(
+        "blog/2026/page.json",
+        r#"{"title":"2026","content":"<p>year</p>"}"#,
+    );
+    site.write_source(
+        "blog/2026/deep/page.json",
+        r#"{"title":"Deep post","content":"<p>x</p>","date":"2026-10-23","summary":"Deep & new"}"#,
+    );
+    site.write_source(
+        "blog/old/page.json",
+        r#"{"title":"Old post","content":"<p>x</p>","date":"2020-01-01"}"#,
+    );
+    site.write_source(
+        "blog/hidden/page.json",
+        r#"{"title":"Hidden post","content":"<p>x</p>","date":"2026-12-01","listed":false}"#,
+    );
+    site.write_source(
+        "talks/one/page.json",
+        r#"{"title":"A talk","content":"<p>x</p>","date":"2026-05-01"}"#,
+    );
+    site.generate();
+
+    let home = site.published("index.html");
+    let position = |needle: &str| {
+        home.find(needle)
+            .unwrap_or_else(|| panic!("{needle} is not on the home page"))
+    };
+    // Newest first, at any depth, unlisted pages left out, cut at the limit;
+    // the newest sits left, the next right, the third left again, before the
+    // page's own tile.
+    assert!(
+        home.contains(r#"href="/blog/2026/deep" target="_self" id="latest-0" style="order: -3;""#)
+    );
+    assert!(home.contains(r#"id="latest-1" style="order: -2;""#));
+    assert!(home.contains(r#"id="latest-2" style="order: -1;""#));
+    assert!(home.contains("<p>Deep &amp; new</p>"));
+    assert!(home.contains(r#"<time datetime="2026-10-23">"#));
+    assert!(!home.contains(">Old post<"));
+    assert!(!home.contains(">Hidden post<"));
+
+    let left = &home[position(r#"id="child-tiles-left""#)..position(r#"id="child-tiles-right""#)];
+    let right = &home[position(r#"id="child-tiles-right""#)..];
+    let in_left = |needle: &str| {
+        left.find(needle)
+            .unwrap_or_else(|| panic!("{needle} not left"))
+    };
+    assert!(in_left(">Deep post<") < in_left(">A talk<"));
+    assert!(in_left(">A talk<") < in_left(">Own<"));
+    assert!(right.contains(">A post<"));
+}

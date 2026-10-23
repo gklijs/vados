@@ -43,6 +43,9 @@
   `fediverse:creator` from `main.json`'s new `fediverseCreator`, or from a social link with the `mastodon` icon.
   `social add`/`update --provider mastodon --handle user@instance` writes such a link with the Mastodon icon,
   colour and label.
+- Latest pages (#26): `page.json`'s `"latest": { "from": "/blog", "limit": 4, "depth": 2 }` shows the newest dated
+  pages below one or more sections, at any depth, as tiles before the page's own notifications, e.g. a blog's latest
+  posts on the home page. `check` warns about a `from` matching no page.
 - Static files and unlisted pages (#19): `main.json`'s optional `staticDir` names a directory whose files are
   published as they are at the site root (`robots.txt`, `.well-known/...`, verification files, downloads). A
   `page.json` with `"listed": false` publishes the page but keeps it out of menus, side tiles, feeds and the sitemap,
