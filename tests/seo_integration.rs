@@ -89,7 +89,10 @@ fn write(path: &Path, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
-const MENU_JSON: &str = r#"{ "mainMenu": [], "socials": [{ "url": "https://github.com/jo" }] }"#;
+const MENU_JSON: &str = r#"{ "mainMenu": [], "socials": [
+    { "url": "https://github.com/jo" },
+    { "url": "https://hachyderm.io/@jo", "icon": "mastodon", "color": "6364FF", "label": "Mastodon" }
+] }"#;
 
 /// A blog with a dated post that has a hero image, and a site-wide default
 /// image for every other page.
@@ -332,4 +335,29 @@ fn without_a_site_url_there_is_no_sitemap() {
     site.generate();
     assert!(!site.destination.join("sitemap.xml").exists());
     assert!(!site.destination.join("robots.txt").exists());
+}
+
+#[test]
+fn social_links_verify_as_the_site_owners_and_mastodon_names_the_creator() {
+    let site = blog("fediverse", "");
+    site.generate();
+
+    let home = site.published("index.html");
+    assert_eq!(
+        home.matches(r#"href="https://hachyderm.io/@jo" target="_blank" rel="me noopener""#)
+            .count(),
+        2,
+        "both the brand's and the menu's Mastodon link carry rel=me"
+    );
+    assert!(home.contains(r#"<meta name="fediverse:creator" content="@jo@hachyderm.io""#));
+
+    // main.json's own handle wins over the one derived from the links.
+    let site = blog(
+        "fediverse_given",
+        r#", "fediverseCreator": "jo@mastodon.social""#,
+    );
+    site.generate();
+    assert!(site
+        .published("index.html")
+        .contains(r#"<meta name="fediverse:creator" content="@jo@mastodon.social""#));
 }

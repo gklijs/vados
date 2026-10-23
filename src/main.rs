@@ -317,16 +317,20 @@ enum SocialProviderArg {
     Facebook,
     Youtube,
     Twitter,
+    /// Not recognised from a url, so a Mastodon link is written with its
+    /// icon, brand color and label; the handle is `user@instance`.
+    Mastodon,
 }
 
-impl From<SocialProviderArg> for RecognizedSocialProvider {
-    fn from(value: SocialProviderArg) -> Self {
-        match value {
-            SocialProviderArg::Github => RecognizedSocialProvider::Github,
-            SocialProviderArg::Linkedin => RecognizedSocialProvider::LinkedIn,
-            SocialProviderArg::Facebook => RecognizedSocialProvider::Facebook,
-            SocialProviderArg::Youtube => RecognizedSocialProvider::YouTube,
-            SocialProviderArg::Twitter => RecognizedSocialProvider::Twitter,
+impl SocialProviderArg {
+    fn recognized(self) -> Option<RecognizedSocialProvider> {
+        match self {
+            SocialProviderArg::Github => Some(RecognizedSocialProvider::Github),
+            SocialProviderArg::Linkedin => Some(RecognizedSocialProvider::LinkedIn),
+            SocialProviderArg::Facebook => Some(RecognizedSocialProvider::Facebook),
+            SocialProviderArg::Youtube => Some(RecognizedSocialProvider::YouTube),
+            SocialProviderArg::Twitter => Some(RecognizedSocialProvider::Twitter),
+            SocialProviderArg::Mastodon => None,
         }
     }
 }
@@ -981,13 +985,19 @@ fn gather_given_social_link(
     label: Option<String>,
 ) -> Result<social::GivenSocialLink, ExitCode> {
     match (provider, handle, url) {
-        (Some(provider), Some(handle), None) => Ok(social::GivenSocialLink {
-            handle: Some((provider.into(), handle)),
-            url: None,
-            icon,
-            brand_color,
-            label,
-        }),
+        (Some(provider), Some(handle), None) => match provider.recognized() {
+            Some(recognized) => Ok(social::GivenSocialLink {
+                handle: Some((recognized, handle)),
+                url: None,
+                icon,
+                brand_color,
+                label,
+            }),
+            None => social::mastodon_link(&handle, icon, brand_color, label).ok_or_else(|| {
+                eprintln!("A Mastodon handle looks like user@instance, e.g. gklijs@hachyderm.io.");
+                ExitCode::FAILURE
+            }),
+        },
         (Some(_), _, Some(_)) => {
             eprintln!("Give either --provider/--handle, or --url, not both.");
             Err(ExitCode::FAILURE)

@@ -14,6 +14,7 @@ pub(crate) struct PageTemplate<'a> {
     /// the site title. See `document_title`.
     pub(crate) document_title: String,
     pub(crate) site_title: &'a str,
+    pub(crate) fediverse_creator: Option<&'a str>,
     pub(crate) preview: LinkPreview,
     /// The page's JSON-LD, already escaped for a `<script>` element.
     pub(crate) structured_data: Option<String>,
