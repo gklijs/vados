@@ -47,6 +47,8 @@ pub(crate) struct Item {
     /// `None` both when page.json gives no date and when the one it gives
     /// can't be read; see `vados.allium`'s `Page.published_date`.
     pub(crate) date: Option<PageDate>,
+    /// Read the same way as `date`.
+    pub(crate) updated: Option<PageDate>,
     pub(crate) child_order: ChildOrder,
     /// Set when this page publishes a feed of its dated children.
     pub(crate) feed: Option<FeedConfig>,
@@ -57,6 +59,7 @@ impl Item {
         let feed = page_config.get_feed();
         let luma_events = published_luma_events(&path, page_config.luma_events);
         let date = published_date(&path, page_config.date.as_deref());
+        let updated = published_date(&path, page_config.updated.as_deref());
         Item {
             path,
             title: page_config.title,
@@ -68,9 +71,14 @@ impl Item {
             order: page_config.order.unwrap_or(u32::MAX),
             luma_events,
             date,
+            updated,
             child_order: page_config.child_order.unwrap_or_default(),
             feed,
         }
+    }
+    /// When the page last changed: its `updated` date, or else its `date`.
+    pub(crate) fn modified(&self) -> Option<PageDate> {
+        self.updated.or(self.date)
     }
 }
 

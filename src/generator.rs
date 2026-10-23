@@ -48,7 +48,7 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
     }
     structure.sort();
 
-    let generic_content = GenericContent::new(source, destination, &main_config);
+    let generic_content = GenericContent::new(source, destination, &main_config, &menu_config);
     for path in &all_paths {
         let content_helper = ContentHelper::new(path, &structure);
         let navigation = content_helper.get_navigation(&main_config, &menu_config);

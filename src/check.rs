@@ -74,6 +74,7 @@ pub enum FindingKind {
     UndatedPageLeftOutOfFeed,
     PreviewImageWithoutSiteUrl,
     UnknownDefaultImageReference,
+    DatedPageWithoutSummary,
 }
 
 impl FindingKind {
@@ -107,7 +108,8 @@ impl FindingKind {
             | UndatedPageInDateOrderedSection
             | UndatedPageLeftOutOfFeed
             | PreviewImageWithoutSiteUrl
-            | UnknownDefaultImageReference => Severity::Warning,
+            | UnknownDefaultImageReference
+            | DatedPageWithoutSummary => Severity::Warning,
         }
     }
 }
@@ -162,6 +164,9 @@ impl fmt::Display for FindingKind {
                 "pages have images, but main.json has no usable siteUrl, so link previews show none"
             }
             UnknownDefaultImageReference => "default image reference matches no declared image",
+            DatedPageWithoutSummary => {
+                "dated page has no summary, so search engines and feeds have no description of it"
+            }
         })
     }
 }
@@ -575,6 +580,15 @@ fn check_page_date(
     pages: &HashMap<String, PageConfig>,
     findings: &mut Vec<Finding>,
 ) {
+    if let Some(updated) = &page_config.updated {
+        if updated.parse::<PageDate>().is_err() {
+            findings.push(Finding {
+                kind: FindingKind::UnreadablePageDate,
+                location: String::from(page_path),
+                detail: Some(format!("updated: {updated}")),
+            });
+        }
+    }
     match &page_config.date {
         Some(date) => {
             if date.parse::<PageDate>().is_err() {
@@ -582,6 +596,17 @@ fn check_page_date(
                     kind: FindingKind::UnreadablePageDate,
                     location: String::from(page_path),
                     detail: Some(date.clone()),
+                });
+            }
+            let has_summary = page_config
+                .summary
+                .as_deref()
+                .is_some_and(|s| !s.trim().is_empty());
+            if !has_summary {
+                findings.push(Finding {
+                    kind: FindingKind::DatedPageWithoutSummary,
+                    location: String::from(page_path),
+                    detail: None,
                 });
             }
         }
@@ -1211,6 +1236,27 @@ mod tests {
     }
 
     #[test]
+    fn dated_page_without_summary_is_a_warning_and_unreadable_updated_an_error() {
+        let site = date_ordered_blog(
+            r#"{"title":"Post","content":"<p>hi</p>","date":"2026-10-22","updated":"soon"}"#,
+        );
+
+        let report = site.check();
+
+        assert!(has_kind_at(
+            &report,
+            FindingKind::DatedPageWithoutSummary,
+            "/blog/post"
+        ));
+        assert!(has_kind_at(
+            &report,
+            FindingKind::UnreadablePageDate,
+            "/blog/post"
+        ));
+        assert!(!report.passed());
+    }
+
+    #[test]
     fn unknown_default_image_reference_is_a_warning() {
         let site = site_with_main_json_extra(
             "default_image_unknown",
@@ -1284,7 +1330,7 @@ mod tests {
     #[test]
     fn dated_page_in_a_date_ordered_section_has_no_findings() {
         let site = date_ordered_blog(
-            r#"{"title":"Post","content":"<p>hi</p>","date":"2026-10-22T09:30"}"#,
+            r#"{"title":"Post","content":"<p>hi</p>","date":"2026-10-22T09:30","summary":"Hi"}"#,
         );
 
         let report = site.check();
@@ -1356,7 +1402,8 @@ mod tests {
         site
     }
 
-    const DATED_POST: &str = r#"{"title":"Post","content":"<p>hi</p>","date":"2026-10-22"}"#;
+    const DATED_POST: &str =
+        r#"{"title":"Post","content":"<p>hi</p>","date":"2026-10-22","summary":"Hi"}"#;
 
     #[test]
     fn feed_with_a_usable_site_url_and_dated_posts_has_no_findings() {

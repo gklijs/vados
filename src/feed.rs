@@ -29,6 +29,7 @@ struct FeedEntry {
     title: String,
     url: String,
     published: String,
+    updated: String,
     summary: Option<String>,
     content: String,
 }
@@ -124,8 +125,9 @@ fn render_feed(
     // A feed with no entries yet still needs an `updated`; today's date is
     // the honest answer.
     let updated = dated
-        .first()
-        .map(|(d, _)| *d)
+        .iter()
+        .filter_map(|(_, c)| c.modified())
+        .max()
         .unwrap_or_else(PageDate::today);
     let entries = dated
         .iter()
@@ -133,6 +135,7 @@ fn render_feed(
             title: xml_safe(&child.title),
             url: page_url(site_url, &child.path),
             published: date.to_rfc3339(),
+            updated: child.modified().unwrap_or(*date).to_rfc3339(),
             summary: child
                 .summary
                 .as_deref()
@@ -150,7 +153,7 @@ fn render_feed(
         page_url: page_url(site_url, &item.path),
         feed_url: format!("{site_url}{}", feed_href(&item.path)),
         updated: updated.to_rfc3339(),
-        author: xml_safe(&main_config.site_title),
+        author: xml_safe(main_config.get_author_name()),
         entries,
     }
     .render()

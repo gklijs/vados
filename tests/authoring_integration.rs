@@ -462,7 +462,15 @@ fn a_section_ordered_by_date_lists_its_newest_posts_first() {
     }
 
     let report = check(&project.source, &project.img_source);
-    assert!(report.findings.is_empty(), "{:?}", report.findings);
+    // Posts without a summary are fine to publish, just less well described.
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|f| f.kind == FindingKind::DatedPageWithoutSummary),
+        "{:?}",
+        report.findings
+    );
 
     let dest = project.dir.join("public");
     generate(&project.source, &project.img_source, dest.to_str().unwrap());
@@ -559,7 +567,15 @@ fn a_section_with_a_feed_publishes_its_newest_dated_posts_as_atom() {
     }
 
     let report = check(&project.source, &project.img_source);
-    assert!(report.findings.is_empty(), "{:?}", report.findings);
+    // Posts without a summary are fine to publish, just less well described.
+    assert!(
+        report
+            .findings
+            .iter()
+            .all(|f| f.kind == FindingKind::DatedPageWithoutSummary),
+        "{:?}",
+        report.findings
+    );
 
     let dest = project.dir.join("public");
     generate(&project.source, &project.img_source, dest.to_str().unwrap());

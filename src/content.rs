@@ -5,6 +5,7 @@ use crate::files::write_raw;
 use crate::image::ProcessedImage;
 use crate::luma::BUTTON_SCRIPT_URL;
 use crate::structure::{Item, SocialItem, Structure};
+use crate::structured_data::{structured_data, PageFacts, SiteFacts};
 use crate::templates::{
     BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate, DisplayDate,
     ExternalNotificationTemplate, FeedLink, FooterTemplate, InternalImageTemplate,
@@ -39,6 +40,10 @@ pub(crate) struct GenericContent {
     /// The usable `siteUrl`, without a trailing slash.
     site_url: Option<String>,
     default_image: Option<String>,
+    author_name: String,
+    author_url: Option<String>,
+    /// The social links' URLs: the site owner's own profiles elsewhere.
+    social_urls: Vec<String>,
     /// Whether feeds are published at all: only with a usable `siteUrl`.
     feeds_published: bool,
 }
@@ -69,7 +74,12 @@ fn publish_favicon(source: &str, destination: &str, favicon: &str) -> Option<Fav
 }
 
 impl GenericContent {
-    pub(crate) fn new(source: &str, destination: &str, main_config: &MainConfig) -> GenericContent {
+    pub(crate) fn new(
+        source: &str,
+        destination: &str,
+        main_config: &MainConfig,
+        menu_config: &MenuConfig,
+    ) -> GenericContent {
         let background_class = main_config.get_background_class();
         let css_links = main_config.get_css_links();
         let js_links = main_config.get_js_links(destination);
@@ -94,6 +104,9 @@ impl GenericContent {
             title_separator: main_config.get_title_separator().to_string(),
             site_url: main_config.get_site_url().map(String::from),
             default_image: main_config.default_image.clone(),
+            author_name: main_config.get_author_name().to_string(),
+            author_url: main_config.author.as_ref().and_then(|a| a.url.clone()),
+            social_urls: menu_config.socials.iter().map(|s| s.url.clone()).collect(),
             feeds_published: main_config.get_site_url().is_some(),
         }
     }
@@ -587,6 +600,31 @@ fn get_page(
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .or(generic_content.description.as_deref());
+    let preview = link_preview(path, item, structure, generic_content);
+    let structured_data = structured_data(
+        item,
+        &PageFacts {
+            url: preview.url.as_deref(),
+            description: item
+                .summary
+                .as_deref()
+                .map(str::trim)
+                .filter(|s| !s.is_empty()),
+            image_url: preview.image.as_ref().map(|i| i.url.as_str()),
+        },
+        &SiteFacts {
+            site_title: &generic_content.site_title,
+            description: generic_content.description.as_deref(),
+            site_url: generic_content.site_url.as_deref(),
+            author_name: &generic_content.author_name,
+            author_url: generic_content.author_url.as_deref(),
+            same_as: generic_content
+                .social_urls
+                .iter()
+                .map(String::as_str)
+                .collect(),
+        },
+    );
     PageTemplate {
         title: &item.title,
         document_title: document_title(
@@ -596,7 +634,8 @@ fn get_page(
             &generic_content.title_separator,
         ),
         site_title: &generic_content.site_title,
-        preview: link_preview(path, item, structure, generic_content),
+        preview,
+        structured_data,
         description,
         language: &generic_content.language,
         ui: generic_content.ui,
