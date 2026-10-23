@@ -3470,6 +3470,32 @@ surface PublishedFeed {
         -- those.
 }
 
+-- Where search engines are pointed to find every page: published at the site
+-- root whenever the site URL is usable.
+surface Sitemap {
+    facing _: Visitor
+
+    context run: GenerationRun where run.mode = generate
+        and run.site_config.usable_site_url != null
+
+    exposes:
+        for p in run.pages where p.listed:
+            p.path
+            p.modified_date
+
+    @guarantee SitemapListsEveryListedPage
+        -- The sitemap lists every listed page by its address in full, and
+        -- no unlisted one. A page's last-modified date is given only when
+        -- the page itself gives one (its updated date, or else its date):
+        -- search engines distrust a date that merely records the build, and
+        -- ignore priority and change frequency, so neither is given.
+
+    @guarantee RobotsPointAtTheSitemap
+        -- A robots.txt allowing every crawler and naming the sitemap is
+        -- published alongside it, unless the static files already include
+        -- a robots.txt of the maintainer's own, which then stands.
+}
+
 -- What a visitor sees on a published page. A published site is read-only:
 -- there is nothing for a visitor to do.
 surface PublishedPage {

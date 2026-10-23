@@ -11,6 +11,7 @@ pub mod init;
 mod json_files;
 pub mod luma;
 pub mod page_date;
+mod sitemap;
 mod structure;
 mod structured_data;
 mod templates;

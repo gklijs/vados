@@ -224,6 +224,14 @@ Two optional `main.json` settings describe the site to search engines and browse
 - `favicon` is a file in the source root -- SVG, PNG or ICO -- published at the site root and linked as every
   page's icon. `vados init` asks for one (leave it blank to skip). `check` warns when the file is missing; `generate` then publishes the site without an icon.
 
+## Sitemap
+
+With a `siteUrl`, vados publishes `/sitemap.xml`, listing every page (except unlisted ones) by its full address, to
+submit in Google Search Console or Bing Webmaster Tools. A page's `<lastmod>` is its `updated` date, or else its
+`date`; pages with neither get none, since search engines distrust a date that just records the build. A
+`/robots.txt` allowing all crawlers and naming the sitemap is published next to it, unless the static directory has
+a `robots.txt` of its own.
+
 ## Static files and unlisted pages
 
 Files a site needs at a fixed address -- `robots.txt`, search engine verification files, `.well-known/...`,
