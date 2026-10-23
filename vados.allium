@@ -260,6 +260,10 @@ enum FindingKind {
     malformed_site_url
     feed_without_site_url
     undated_page_left_out_of_feed
+
+    -- Link previews.
+    preview_image_without_site_url
+    unknown_default_image_reference
 }
 
 enum MenuLinkKind { internal | external }
@@ -466,6 +470,10 @@ entity SiteConfig {
     -- What separates a page's title from the site title in the title browser
     -- tabs and search results show. See Page.document_title.
     title_separator: String?
+
+    -- An image reference, like a page's, shown in the link preview of every
+    -- page without a hero image of its own. See PagesPreviewWell.
+    default_image: String?
     effective_title_separator: title_separator ?? config.default_title_separator
 
     -- Defaults apply when the maintainer says nothing.
@@ -1992,6 +2000,25 @@ rule RunStructuralChecks {
                 kind: missing_favicon_file,
                 location: run.source_location,
                 detail: site.favicon
+            )
+
+        if site != null and site.default_image != null
+            and not exists SiteImage{reference_key: site.default_image, run: run}:
+            Finding.created(
+                run: run,
+                kind: unknown_default_image_reference,
+                location: run.source_location,
+                detail: site.default_image
+            )
+
+        -- Once for the site, not per page: the one site URL fixes them all.
+        if site != null and site.site_url = null
+            and (site.default_image != null
+                 or exists p in run.pages where p.image_reference != null):
+            Finding.created(
+                run: run,
+                kind: preview_image_without_site_url,
+                location: run.source_location
             )
 
         if site != null and not site.interface_translated:
@@ -3562,6 +3589,19 @@ surface PublishedPage {
         -- Luma's register-button script is loaded only by pages that show a
         -- register button, once per page however many they show. Pages
         -- without a Luma event make no request to Luma at all.
+
+    @guarantee PagesPreviewWell
+        -- Every page tells link previews (Open Graph, X cards) what kind of
+        -- page it is -- an article when dated, with its publication date,
+        -- else a website -- and its language. With a usable site URL, it
+        -- also names its own address in full as its canonical URL, and its
+        -- hero image, or the site's default image when it has none, as its
+        -- preview image: a JPEG crop in the 1.91:1 shape previews show,
+        -- 1200 pixels wide or the image's own width when smaller, carrying
+        -- the image's alternative text. JPEG, because not every preview
+        -- shows WebP. Only images used this way get such a crop. Without a
+        -- site URL a page gives no address in full and no preview image.
+        -- Every page allows search engines to show a large image preview.
 
     @guarantee PagesNameTheirSite
         -- Every page's title, as browser tabs and search results show it, is

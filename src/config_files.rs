@@ -40,6 +40,11 @@ pub(crate) struct MainConfig {
     /// ` · ` when absent. See `vados.allium`'s `SiteConfig.title_separator`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) title_separator: Option<String>,
+    /// An image reference, like a page's `image`, shown in link previews of
+    /// every page without a hero image of its own. See `vados.allium`'s
+    /// `SiteConfig.default_image`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) default_image: Option<String>,
     pub(crate) footer_content: String,
 }
 

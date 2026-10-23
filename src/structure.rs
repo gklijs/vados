@@ -450,6 +450,11 @@ impl Structure {
         }
         result
     }
+    pub(crate) fn get_image(&self, image_reference: &str) -> Option<Arc<ProcessedImage>> {
+        self.image_meta_cache
+            .get(image_reference)
+            .map(|i| i.value().clone())
+    }
     pub(crate) fn process_image(
         &self,
         image_reference: &str,

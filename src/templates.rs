@@ -14,6 +14,7 @@ pub(crate) struct PageTemplate<'a> {
     /// the site title. See `document_title`.
     pub(crate) document_title: String,
     pub(crate) site_title: &'a str,
+    pub(crate) preview: LinkPreview,
     pub(crate) description: Option<&'a str>,
     pub(crate) language: &'a str,
     pub(crate) ui: &'a UiText,
@@ -33,6 +34,27 @@ pub(crate) struct PageTemplate<'a> {
     pub(crate) css_links: &'a [String],
     pub(crate) js_links: &'a [String],
     pub(crate) luma_button_script: Option<&'a str>,
+}
+
+/// What a page tells link previews (Open Graph, X cards) and search engines
+/// about itself beyond its title and description. Everything given as a full
+/// URL is only there when the site URL is known.
+pub(crate) struct LinkPreview {
+    /// `article` for a dated page, `website` otherwise.
+    pub(crate) og_type: &'static str,
+    /// The site language as Open Graph writes it: `en`, `nl_BE`.
+    pub(crate) locale: String,
+    pub(crate) published_time: Option<String>,
+    /// The page's own address in full, as its canonical URL.
+    pub(crate) url: Option<String>,
+    pub(crate) image: Option<LinkPreviewImage>,
+}
+
+pub(crate) struct LinkPreviewImage {
+    pub(crate) url: String,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+    pub(crate) alt: String,
 }
 
 /// One Luma event as the page shows it, its Luma addresses already built.

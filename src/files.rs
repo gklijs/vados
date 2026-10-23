@@ -1,4 +1,5 @@
-use crate::config_files::{ImageList, MainConfig, MenuConfig};
+use crate::config_files::{ImageList, MainConfig, MenuConfig, PageConfig};
+use std::collections::HashSet;
 use std::fs;
 use std::fs::File;
 use std::path::Path;
@@ -53,6 +54,18 @@ pub(crate) fn get_image_list(source: &str) -> Option<ImageList> {
             None
         }
     }
+}
+
+/// Every hero image a page.json names, read ahead of the pages themselves so
+/// the images can be processed first. A page.json that can't be read names
+/// none here; reading the pages reports it.
+pub(crate) fn get_hero_image_references(source: &str) -> HashSet<String> {
+    get_all_directory_paths(source)
+        .iter()
+        .filter_map(|dir| File::open(format!("{}/page.json", dir)).ok())
+        .filter_map(|file| serde_json::from_reader::<_, PageConfig>(file).ok())
+        .filter_map(|config| config.image)
+        .collect()
 }
 
 pub(crate) fn write_html(destination: &str, path: &str, html: &str) {
