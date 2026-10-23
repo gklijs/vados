@@ -268,6 +268,15 @@ A page with `"listed": false` in its `page.json` is published in the site's layo
 side tiles, feeds or the sitemap. That suits a 404 page: `root/404/page.json` publishes `404.html`, which Netlify,
 GitHub Pages and Cloudflare Pages serve for unknown paths.
 
+## Code blocks
+
+Fenced Markdown code blocks that name a language (```` ```rust ````, ```` ```python ````, ...) are highlighted when the
+site is generated: no script, and they read the same without one. Blocks without a language, in one vados doesn't
+know, or indented stay plain, as does inline code. The colours (GitHub's light theme, darkened where needed to stay
+readable on Bulma's code background) come from `/css/vados-highlight.css`, which only pages with highlighted code
+load. `"codeHighlight": false` in `main.json` turns it off. Building vados with `--no-default-features` leaves the
+highlighter out, about 1 MB of the binary.
+
 ## Icons
 
 Icons -- on menu entries (`icon` in `menu.json` and `page.json`), social links, breadcrumbs and the side menu -- are

@@ -23,6 +23,7 @@ minifier = {version = "0.4.0", features = ["html"] }
 pulldown-cmark = { version = "0.13.4", default-features = false, features = ["simd", "html"] }
 serde = {version = "1.0.135", features = ["derive"]}
 serde_json = "1.0.78"
+syntect = { version = "5.3.0", default-features = false, features = ["default-syntaxes", "default-themes", "html", "regex-fancy"], optional = true }
 walkdir = "2.3.2"
 webp = "0.3.1"
 
@@ -31,3 +32,6 @@ proptest = "1"
 roxmltree = "0.21.1"
 
 [features]
+# Colours Markdown code blocks at build time. On by default; without it they stay plain.
+default = ["highlight"]
+highlight = ["dep:syntect"]

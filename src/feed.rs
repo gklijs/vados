@@ -142,7 +142,12 @@ fn render_feed(
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .map(xml_safe),
-            content: xml_safe(&get_content(source, &child.path, &child.content)),
+            content: xml_safe(&get_content(
+                source,
+                &child.path,
+                &child.content,
+                main_config.highlights_code(),
+            )),
         })
         .collect();
 

@@ -43,6 +43,10 @@
   `fediverse:creator` from `main.json`'s new `fediverseCreator`, or from a social link with the `mastodon` icon.
   `social add`/`update --provider mastodon --handle user@instance` writes such a link with the Mastodon icon,
   colour and label.
+- Syntax highlighting (#10): fenced Markdown code blocks in a known language are highlighted at build time, with
+  CSS classes and a small stylesheet (`/css/vados-highlight.css`, linked only by pages showing highlighted code)
+  whose colours all reach 4.5:1 contrast on Bulma's code background. `main.json`'s `"codeHighlight": false` turns it
+  off; the cargo feature `highlight` (on by default) leaves it out of the build.
 - Latest pages (#26): `page.json`'s `"latest": { "from": "/blog", "limit": 4, "depth": 2 }` shows the newest dated
   pages below one or more sections, at any depth, as tiles before the page's own notifications, e.g. a blog's latest
   posts on the home page. `check` warns about a `from` matching no page.

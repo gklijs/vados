@@ -59,6 +59,10 @@ pub(crate) struct MainConfig {
     /// `SiteConfig.fediverse_creator`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) fediverse_creator: Option<String>,
+    /// Whether fenced Markdown code blocks are highlighted; on when absent.
+    /// See `vados.allium`'s `SiteConfig.code_highlight`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) code_highlight: Option<bool>,
     pub(crate) footer_content: String,
 }
 
@@ -118,6 +122,9 @@ impl MainConfig {
             .map(|a| a.name.trim())
             .filter(|n| !n.is_empty())
             .unwrap_or(&self.site_title)
+    }
+    pub(crate) fn highlights_code(&self) -> bool {
+        self.code_highlight.unwrap_or(true)
     }
     pub(crate) fn get_title_separator(&self) -> &str {
         self.title_separator.as_deref().unwrap_or(" · ")
