@@ -11,6 +11,7 @@
 
 use crate::config_files::favicon_media_type;
 use crate::content::escape_html;
+use crate::files::GITKEEP;
 use crate::json_files::write_json_pretty;
 // Re-exported so callers outside this crate (the CLI in `main.rs`) can name
 // the provider type through `vados::init` without reaching into the
@@ -30,6 +31,9 @@ use std::process::Command;
 pub const SOURCE_DIR: &str = "root";
 pub const IMAGE_DIR: &str = "imgroot";
 pub const DESTINATION_DIR: &str = "public";
+/// The static directory, relative to the source root as main.json's
+/// `staticDir` is.
+const STATIC_DIR: &str = "static";
 
 const DEFAULT_PRIMARY_COLOR: &str = "#00d1b2";
 const DEFAULT_FOOTER_TEXT: &str = "Built with vados.";
@@ -52,10 +56,11 @@ pub enum ScaffoldArtifactKind {
     PackageManifest,
     NetlifyConfig,
     Readme,
+    StaticDir,
 }
 
 impl ScaffoldArtifactKind {
-    pub fn all() -> [ScaffoldArtifactKind; 8] {
+    pub fn all() -> [ScaffoldArtifactKind; 9] {
         use ScaffoldArtifactKind::*;
         [
             SiteConfig,
@@ -66,6 +71,7 @@ impl ScaffoldArtifactKind {
             PackageManifest,
             NetlifyConfig,
             Readme,
+            StaticDir,
         ]
     }
 
@@ -81,6 +87,7 @@ impl ScaffoldArtifactKind {
             ScaffoldArtifactKind::PackageManifest => String::from("package.json"),
             ScaffoldArtifactKind::NetlifyConfig => String::from("netlify.toml"),
             ScaffoldArtifactKind::Readme => String::from("README.md"),
+            ScaffoldArtifactKind::StaticDir => format!("{SOURCE_DIR}/{STATIC_DIR}"),
         }
     }
 }
@@ -96,6 +103,7 @@ impl fmt::Display for ScaffoldArtifactKind {
             ScaffoldArtifactKind::PackageManifest => "package manifest (package.json)",
             ScaffoldArtifactKind::NetlifyConfig => "Netlify build configuration (netlify.toml)",
             ScaffoldArtifactKind::Readme => "README",
+            ScaffoldArtifactKind::StaticDir => "static directory",
         })
     }
 }
@@ -256,6 +264,12 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
     write_package_manifest(dir, &basics.site_title)?;
     write_netlify_config(dir)?;
     write_readme(dir, &basics.site_title)?;
+    // Holds only a .gitkeep, so git keeps it and generate and check find it
+    // on a fresh clone; no robots.txt, since the generated one keeps up with
+    // siteUrl.
+    let static_dir = dir.join(SOURCE_DIR).join(STATIC_DIR);
+    fs::create_dir_all(&static_dir)?;
+    fs::write(static_dir.join(GITKEEP), "")?;
 
     let repository_initialized = initialize_repository(dir);
     let gitignore_created = write_or_merge_gitignore(dir)?;
@@ -289,6 +303,7 @@ struct MainJson {
     favicon: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     site_url: Option<String>,
+    static_dir: String,
     footer_content: String,
 }
 
@@ -314,6 +329,7 @@ fn write_site_config(
         language: Some(language.to_string()),
         favicon: favicon.map(String::from),
         site_url: site_url.map(String::from),
+        static_dir: STATIC_DIR.to_string(),
         footer_content: format!("<p>{}</p>", escape_html(footer_text)),
     };
     write_json_pretty(dir.join(SOURCE_DIR).join("main.json"), &json)
@@ -460,6 +476,7 @@ fn write_readme(dir: &Path, site_title: &str) -> io::Result<()> {
          \n\
          - `{SOURCE_DIR}/` -- the source tree: `main.json`, `menu.json`, and one `page.json` per page directory.\n\
          - `{IMAGE_DIR}/` -- the image tree: one `images.json` per directory of images to publish.\n\
+         - `{SOURCE_DIR}/{STATIC_DIR}/` -- files published as they are, at the same path under the site root: your own `robots.txt` (replacing the generated one), verification files, `.well-known/`, downloads.\n\
          - `sass/main.scss` -- overrides Bulma's `$primary` before importing it; rebuilt by `npm run build` into `{DESTINATION_DIR}/css/main.min.css`.\n\
          \n\
          ## Local development\n\
@@ -613,12 +630,13 @@ mod tests {
         fs::write(dir.path.join("package.json"), "{}").unwrap();
         fs::write(dir.path.join("netlify.toml"), "").unwrap();
         fs::write(dir.path.join("README.md"), "").unwrap();
+        fs::create_dir_all(dir.path.join(SOURCE_DIR).join(STATIC_DIR)).unwrap();
 
         let conflicts = detect_conflicts(&dir.path);
 
         assert_eq!(
             conflicts.len(),
-            8,
+            9,
             "expected every kind to conflict, got {:?}",
             conflicts
         );
@@ -650,7 +668,13 @@ mod tests {
         assert!(dir.path.join("package.json").exists());
         assert!(dir.path.join("netlify.toml").exists());
         assert!(dir.path.join("README.md").exists());
-        assert!(detect_conflicts(&dir.path).len() == 8);
+        assert!(dir
+            .path
+            .join(SOURCE_DIR)
+            .join(STATIC_DIR)
+            .join(GITKEEP)
+            .exists());
+        assert!(detect_conflicts(&dir.path).len() == 9);
 
         assert_eq!(outcome.site_title, "My Site");
         assert_eq!(outcome.home_intro, "Welcome to My Site.");
@@ -661,6 +685,7 @@ mod tests {
 
         let main_json = fs::read_to_string(dir.path.join(SOURCE_DIR).join("main.json")).unwrap();
         assert!(main_json.contains(&format!("\"language\": \"{DEFAULT_LANGUAGE}\"")));
+        assert!(main_json.contains(&format!("\"staticDir\": \"{STATIC_DIR}\"")));
     }
 
     #[test]

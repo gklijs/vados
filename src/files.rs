@@ -86,6 +86,9 @@ pub(crate) fn empty(destination: &str, path: &str) -> bool {
     !Path::new(&full_path).exists()
 }
 
+/// The placeholder that keeps an empty directory in git; never published.
+pub(crate) const GITKEEP: &str = ".gitkeep";
+
 /// Where main.json's `staticDir` points: relative to the source root, so
 /// `"static"` sits inside it and `"../static"` next to it.
 pub(crate) fn static_dir_path(source: &str, static_dir: &str) -> PathBuf {
@@ -110,13 +113,14 @@ pub(crate) fn get_page_directory_paths(source: &str, static_dir: Option<&str>) -
 
 /// Every file in the static directory, as the site-root path it's published
 /// at (`/robots.txt`, `/.well-known/security.txt`), with where it's read
-/// from. Empty when there is no such directory.
+/// from. Empty when there is no such directory. A `.gitkeep` is left out: it
+/// only keeps an otherwise empty directory in git.
 pub(crate) fn get_static_files(source: &str, static_dir: &str) -> Vec<(String, PathBuf)> {
     let root = static_dir_path(source, static_dir);
     WalkDir::new(&root)
         .into_iter()
         .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
+        .filter(|e| e.file_type().is_file() && e.file_name() != GITKEEP)
         .filter_map(|e| {
             let relative = e.path().strip_prefix(&root).ok()?;
             let published = format!("/{}", relative.to_string_lossy().replace('\\', "/"));

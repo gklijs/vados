@@ -1,20 +1,21 @@
 //! `sitemap.xml` and `robots.txt`: what search engines are pointed at to find
-//! every page. Both need the site URL. See `vados.allium`'s `Sitemap`.
+//! every page. The sitemap needs the site URL; robots.txt is always written,
+//! naming the sitemap when there is one. See `vados.allium`'s `Sitemap` and
+//! `Robots`.
 
 use crate::content::escape_html;
 use crate::feed::page_url;
 use crate::files::write_raw;
 use crate::structure::Structure;
 
-/// Writes the sitemap, listing every listed page in full, and a robots.txt
-/// pointing at it -- unless the static files already gave one.
-pub(crate) fn write_sitemap(
-    destination: &str,
-    site_url: &str,
-    structure: &Structure,
-    static_files: &[String],
-) {
+/// Writes the sitemap, listing every listed page in full.
+pub(crate) fn write_sitemap(destination: &str, site_url: &str, structure: &Structure) {
     write_raw(destination, "/sitemap.xml", sitemap(site_url, structure));
+}
+
+/// Writes a robots.txt allowing every crawler, pointing at the sitemap when
+/// there is a site URL -- unless the static files already gave one.
+pub(crate) fn write_robots(destination: &str, site_url: Option<&str>, static_files: &[String]) {
     if !static_files.iter().any(|f| f == "/robots.txt") {
         write_raw(destination, "/robots.txt", robots(site_url));
     }
@@ -45,8 +46,12 @@ fn sitemap(site_url: &str, structure: &Structure) -> String {
     xml
 }
 
-fn robots(site_url: &str) -> String {
-    format!("User-agent: *\nAllow: /\n\nSitemap: {site_url}/sitemap.xml\n")
+fn robots(site_url: Option<&str>) -> String {
+    let mut robots = String::from("User-agent: *\nAllow: /\n");
+    if let Some(site_url) = site_url {
+        robots.push_str(&format!("\nSitemap: {site_url}/sitemap.xml\n"));
+    }
+    robots
 }
 
 #[cfg(test)]
@@ -86,8 +91,13 @@ mod tests {
     #[test]
     fn robots_allows_everything_and_names_the_sitemap() {
         assert_eq!(
-            robots("https://example.com"),
+            robots(Some("https://example.com")),
             "User-agent: *\nAllow: /\n\nSitemap: https://example.com/sitemap.xml\n"
         );
+    }
+
+    #[test]
+    fn robots_without_a_site_url_names_no_sitemap() {
+        assert_eq!(robots(None), "User-agent: *\nAllow: /\n");
     }
 }

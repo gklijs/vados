@@ -27,7 +27,8 @@ Requires a fairly recent stable Rust toolchain (see `rust-version` in `Cargo.tom
 ## Getting started
 
 `vados init` scaffolds a fresh, deployable project into the current directory: a `root/` source tree (`main.json`,
-`menu.json`, a home `page.json`), an `imgroot/` image tree, a Sass entry that overrides Bulma's `$primary`, and a
+`menu.json`, a home `page.json`, an empty `static/` directory for [static files](#static-files-and-unlisted-pages)),
+an `imgroot/` image tree, a Sass entry that overrides Bulma's `$primary`, and a
 `netlify.toml` that builds and deploys with no further setup. It asks a few questions interactively (site title, home
 intro, primary color, footer text, site language, an optional favicon file to copy in, an optional site URL, social handles) and refuses to run if anything it would create
 already exists.
@@ -246,9 +247,10 @@ Two optional `main.json` settings describe the site to search engines and browse
 
 With a `siteUrl`, vados publishes `/sitemap.xml`, listing every page (except unlisted ones) by its full address, to
 submit in Google Search Console or Bing Webmaster Tools. A page's `<lastmod>` is its `updated` date, or else its
-`date`; pages with neither get none, since search engines distrust a date that just records the build. A
-`/robots.txt` allowing all crawlers and naming the sitemap is published next to it, unless the static directory has
-a `robots.txt` of its own.
+`date`; pages with neither get none, since search engines distrust a date that just records the build.
+
+A `/robots.txt` allowing all crawlers is always published, so crawlers never get a 404 for it. With a `siteUrl` it
+also names the sitemap. A `robots.txt` in the static directory replaces it.
 
 ## Static files and unlisted pages
 
@@ -262,7 +264,8 @@ Files a site needs at a fixed address -- `robots.txt`, search engine verificatio
 Everything in it is published as it is, at the same path under the site root (`static/.well-known/security.txt`
 becomes `/.well-known/security.txt`). The path is relative to the source root; a directory inside it isn't a page.
 Pages are written after static files, so a page at the same path replaces one; `check` warns about that, and about a
-`staticDir` that doesn't exist.
+`staticDir` that doesn't exist. A `.gitkeep` is never published, so it can keep an empty static directory in git;
+`vados init` scaffolds `root/static/` with one and sets `staticDir` for you.
 
 A page with `"listed": false` in its `page.json` is published in the site's layout but listed nowhere: not in menus,
 side tiles, feeds or the sitemap. That suits a 404 page: `root/404/page.json` publishes `404.html`, which Netlify,

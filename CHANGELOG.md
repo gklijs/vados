@@ -37,8 +37,8 @@
   a `summary`, and reports an unreadable `updated` like an unreadable `date`.
 
 - `sitemap.xml` and `robots.txt` (#18): with a `siteUrl`, the sitemap lists every listed page, with a `<lastmod>`
-  only for pages that give a `date` or `updated`. The robots.txt allows all crawlers and names the sitemap, unless
-  the static directory has its own.
+  only for pages that give a `date` or `updated`. A robots.txt allowing all crawlers is always published (#29),
+  naming the sitemap when there is a `siteUrl`, unless the static directory has its own.
 - Mastodon (#20): social links carry `rel="me"`, so Mastodon can verify the site as the profile's. Pages declare
   `fediverse:creator` from `main.json`'s new `fediverseCreator`, or from a social link with the `mastodon` icon.
   `social add`/`update --provider mastodon --handle user@instance` writes such a link with the Mastodon icon,
@@ -54,6 +54,8 @@
   published as they are at the site root (`robots.txt`, `.well-known/...`, verification files, downloads). A
   `page.json` with `"listed": false` publishes the page but keeps it out of menus, side tiles, feeds and the sitemap,
   e.g. a `404` page. `check` warns about a missing `staticDir` and a static file a generated page replaces.
+  `vados init` scaffolds `root/static/` (holding only a `.gitkeep`, which is never published) and sets
+  `"staticDir": "static"` (#29).
 
 ### Changed
 
