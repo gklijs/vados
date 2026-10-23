@@ -3,8 +3,8 @@ extern crate core;
 use crate::content::{to_content_items, ContentHelper, GenericContent};
 use crate::feed::write_feeds;
 use crate::files::{
-    get_all_directory_paths, get_hero_image_references, get_image_list, get_main_config,
-    get_menu_config, write_html,
+    copy_static_files, get_all_directory_paths, get_hero_image_references, get_image_list,
+    get_main_config, get_menu_config, get_page_directory_paths, write_html,
 };
 use crate::image::{prune_orphaned_variants, ImageProcessor};
 use crate::structure::Structure;
@@ -18,7 +18,7 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
     // Link previews need the site URL to point at their image, so only then
     // is it worth making their crops.
     let preview_keys = if main_config.get_site_url().is_some() {
-        let mut keys = get_hero_image_references(source);
+        let mut keys = get_hero_image_references(source, main_config.static_dir.as_deref());
         keys.extend(main_config.default_image.clone());
         keys
     } else {
@@ -34,7 +34,12 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
 
     let structure = Structure::new(image_processor.meta_cache);
     let mut all_paths = vec![];
-    for directory_path in get_all_directory_paths(source) {
+    // Static files go first, so a generated page at the same path wins.
+    if let Some(static_dir) = &main_config.static_dir {
+        copy_static_files(source, static_dir, destination);
+    }
+
+    for directory_path in get_page_directory_paths(source, main_config.static_dir.as_deref()) {
         let content_items = to_content_items(source, directory_path, &structure);
         let path = content_items.item.path.clone();
         if let Some(notifications) = content_items.left_sub_notifications {

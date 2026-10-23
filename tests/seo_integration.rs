@@ -224,3 +224,58 @@ fn dated_pages_and_the_home_page_carry_structured_data() {
 
     assert!(!site.published("blog.html").contains("application/ld+json"));
 }
+
+#[test]
+fn static_files_are_published_as_they_are_and_unlisted_pages_stay_unlisted() {
+    let site = blog("static_and_unlisted", r#", "staticDir": "static""#);
+    site.write_source("static/robots.txt", "User-agent: *\nDisallow: /drafts\n");
+    site.write_source(
+        "static/.well-known/security.txt",
+        "Contact: mailto:jo@example.com\n",
+    );
+    site.write_source("static/blog.html", "replaced by the generated page");
+    site.write_source(
+        "404/page.json",
+        r#"{"title":"Not found","content":"<p>Nothing here.</p>","listed":false}"#,
+    );
+    site.write_source(
+        "blog/draft/page.json",
+        r#"{"title":"A draft","content":"<p>soon</p>","listed":false}"#,
+    );
+
+    let report = site.check();
+    let kinds: Vec<_> = report.findings.iter().map(|f| f.kind).collect();
+    assert!(kinds.contains(&vados::check::FindingKind::StaticFileShadowedByPage));
+    // The static directory sits inside the source root but is no page.
+    assert!(!site.destination.join("static.html").exists());
+    site.generate();
+    assert!(!site.destination.join("static.html").exists());
+
+    assert_eq!(
+        site.published("robots.txt"),
+        "User-agent: *\nDisallow: /drafts\n"
+    );
+    assert_eq!(
+        site.published(".well-known/security.txt"),
+        "Contact: mailto:jo@example.com\n"
+    );
+    assert!(site.published("blog.html").contains("<h1"));
+
+    // Unlisted pages are published in the site's own layout...
+    let not_found = site.published("404.html");
+    assert!(not_found.contains(r#"<h1 class="title is-1">Not found</h1>"#));
+    assert!(not_found.contains("Nothing here."));
+    assert!(site.published("blog/draft.html").contains("soon"));
+    // ...but listed nowhere.
+    for page in ["index.html", "blog.html", "blog/post.html"] {
+        let html = site.published(page);
+        assert!(
+            !html.contains(r#"href="/404""#),
+            "{page} links the 404 page"
+        );
+        assert!(
+            !html.contains(r#"href="/blog/draft""#),
+            "{page} links the draft"
+        );
+    }
+}

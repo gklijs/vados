@@ -224,6 +224,24 @@ Two optional `main.json` settings describe the site to search engines and browse
 - `favicon` is a file in the source root -- SVG, PNG or ICO -- published at the site root and linked as every
   page's icon. `vados init` asks for one (leave it blank to skip). `check` warns when the file is missing; `generate` then publishes the site without an icon.
 
+## Static files and unlisted pages
+
+Files a site needs at a fixed address -- `robots.txt`, search engine verification files, `.well-known/...`,
+`_headers`/`_redirects` for Netlify, downloads -- go in a static directory, named in `main.json`:
+
+```json
+"staticDir": "static"
+```
+
+Everything in it is published as it is, at the same path under the site root (`static/.well-known/security.txt`
+becomes `/.well-known/security.txt`). The path is relative to the source root; a directory inside it isn't a page.
+Pages are written after static files, so a page at the same path replaces one; `check` warns about that, and about a
+`staticDir` that doesn't exist.
+
+A page with `"listed": false` in its `page.json` is published in the site's layout but listed nowhere: not in menus,
+side tiles, feeds or the sitemap. That suits a 404 page: `root/404/page.json` publishes `404.html`, which Netlify,
+GitHub Pages and Cloudflare Pages serve for unknown paths.
+
 ## Accessibility
 
 Every published page declares the site's language (`main.json`'s `language`, defaulting to `en`) on its root
