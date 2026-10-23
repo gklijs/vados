@@ -12,5 +12,6 @@ mod json_files;
 pub mod luma;
 pub mod page_date;
 mod structure;
+mod structured_data;
 mod templates;
 mod ui_text;

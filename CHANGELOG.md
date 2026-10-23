@@ -30,6 +30,12 @@
   doesn't reliably show WebP. `check` warns when pages have images but no `siteUrl`, and about a `defaultImage`
   that matches no declared image.
 
+- JSON-LD structured data (#17): a dated page carries a schema.org `BlogPosting` (headline, description, dates,
+  image, author with the social links as `sameAs`, page URL); the home page a `WebSite` and its `Person`.
+  `main.json` takes an optional `author` (`name`, `url`), also used as the feeds' author, and `page.json` an optional
+  `updated` date, used as the modified date in structured data and feeds. `check` warns about a dated page without
+  a `summary`, and reports an unreadable `updated` like an unreadable `date`.
+
 ### Changed
 
 - Every page's `<title>` now ends with the site title (`My post · My site`), except the home page's, which is just

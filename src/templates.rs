@@ -15,6 +15,8 @@ pub(crate) struct PageTemplate<'a> {
     pub(crate) document_title: String,
     pub(crate) site_title: &'a str,
     pub(crate) preview: LinkPreview,
+    /// The page's JSON-LD, already escaped for a `<script>` element.
+    pub(crate) structured_data: Option<String>,
     pub(crate) description: Option<&'a str>,
     pub(crate) language: &'a str,
     pub(crate) ui: &'a UiText,

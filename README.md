@@ -216,6 +216,11 @@ Two optional `main.json` settings describe the site to search engines and browse
   (an image reference, like a page's). vados publishes a 1200×630 JPEG crop of every image used this way next to its
   WebP variants (e.g. `/img/photos/batman-og.jpg`), since LinkedIn doesn't reliably show WebP. `check` warns when
   pages have images but there's no `siteUrl` to point previews at them.
+- Every dated page carries [schema.org](https://schema.org/BlogPosting) structured data for search engines: a
+  `BlogPosting` with its title, `summary`, date, preview image and author; the home page describes the site and its
+  author. The author is `main.json`'s `"author": { "name": "...", "url": "..." }` (both optional, defaulting to the
+  site title and home page), with the social links as their other profiles. A page's optional `updated` date (same
+  form as `date`) becomes its modified date there and in feeds. `check` warns about a dated page without a `summary`.
 - `favicon` is a file in the source root -- SVG, PNG or ICO -- published at the site root and linked as every
   page's icon. `vados init` asks for one (leave it blank to skip). `check` warns when the file is missing; `generate` then publishes the site without an icon.
 

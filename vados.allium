@@ -264,6 +264,9 @@ enum FindingKind {
     -- Link previews.
     preview_image_without_site_url
     unknown_default_image_reference
+
+    -- Structured data.
+    dated_page_without_summary
 }
 
 enum MenuLinkKind { internal | external }
@@ -474,6 +477,14 @@ entity SiteConfig {
     -- An image reference, like a page's, shown in the link preview of every
     -- page without a hero image of its own. See PagesPreviewWell.
     default_image: String?
+
+    -- Who writes the site: named as the author of every dated page in its
+    -- structured data, and of every feed. The site title when absent; the
+    -- site's home page stands in for the author's own page when no
+    -- author_url is given.
+    author_name: String?
+    author_url: String?
+    effective_author_name: author_name ?? site_title
     effective_title_separator: title_separator ?? config.default_title_separator
 
     -- Defaults apply when the maintainer says nothing.
@@ -523,6 +534,8 @@ entity Page {
     image_reference: String?
     order: Integer?
     date: PageDate?
+    -- When the page last changed meaningfully, read the same way as date.
+    updated: PageDate?
     child_order: ChildOrder
     publishes_feed: Boolean
     given_feed_title: String?
@@ -533,6 +546,8 @@ entity Page {
     -- undated, the same way a malformed Luma event is reported and dropped.
     date_readable: date = null or is_page_date(date)
     published_date: if date_readable: date else: null
+    updated_readable: updated = null or is_page_date(updated)
+    modified_date: (if updated_readable: updated else: null) ?? published_date
 
     -- What search engines and link previews show for this page: its own
     -- summary, or the site's description when it has none. See
@@ -2011,6 +2026,23 @@ rule RunStructuralChecks {
                 detail: site.default_image
             )
 
+        -- A dated page still publishes without a summary; search engines and
+        -- feed readers just have no description of it.
+        for p in run.pages where p.date != null and p.summary = null:
+            Finding.created(
+                run: run,
+                kind: dated_page_without_summary,
+                location: p.path
+            )
+
+        for p in run.pages where not p.updated_readable:
+            Finding.created(
+                run: run,
+                kind: unreadable_page_date,
+                location: p.path,
+                detail: p.updated
+            )
+
         -- Once for the site, not per page: the one site URL fixes them all.
         if site != null and site.site_url = null
             and (site.default_image != null
@@ -3399,8 +3431,11 @@ surface PublishedFeed {
         -- children in. A date has no time zone, so a feed gives it as UTC.
 
     @guarantee FeedNamesItsAuthor
-        -- A feed names the site as its author, since feed readers require
-        -- one and pages name none of their own.
+        -- A feed names the site's author (see SiteConfig.effective_author_name)
+        -- as its author, since feed readers require one and pages name none
+        -- of their own. Each entry says when it was last modified (its
+        -- page's modified_date), and the feed as a whole the latest of
+        -- those.
 }
 
 -- What a visitor sees on a published page. A published site is read-only:
@@ -3602,6 +3637,16 @@ surface PublishedPage {
         -- shows WebP. Only images used this way get such a crop. Without a
         -- site URL a page gives no address in full and no preview image.
         -- Every page allows search engines to show a large image preview.
+
+    @guarantee PagesCarryStructuredData
+        -- Every dated page describes itself to search engines as a blog
+        -- post in schema.org structured data: its title as headline, its
+        -- summary, its published and modified dates, its preview image, the
+        -- site's author (with the social links as the author's other
+        -- profiles) and, with a usable site URL, its own address. The home
+        -- page describes the site and its author the same way. The data is
+        -- built as JSON, never by pasting text into markup, so a title can
+        -- never break out of it.
 
     @guarantee PagesNameTheirSite
         -- Every page's title, as browser tabs and search results show it, is

@@ -13,7 +13,7 @@
         <id>{{ e.url }}</id>
         <link rel="alternate" type="text/html" href="{{ e.url }}"/>
         <published>{{ e.published }}</published>
-        <updated>{{ e.published }}</updated>
+        <updated>{{ e.updated }}</updated>
         {%- if let Some(s) = e.summary %}
         <summary>{{ s }}</summary>
         {%- endif %}

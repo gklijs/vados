@@ -30,6 +30,10 @@
     <meta name="description" content="{{ d }}" />
     <meta property="og:description" content="{{ d }}" />
     {% endif %}
+    {% if let Some(j) = structured_data %}
+    {# Single-quoted: the HTML minifier strips any double-quoted script type, which would leave this to run as JavaScript. #}
+    <script type='application/ld+json'>{{ j|safe }}</script>
+    {% endif %}
     {% if let Some(href) = favicon_href %}
     <link rel="icon" href="{{ href }}"{% if let Some(t) = favicon_type %} type="{{ t }}"{% endif %}>
     {% endif %}

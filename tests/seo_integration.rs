@@ -89,7 +89,7 @@ fn write(path: &Path, contents: &str) {
     fs::write(path, contents).unwrap();
 }
 
-const MENU_JSON: &str = r#"{ "mainMenu": [], "socials": [] }"#;
+const MENU_JSON: &str = r#"{ "mainMenu": [], "socials": [{ "url": "https://github.com/jo" }] }"#;
 
 /// A blog with a dated post that has a hero image, and a site-wide default
 /// image for every other page.
@@ -180,4 +180,47 @@ fn without_a_site_url_pages_give_no_absolute_links() {
     assert!(!post.contains("og:image"));
     assert!(post.contains(r#"<meta name="twitter:card" content="summary""#));
     assert!(!site.destination.join("img/batman-og.jpg").exists());
+}
+
+/// The JSON-LD a published page carries, parsed.
+fn structured_data(html: &str) -> serde_json::Value {
+    let start = html
+        .find("<script type='application/ld+json'>")
+        .expect("the page carries structured data")
+        + "<script type='application/ld+json'>".len();
+    let end = start + html[start..].find("</script>").unwrap();
+    serde_json::from_str(&html[start..end]).unwrap()
+}
+
+#[test]
+fn dated_pages_and_the_home_page_carry_structured_data() {
+    let site = blog(
+        "structured_data",
+        r#", "siteUrl": "https://example.com", "author": { "name": "Jo" }"#,
+    );
+    site.write_source(
+        "blog/post/page.json",
+        r#"{"title":"A post","content":"<p>text</p>","date":"2026-10-22T09:30",
+            "updated":"2026-10-24","summary":"What the post is about","image":"/batman"}"#,
+    );
+    site.generate();
+
+    let post = structured_data(&site.published("blog/post.html"));
+    assert_eq!(post["@type"], "BlogPosting");
+    assert_eq!(post["headline"], "A post");
+    assert_eq!(post["description"], "What the post is about");
+    assert_eq!(post["datePublished"], "2026-10-22T09:30:00Z");
+    assert_eq!(post["dateModified"], "2026-10-24T00:00:00Z");
+    assert_eq!(post["image"][0], "https://example.com/img/batman-og.jpg");
+    assert_eq!(post["author"]["name"], "Jo");
+    assert_eq!(post["author"]["url"], "https://example.com/");
+    assert_eq!(post["author"]["sameAs"][0], "https://github.com/jo");
+    assert_eq!(post["mainEntityOfPage"], "https://example.com/blog/post");
+
+    let home = structured_data(&site.published("index.html"));
+    assert_eq!(home["@graph"][0]["@type"], "WebSite");
+    assert_eq!(home["@graph"][0]["name"], "My site");
+    assert_eq!(home["@graph"][1]["name"], "Jo");
+
+    assert!(!site.published("blog.html").contains("application/ld+json"));
 }

@@ -45,7 +45,20 @@ pub(crate) struct MainConfig {
     /// `SiteConfig.default_image`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) default_image: Option<String>,
+    /// Who writes the site, named in structured data and feeds; the site
+    /// title when absent. See `vados.allium`'s `SiteConfig.author`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) author: Option<AuthorConfig>,
     pub(crate) footer_content: String,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AuthorConfig {
+    pub(crate) name: String,
+    /// The author's own page, when it isn't the site's home page.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) url: Option<String>,
 }
 
 impl MainConfig {
@@ -86,6 +99,15 @@ impl MainConfig {
             .map(str::trim)
             .filter(|u| is_site_url(u))
             .map(|u| u.trim_end_matches('/'))
+    }
+    /// Who the site names as its author: main.json's `author`, or else the
+    /// site title.
+    pub(crate) fn get_author_name(&self) -> &str {
+        self.author
+            .as_ref()
+            .map(|a| a.name.trim())
+            .filter(|n| !n.is_empty())
+            .unwrap_or(&self.site_title)
     }
     pub(crate) fn get_title_separator(&self) -> &str {
         self.title_separator.as_deref().unwrap_or(" · ")
@@ -160,6 +182,10 @@ pub(crate) struct PageConfig {
     /// unreadable. See `vados.allium`'s `Page.date`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) date: Option<String>,
+    /// When the page last changed meaningfully, in the same form as `date`.
+    /// See `vados.allium`'s `Page.updated`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) updated: Option<String>,
     /// How this page's children are ordered; `order` when absent. See
     /// `vados.allium`'s `Page.child_order`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -237,6 +263,7 @@ impl PageConfig {
             right_notifications: None,
             luma_events: None,
             date: None,
+            updated: None,
             child_order: None,
             feed: None,
         }
