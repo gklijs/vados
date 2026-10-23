@@ -90,6 +90,20 @@ fn a_freshly_scaffolded_project_already_checks_clean() {
 }
 
 #[test]
+fn a_freshly_scaffolded_project_publishes_a_robots_txt_and_nothing_of_its_static_placeholder() {
+    let project = TestProject::new("fresh_scaffold_generated");
+
+    let dest = project.dir.join("public");
+    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+
+    assert_eq!(
+        fs::read_to_string(dest.join("robots.txt")).unwrap(),
+        "User-agent: *\nAllow: /\n"
+    );
+    assert!(!dest.join(".gitkeep").exists());
+}
+
+#[test]
 fn authoring_every_kind_of_content_still_checks_clean() {
     let project = TestProject::new("full_chain");
 

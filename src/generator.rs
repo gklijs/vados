@@ -7,7 +7,7 @@ use crate::files::{
     get_main_config, get_menu_config, get_page_directory_paths, write_html,
 };
 use crate::image::{prune_orphaned_variants, ImageProcessor};
-use crate::sitemap::write_sitemap;
+use crate::sitemap::{write_robots, write_sitemap};
 use crate::structure::Structure;
 
 /// The core function to call, if the files at the source are valid, the static site will be
@@ -72,6 +72,7 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
     }
     write_feeds(source, destination, &main_config, &structure);
     if let Some(site_url) = main_config.get_site_url() {
-        write_sitemap(destination, site_url, &structure, &static_files);
+        write_sitemap(destination, site_url, &structure);
     }
+    write_robots(destination, main_config.get_site_url(), &static_files);
 }

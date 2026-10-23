@@ -303,6 +303,9 @@ enum ScaffoldArtifactKind {
     package_manifest  -- package.json and its Sass dev-dependency
     netlify_config    -- netlify.toml
     readme            -- README.md
+    static_dir        -- the static directory, configured as main.json's
+                      -- staticDir and holding only a .gitkeep, so git keeps
+                      -- it while it is still empty
 }
 
 -- Why a `page new` request couldn't proceed. Recorded rather than raised, so
@@ -499,7 +502,9 @@ entity SiteConfig {
     -- as they are, at the same paths under the site root: robots.txt,
     -- verification files, .well-known, downloads. When it sits inside the
     -- source root it is not a page, nor is anything in it. Static files are
-    -- published before pages, so a page at the same path replaces one.
+    -- published before pages, so a page at the same path replaces one. A
+    -- file named .gitkeep is never published: it only keeps an otherwise
+    -- empty directory in git.
     static_dir: String?
 
     -- The site owner's fediverse handle (`@user@instance`), which Mastodon
@@ -1467,7 +1472,8 @@ config {
         stylesheet_entry,
         package_manifest,
         netlify_config,
-        readme
+        readme,
+        static_dir
     }
 
     -- The providers init prompts a handle for, one skippable prompt each.
@@ -3548,11 +3554,27 @@ surface Sitemap {
         -- the page itself gives one (its updated date, or else its date):
         -- search engines distrust a date that merely records the build, and
         -- ignore priority and change frequency, so neither is given.
+}
+
+-- What every crawler asks for first: published at the site root on every
+-- generate, so a crawler's first request never gets a 404.
+surface Robots {
+    facing _: Visitor
+
+    context run: GenerationRun where run.mode = generate
+
+    exposes:
+        run.site_config.usable_site_url
+
+    @guarantee RobotsAlwaysPublished
+        -- A robots.txt allowing every crawler is published, unless the
+        -- static files already include a robots.txt of the maintainer's
+        -- own, which then stands. init scaffolds none, so the generated one
+        -- keeps up with the site URL.
 
     @guarantee RobotsPointAtTheSitemap
-        -- A robots.txt allowing every crawler and naming the sitemap is
-        -- published alongside it, unless the static files already include
-        -- a robots.txt of the maintainer's own, which then stands.
+        -- When the site URL is usable, and so a sitemap is published, the
+        -- generated robots.txt names it; otherwise it names no sitemap.
 }
 
 -- What a visitor sees on a published page. A published site is read-only:

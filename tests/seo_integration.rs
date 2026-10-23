@@ -240,6 +240,7 @@ fn static_files_are_published_as_they_are_and_unlisted_pages_stay_unlisted() {
         "Contact: mailto:jo@example.com\n",
     );
     site.write_source("static/blog.html", "replaced by the generated page");
+    site.write_source("static/.gitkeep", "");
     site.write_source(
         "404/page.json",
         r#"{"title":"Not found","content":"<p>Nothing here.</p>","listed":false}"#,
@@ -266,6 +267,7 @@ fn static_files_are_published_as_they_are_and_unlisted_pages_stay_unlisted() {
         "Contact: mailto:jo@example.com\n"
     );
     assert!(site.published("blog.html").contains("<h1"));
+    assert!(!site.destination.join(".gitkeep").exists());
     // The static robots.txt wins over the generated one; the sitemap
     // leaves out the unlisted pages.
     let sitemap = site.published("sitemap.xml");
@@ -330,11 +332,11 @@ fn with_a_site_url_a_sitemap_and_robots_txt_are_published() {
 }
 
 #[test]
-fn without_a_site_url_there_is_no_sitemap() {
+fn without_a_site_url_there_is_no_sitemap_but_still_a_robots_txt() {
     let site = blog("no_sitemap", "");
     site.generate();
     assert!(!site.destination.join("sitemap.xml").exists());
-    assert!(!site.destination.join("robots.txt").exists());
+    assert_eq!(site.published("robots.txt"), "User-agent: *\nAllow: /\n");
 }
 
 #[test]
