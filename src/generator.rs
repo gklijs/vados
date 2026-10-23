@@ -42,7 +42,12 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
     };
 
     for directory_path in get_page_directory_paths(source, main_config.static_dir.as_deref()) {
-        let content_items = to_content_items(source, directory_path, &structure);
+        let content_items = to_content_items(
+            source,
+            directory_path,
+            &structure,
+            main_config.highlights_code(),
+        );
         let path = content_items.item.path.clone();
         if let Some(notifications) = content_items.left_sub_notifications {
             structure.add_left_sub_notifications(&path, notifications)

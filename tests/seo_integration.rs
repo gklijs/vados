@@ -470,3 +470,38 @@ fn a_page_shows_the_latest_dated_pages_from_elsewhere_first() {
     assert!(in_left(">A talk<") < in_left(">Own<"));
     assert!(right.contains(">A post<"));
 }
+
+#[cfg(feature = "highlight")]
+#[test]
+fn code_blocks_are_highlighted_and_only_their_pages_load_the_stylesheet() {
+    let code_post = |site: &TestSite| {
+        site.write_source(
+            "blog/post/page.json",
+            r#"{"title":"A post","content":"post.md","date":"2026-10-22","summary":"Code"}"#,
+        );
+        site.write_source(
+            "blog/post/post.md",
+            "## Code\n\n```rust\nfn main() { println!(\"hi\"); }\n```\n\n```\nplain\n```\n",
+        );
+    };
+    let site = blog("highlight", "");
+    code_post(&site);
+    site.generate();
+
+    let post = site.published("blog/post.html");
+    assert!(post.contains(r#"<pre class="highlight"><code class="language-rust">"#));
+    assert!(post.contains(r#"<span class="hl-"#));
+    assert!(post.contains(r#"<link href="/css/vados-highlight.css" rel="stylesheet">"#));
+    assert!(post.contains("<pre><code>plain"));
+    assert!(!site.published("index.html").contains("vados-highlight.css"));
+    assert!(site.published("css/vados-highlight.css").contains(".hl-"));
+
+    let site = blog("no_highlight", r#", "codeHighlight": false"#);
+    code_post(&site);
+    site.generate();
+    let post = site.published("blog/post.html");
+    assert!(post.contains(r#"<pre><code class="language-rust">"#));
+    assert!(!post.contains("hl-"));
+    assert!(!post.contains("vados-highlight.css"));
+    assert!(!site.destination.join("css/vados-highlight.css").exists());
+}

@@ -3,6 +3,7 @@ use crate::bulma::{Color, ImageType};
 use crate::config_files::{favicon_media_type, MainConfig, MenuConfig, Notification, PageConfig};
 use crate::feed::{feed_href, feed_title, page_url};
 use crate::files::write_raw;
+use crate::highlight::{self, highlight_code_blocks, HIGHLIGHTED_MARKER};
 use crate::image::ProcessedImage;
 use crate::luma::BUTTON_SCRIPT_URL;
 use crate::structure::{Item, SocialItem, Structure};
@@ -46,6 +47,7 @@ pub(crate) struct GenericContent {
     /// The social links' URLs: the site owner's own profiles elsewhere.
     social_urls: Vec<String>,
     fediverse_creator: Option<String>,
+    highlight: bool,
     /// Whether feeds are published at all: only with a usable `siteUrl`.
     feeds_published: bool,
 }
@@ -73,6 +75,17 @@ fn publish_favicon(source: &str, destination: &str, favicon: &str) -> Option<Fav
     write_raw(destination, &href, contents);
     let media_type = favicon_media_type(file_name);
     Some(Favicon { href, media_type })
+}
+
+/// Writes the stylesheet for highlighted code when code is highlighted at
+/// all, so pages with highlighted code can link it.
+fn publish_highlight_stylesheet(destination: &str, main_config: &MainConfig) -> bool {
+    let css = highlight::stylesheet();
+    let highlight = main_config.highlights_code() && !css.is_empty();
+    if highlight {
+        write_raw(destination, highlight::STYLESHEET_PATH, css);
+    }
+    highlight
 }
 
 impl GenericContent {
@@ -110,6 +123,7 @@ impl GenericContent {
             author_url: main_config.author.as_ref().and_then(|a| a.url.clone()),
             social_urls: menu_config.socials.iter().map(|s| s.url.clone()).collect(),
             fediverse_creator: fediverse_creator(main_config, menu_config),
+            highlight: publish_highlight_stylesheet(destination, main_config),
             feeds_published: main_config.get_site_url().is_some(),
         }
     }
@@ -212,6 +226,7 @@ pub(crate) fn to_content_items(
     source: &str,
     dir_path: String,
     structure: &Structure,
+    highlight: bool,
 ) -> ContentItems {
     let page_file_string = format!("{}/page.json", dir_path);
     let page_file_path = Path::new(&page_file_string);
@@ -223,14 +238,26 @@ pub(crate) fn to_content_items(
         root if root == source => String::from("/"),
         mut d => d.split_off(source.len()),
     };
-    let left_sub_notifications = page_config
-        .left_notifications
-        .as_ref()
-        .map(|n| resolve_notifications(source, &path, n, NotificationSide::Left, structure));
-    let right_sub_notifications = page_config
-        .right_notifications
-        .as_ref()
-        .map(|n| resolve_notifications(source, &path, n, NotificationSide::Right, structure));
+    let left_sub_notifications = page_config.left_notifications.as_ref().map(|n| {
+        resolve_notifications(
+            source,
+            &path,
+            n,
+            NotificationSide::Left,
+            structure,
+            highlight,
+        )
+    });
+    let right_sub_notifications = page_config.right_notifications.as_ref().map(|n| {
+        resolve_notifications(
+            source,
+            &path,
+            n,
+            NotificationSide::Right,
+            structure,
+            highlight,
+        )
+    });
     let item = Item::new(path, page_config);
     ContentItems {
         item,
@@ -251,6 +278,7 @@ fn resolve_notifications(
     notifications: &[Notification],
     side: NotificationSide,
     structure: &Structure,
+    highlight: bool,
 ) -> Vec<String> {
     notifications
         .iter()
@@ -260,7 +288,15 @@ fn resolve_notifications(
                 NotificationSide::Left => (format!("sub-l-{}", i), 2 * i as isize),
                 NotificationSide::Right => (format!("sub-r-{}", i), 2 * i as isize + 1),
             };
-            resolve_notification(source, path, notification.clone(), id, order, structure)
+            resolve_notification(
+                source,
+                path,
+                notification.clone(),
+                id,
+                order,
+                structure,
+                highlight,
+            )
         })
         .collect()
 }
@@ -272,8 +308,9 @@ fn resolve_notification(
     id: String,
     order: isize,
     structure: &Structure,
+    highlight: bool,
 ) -> String {
-    let content = get_content(source, path, &notification.content);
+    let content = get_content(source, path, &notification.content, highlight);
     let image = notification.image.and_then(|i| {
         // The first row of child tiles is above the fold.
         structure.process_image(&i, ImageType::Sub { eager: order < 2 })
@@ -411,12 +448,16 @@ pub(crate) fn get_file_path(source: &str, path: &str, reference: &str) -> String
     }
 }
 
-fn md_to_content(file_path: &str) -> String {
+fn md_to_content(file_path: &str, highlight: bool) -> String {
     match fs::read_to_string(file_path) {
         Ok(text) => {
             let mut html_output: String = String::with_capacity(text.len() * 3 / 2);
             let parser = Parser::new(&text);
-            html::push_html(&mut html_output, parser);
+            if highlight {
+                html::push_html(&mut html_output, highlight_code_blocks(parser));
+            } else {
+                html::push_html(&mut html_output, parser);
+            }
             html_output
         }
         Err(e) => {
@@ -471,10 +512,12 @@ fn html_to_content(file_path: &str) -> String {
     }
 }
 
-pub(crate) fn get_content(source: &str, path: &str, reference: &str) -> String {
+/// The content a reference names, as HTML. `highlight` colours fenced
+/// Markdown code blocks; see `highlight.rs`.
+pub(crate) fn get_content(source: &str, path: &str, reference: &str, highlight: bool) -> String {
     let file_path = get_file_path(source, path, reference);
     match classify_content_reference(reference) {
-        ContentKind::MarkdownFile => md_to_content(&file_path),
+        ContentKind::MarkdownFile => md_to_content(&file_path, highlight),
         ContentKind::HtmlFile => html_to_content(&file_path),
         ContentKind::InlineHtml => String::from(reference),
         ContentKind::Unrecognised => panic!(
@@ -485,7 +528,12 @@ pub(crate) fn get_content(source: &str, path: &str, reference: &str) -> String {
 }
 
 fn get_footer(source: &str, main_config: &MainConfig) -> String {
-    let footer_content = get_content(source, "/", &main_config.footer_content);
+    let footer_content = get_content(
+        source,
+        "/",
+        &main_config.footer_content,
+        main_config.highlights_code(),
+    );
     FooterTemplate {
         content: &footer_content,
     }
@@ -573,7 +621,7 @@ fn get_main_content(
         sub_title: &item.sub_title,
         date: item.date.map(|d| DisplayDate::new(&d, ui)),
         image,
-        content: get_content(source, path, &item.content),
+        content: get_content(source, path, &item.content, generic_content.highlight),
         feed: item
             .feed
             .as_ref()
@@ -631,6 +679,15 @@ fn get_page(
     let (mut left, mut right) = latest_tiles(path, item, structure, generic_content.ui);
     left.extend(structure.get_left_sub_notifications(path).iter().cloned());
     right.extend(structure.get_right_sub_notifications(path).iter().cloned());
+    // Only a page that shows highlighted code loads its stylesheet.
+    let mut css_links = generic_content.css_links.clone();
+    let shows_highlighted_code = std::iter::once(page_helper.main_content)
+        .chain(left.iter().chain(&right).map(String::as_str))
+        .chain(std::iter::once(generic_content.footer.as_str()))
+        .any(|html| html.contains(HIGHLIGHTED_MARKER));
+    if shows_highlighted_code {
+        css_links.push(String::from(highlight::STYLESHEET_PATH));
+    }
     let structured_data = structured_data(
         item,
         &PageFacts {
@@ -683,7 +740,7 @@ fn get_page(
         right_sub_notifications: &right,
         side_notifications: &structure.get_side_notifications(path, generic_content.ui),
         footer: &generic_content.footer,
-        css_links: &generic_content.css_links,
+        css_links: &css_links,
         js_links: &generic_content.js_links,
         // Luma's script is loaded once, and only by a page that shows a
         // register button; see vados.allium's `ThirdPartyCodeOnlyWhereUsed`.

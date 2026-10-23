@@ -6,6 +6,7 @@ mod content;
 pub mod feed;
 mod files;
 pub mod generator;
+mod highlight;
 mod icons;
 mod image;
 pub mod init;

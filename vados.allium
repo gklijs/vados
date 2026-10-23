@@ -505,6 +505,12 @@ entity SiteConfig {
     -- The site owner's fediverse handle (`@user@instance`), which Mastodon
     -- shows as the author under link previews of the site's pages. Without
     -- one, the first social link with the Mastodon icon names it.
+    -- Whether fenced Markdown code blocks in a language vados knows are
+    -- coloured. On unless the maintainer turns it off. See
+    -- CodeIsHighlighted.
+    code_highlight: Boolean?
+    highlights_code: code_highlight ?? true
+
     fediverse_creator: String?
     effective_fediverse_creator:
         fediverse_creator ?? fediverse_handle_of(first_mastodon_social_link_url)
@@ -3760,6 +3766,17 @@ surface PublishedPage {
         -- as belonging to that profile, and every page names the site's
         -- effective fediverse creator, when there is one, as its author for
         -- Mastodon's link previews.
+
+    @guarantee CodeIsHighlighted
+        -- When the site highlights code, every fenced Markdown code block
+        -- naming a language vados knows is coloured when the site is
+        -- generated, not in the visitor's browser, so it reads the same
+        -- without scripts; one without a language, in a language vados
+        -- doesn't know, or indented rather than fenced, stays plain, as
+        -- does inline code. Every colour is readable on the code's
+        -- background (at least 4.5:1). Only a page showing highlighted code
+        -- loads the stylesheet for it. Content given as HTML is never
+        -- changed.
 
     @guarantee IconsAreInlined
         -- Every icon vados shows -- on menu entries, breadcrumbs, the side
