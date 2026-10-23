@@ -268,6 +268,14 @@ A page with `"listed": false` in its `page.json` is published in the site's layo
 side tiles, feeds or the sitemap. That suits a 404 page: `root/404/page.json` publishes `404.html`, which Netlify,
 GitHub Pages and Cloudflare Pages serve for unknown paths.
 
+## Icons
+
+Icons -- on menu entries (`icon` in `menu.json` and `page.json`), social links, breadcrumbs and the side menu -- are
+[Material Design Icons](https://pictogrammers.com/library/mdi/) names (`home`, `github`, `rss`, ...), drawn inline as
+SVG in the colour of the surrounding text. Pages load no icon font. `check` warns about a name that isn't in the set;
+that icon is then left out. Content that uses the font's own classes (`<span class="mdi mdi-github">`) needs its
+stylesheet in `cssFiles`.
+
 ## Accessibility
 
 Every published page declares the site's language (`main.json`'s `language`, defaulting to `en`) on its root

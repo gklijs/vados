@@ -170,7 +170,14 @@ fn generated_pages_match_facts_observed_on_the_live_site() {
     // explicit color wins over X's own.
     assert!(index.contains("https://github.com/gklijs"));
     assert!(index.contains("https://twitter.com/GKlijs"));
-    assert!(index.contains("mdi-alpha-x-box"));
+    let x_icon = include_str!("../assets/mdi/paths.txt")
+        .lines()
+        .find_map(|l| l.strip_prefix("alpha-x-box "))
+        .unwrap();
+    assert!(index.contains(&format!(r#"<path d="{x_icon}"/>"#)));
+    // vados's own icons are inlined as SVG, not icon-font classes; only the
+    // site's own footer HTML still uses those, with its own stylesheet.
+    assert!(!index.contains("mdi-alpha-x-box"));
     assert!(index.contains("color: #1DA1F2;"));
     // Only the first two social links sit in the brand on a phone, so the
     // burger stays on screen; the third is in the burger menu instead.

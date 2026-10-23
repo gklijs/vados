@@ -4,7 +4,7 @@
         <li>
             <a href="{{ crumb.url }}">
                 {% if let Some(icon) = crumb.icon %}
-                <span class="icon m-0"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                <span class="icon m-0">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
                 {% endif %}
                 {{ crumb.title }}
             </a>
@@ -13,7 +13,7 @@
         <li class="is-active">
             <a aria-current="page" href="#">
                 {% if let Some(icon) = last.icon %}
-                <span class="icon m-0"><em class="mdi mdi-24px mdi-{{icon}}"></em></span>
+                <span class="icon m-0">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
                 {% endif %}
                 {{ last.title }}
             </a>

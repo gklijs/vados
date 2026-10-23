@@ -39,8 +39,8 @@
 --   - Site-wide configuration (title, footer, extra CSS/JS, background, navbar,
 --     language, description, favicon, site URL)
 --   - The Bulma design commitment: semantic colours, aspect-ratio classes and
---     the default Bulma/Material-Design-icon stylesheets are first-class here,
---     because the project is built around Bulma (see README)
+--     the default Bulma stylesheet are first-class here, because the project
+--     is built around Bulma (see README), as are Material Design Icons names
 --   - Content structure: one page per source directory, page hierarchy,
 --     sibling display order -- by explicit order, or by publication date for
 --     a section that asks for it
@@ -274,6 +274,9 @@ enum FindingKind {
 
     -- Latest pages.
     unresolved_latest_source
+
+    -- Icons.
+    unknown_icon
 }
 
 enum MenuLinkKind { internal | external }
@@ -530,8 +533,8 @@ entity SiteConfig {
     -- interface language.
     luma_button_label: register_label_in(interface_language)
 
-    -- The default stylesheets are the Bulma stylesheet and a Material Design
-    -- icon font; the default script supplies the burger-menu and side-menu
+    -- The default stylesheet is the Bulma stylesheet; icons need none, since
+    -- they are inlined (see IconsAreInlined). The default script supplies the burger-menu and side-menu
     -- toggling behaviour. Maintainer-supplied files come first.
     css_links: if default_css_included:
                    concat(extra_css_files, config.default_css_links)
@@ -1375,7 +1378,6 @@ config {
     default_language: String = "en"
     default_title_separator: String = " · "
     default_css_links: List<String> = [
-        "https://cdn.jsdelivr.net/npm/@mdi/font@6.5.95/css/materialdesignicons.min.css",
         "https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"
     ]
     default_js_links: List<String> = [ "/js/vados.js" ]
@@ -2087,6 +2089,16 @@ rule RunStructuralChecks {
                 run: run,
                 kind: static_file_shadowed_by_page,
                 location: f
+            )
+
+        -- An icon vados has no drawing of is left out; the link or page
+        -- still shows its title.
+        for p in run.pages where p.icon != null and not is_known_icon(p.icon):
+            Finding.created(
+                run: run,
+                kind: unknown_icon,
+                location: p.path,
+                detail: p.icon
             )
 
         for p in run.pages:
@@ -3748,6 +3760,14 @@ surface PublishedPage {
         -- as belonging to that profile, and every page names the site's
         -- effective fediverse creator, when there is one, as its author for
         -- Mastodon's link previews.
+
+    @guarantee IconsAreInlined
+        -- Every icon vados shows -- on menu entries, breadcrumbs, the side
+        -- menu, social links and the feed link -- is drawn inline from the
+        -- Material Design Icons set, in the colour of the text around it,
+        -- and hidden from assistive technology, whose name for the control
+        -- comes from its text or label. A page loads no icon font and makes
+        -- no request for one.
 
     @guarantee LatestPagesComeFirst
         -- A page with latest sources shows the newest listed, dated pages
