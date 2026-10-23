@@ -1389,7 +1389,7 @@ config {
     default_language: String = "en"
     default_title_separator: String = " · "
     default_css_links: List<String> = [
-        "https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"
+        "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
     ]
     default_js_links: List<String> = [ "/js/vados.js" ]
 

@@ -38,7 +38,7 @@ impl Color {
 pub(crate) fn default_css_links() -> Vec<String> {
     // No icon font: icons are inlined as SVG (see `icons.rs`).
     vec![String::from(
-        "https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css",
+        "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css",
     )]
 }
 
