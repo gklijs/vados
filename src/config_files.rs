@@ -219,7 +219,7 @@ impl PageConfig {
             image: None,
             icon: None,
             summary: None,
-            content: format!("<h1>{}</h1>", last),
+            content: format!("<p>{}</p>", last),
             order: None,
             left_notifications: None,
             right_notifications: None,

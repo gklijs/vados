@@ -13,7 +13,7 @@ use crate::templates::{
 };
 use crate::ui_text::{ui_text, UiText};
 use askama::Template;
-use pulldown_cmark::{html, Parser};
+use pulldown_cmark::{html, Event, HeadingLevel, Parser, Tag};
 use std::fs;
 use std::fs::File;
 use std::path::Path;
@@ -384,6 +384,35 @@ fn md_to_content(file_path: &str) -> String {
             String::from("")
         }
     }
+}
+
+/// Whether a page's content has a top-level heading of its own: a `#`
+/// heading in Markdown, an `<h1>` in HTML. The page title is already the
+/// page's `<h1>`, so this would make a second. A file that can't be read has
+/// none; `check` reports it missing separately.
+pub(crate) fn has_top_level_heading(source: &str, path: &str, reference: &str) -> bool {
+    let file_path = get_file_path(source, path, reference);
+    match classify_content_reference(reference) {
+        ContentKind::MarkdownFile => fs::read_to_string(file_path).is_ok_and(|text| {
+            Parser::new(&text).any(|e| {
+                matches!(
+                    e,
+                    Event::Start(Tag::Heading {
+                        level: HeadingLevel::H1,
+                        ..
+                    })
+                )
+            })
+        }),
+        ContentKind::HtmlFile => fs::read_to_string(file_path).is_ok_and(|text| html_has_h1(&text)),
+        ContentKind::InlineHtml => html_has_h1(reference),
+        ContentKind::Unrecognised => false,
+    }
+}
+
+fn html_has_h1(html: &str) -> bool {
+    let lower = html.to_ascii_lowercase();
+    lower.contains("<h1>") || lower.contains("<h1 ")
 }
 
 fn html_to_content(file_path: &str) -> String {

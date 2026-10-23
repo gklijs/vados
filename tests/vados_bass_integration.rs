@@ -18,7 +18,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use vados::check::check;
+use vados::check::{check, FindingKind};
 use vados::generator::generate;
 
 fn fixture_root() -> String {
@@ -56,8 +56,16 @@ fn generated_site() -> &'static Path {
 fn check_reports_no_findings_on_the_real_site() {
     let report = check(&fixture_root(), &fixture_img_root());
 
-    assert!(
-        report.findings.is_empty(),
+    // The one thing the real content gets wrong: a log entry opens with a
+    // `#` heading of its own, a second `<h1>` now that the page title is
+    // one. A warning, so the check still passes.
+    assert_eq!(
+        report
+            .findings
+            .iter()
+            .map(|f| (f.kind, f.location.as_str()))
+            .collect::<Vec<_>>(),
+        [(FindingKind::TopLevelHeadingInContent, "/log/2022/3/7")],
         "a real, currently-deployed site should check clean; got {:?}",
         report.findings
     );
@@ -130,6 +138,11 @@ fn generated_pages_match_facts_observed_on_the_live_site() {
     // Home page's own title and subtitle (main.json is site-wide; this is
     // root/page.json).
     assert!(index.contains(">Home<"));
+    // The page title is the page's one `<h1>`; tile titles are `<h2>`s
+    // under it.
+    assert_eq!(index.matches("<h1").count(), 1);
+    assert!(index.contains(r#"<h1 class="title is-1">Home</h1>"#));
+    assert!(index.contains(r#"<h2 class="title">"#));
     // askama 0.16 escapes `'` as the decimal entity `&#39;` rather than the
     // hex entity `&#x27;` earlier versions used; both are valid, equivalent
     // HTML and render identically -- only the literal form changed.

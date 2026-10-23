@@ -47,8 +47,9 @@ pub fn parent_orders_by_date(source: &str, path: &str) -> bool {
 }
 
 /// A page.json with no content reference gets the same fallback a directory
-/// with no page.json gets at generate/check time: a bare heading named after
-/// the page's own last path segment. See `vados.allium`'s
+/// with no page.json gets at generate/check time: a placeholder paragraph
+/// naming the page's own last path segment. A paragraph, not a heading: the
+/// page's title is already its one top-level heading. See `vados.allium`'s
 /// `default_page_content` and `DiscoverPage`. Escaped the same way `init`
 /// escapes every other bit of plain text it writes into HTML -- a path
 /// segment is free-form text, not markup, so a stray `&`/`<`/`>` in it (a
@@ -56,7 +57,7 @@ pub fn parent_orders_by_date(source: &str, path: &str) -> bool {
 /// a tag.
 pub fn default_page_content(path: &str) -> String {
     let name = path.rsplit('/').find(|s| !s.is_empty()).unwrap_or(path);
-    format!("<h1>{}</h1>", escape_html(name))
+    format!("<p>{}</p>", escape_html(name))
 }
 
 /// Why a `page new` request couldn't proceed. See `vados.allium`'s
@@ -562,14 +563,14 @@ mod tests {
     // -- page new -----------------------------------------------------------
 
     #[test]
-    fn default_page_content_is_a_bare_heading_named_after_the_last_segment() {
-        assert_eq!(default_page_content("/blog/post-one"), "<h1>post-one</h1>");
-        assert_eq!(default_page_content("/blog"), "<h1>blog</h1>");
+    fn default_page_content_is_a_paragraph_naming_the_last_segment() {
+        assert_eq!(default_page_content("/blog/post-one"), "<p>post-one</p>");
+        assert_eq!(default_page_content("/blog"), "<p>blog</p>");
     }
 
     #[test]
     fn default_page_content_escapes_markup_characters_in_the_path_segment() {
-        assert_eq!(default_page_content("/rock&roll"), "<h1>rock&amp;roll</h1>");
+        assert_eq!(default_page_content("/rock&roll"), "<p>rock&amp;roll</p>");
     }
 
     #[test]
@@ -766,7 +767,7 @@ mod tests {
         .unwrap();
 
         assert!(outcome.content_was_defaulted);
-        assert_eq!(outcome.content, "<h1>about</h1>");
+        assert_eq!(outcome.content, "<p>about</p>");
     }
 
     #[test]
