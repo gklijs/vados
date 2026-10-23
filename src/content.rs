@@ -257,8 +257,8 @@ fn resolve_notifications(
         .enumerate()
         .map(|(i, notification)| {
             let (id, order) = match side {
-                NotificationSide::Left => (format!("sub-l-{}", i), 2 * i),
-                NotificationSide::Right => (format!("sub-r-{}", i), 2 * i + 1),
+                NotificationSide::Left => (format!("sub-l-{}", i), 2 * i as isize),
+                NotificationSide::Right => (format!("sub-r-{}", i), 2 * i as isize + 1),
             };
             resolve_notification(source, path, notification.clone(), id, order, structure)
         })
@@ -270,7 +270,7 @@ fn resolve_notification(
     path: &str,
     notification: Notification,
     id: String,
-    order: usize,
+    order: isize,
     structure: &Structure,
 ) -> String {
     let content = get_content(source, path, &notification.content);
@@ -626,6 +626,11 @@ fn get_page(
         .filter(|s| !s.is_empty())
         .or(generic_content.description.as_deref());
     let preview = link_preview(path, item, structure, generic_content);
+    // The newest pages from elsewhere come first, alternating between the
+    // columns, then the page's own notifications.
+    let (mut left, mut right) = latest_tiles(path, item, structure, generic_content.ui);
+    left.extend(structure.get_left_sub_notifications(path).iter().cloned());
+    right.extend(structure.get_right_sub_notifications(path).iter().cloned());
     let structured_data = structured_data(
         item,
         &PageFacts {
@@ -674,8 +679,8 @@ fn get_page(
         side_menu: page_helper.side_menu,
         main_content: page_helper.main_content,
         luma_events: get_luma_events(item, generic_content.ui),
-        left_sub_notifications: &structure.get_left_sub_notifications(path),
-        right_sub_notifications: &structure.get_right_sub_notifications(path),
+        left_sub_notifications: &left,
+        right_sub_notifications: &right,
         side_notifications: &structure.get_side_notifications(path, generic_content.ui),
         footer: &generic_content.footer,
         css_links: &generic_content.css_links,
@@ -690,6 +695,56 @@ fn get_page(
     }
     .render()
     .unwrap()
+}
+
+/// The page's `latest` pages as child tiles, split over the left and right
+/// columns the way they pair up: the newest left, the next right, and so on.
+/// See vados.allium's `LatestPagesComeFirst`.
+fn latest_tiles(
+    path: &str,
+    item: &Item,
+    structure: &Structure,
+    ui: &UiText,
+) -> (Vec<String>, Vec<String>) {
+    let Some(latest) = &item.latest else {
+        return (vec![], vec![]);
+    };
+    let pages = structure.get_latest(path, &latest.sources(), latest.depth, latest.get_limit());
+    let count = pages.len();
+    let (mut left, mut right) = (vec![], vec![]);
+    for (i, page) in pages.iter().enumerate() {
+        let image = page
+            .image
+            .as_ref()
+            .and_then(|r| structure.process_image(r, ImageType::Sub { eager: i < 2 }));
+        let content = page
+            .summary
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| format!("<p>{}</p>", escape_html(s)));
+        let tile = InternalNotificationTemplate {
+            title: &Some(page.title.clone()),
+            sub_title: &page.sub_title,
+            date: page.date.map(|d| DisplayDate::new(&d, ui)),
+            color: Color::Link.to_css_class(),
+            url: &page.path,
+            image,
+            content,
+            id: format!("latest-{}", i),
+            // Before the page's own tiles, which start at 0, once the
+            // columns are stacked on a phone.
+            order: Some(i as isize - count as isize),
+        }
+        .render()
+        .unwrap();
+        if i % 2 == 0 {
+            left.push(tile)
+        } else {
+            right.push(tile)
+        }
+    }
+    (left, right)
 }
 
 /// See vados.allium's `PagesPreviewWell`.

@@ -153,8 +153,9 @@ pub(crate) struct InternalNotificationTemplate<'a> {
     /// The tile's place among a page's child tiles once both columns are
     /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
     /// `2i + 1`, so they read in the order they pair up on wider screens.
-    /// `None` for side tiles.
-    pub(crate) order: Option<usize>,
+    /// Tiles of the page's latest pages come before those, counting up to
+    /// -1. `None` for side tiles.
+    pub(crate) order: Option<isize>,
 }
 
 #[derive(Template)]
@@ -169,8 +170,9 @@ pub(crate) struct ExternalNotificationTemplate<'a> {
     /// The tile's place among a page's child tiles once both columns are
     /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
     /// `2i + 1`, so they read in the order they pair up on wider screens.
-    /// `None` for side tiles.
-    pub(crate) order: Option<usize>,
+    /// Tiles of the page's latest pages come before those, counting up to
+    /// -1. `None` for side tiles.
+    pub(crate) order: Option<isize>,
 }
 
 #[derive(Template)]
@@ -184,8 +186,9 @@ pub(crate) struct ContentNotificationTemplate<'a> {
     /// The tile's place among a page's child tiles once both columns are
     /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
     /// `2i + 1`, so they read in the order they pair up on wider screens.
-    /// `None` for side tiles.
-    pub(crate) order: Option<usize>,
+    /// Tiles of the page's latest pages come before those, counting up to
+    /// -1. `None` for side tiles.
+    pub(crate) order: Option<isize>,
 }
 
 #[derive(Template)]
