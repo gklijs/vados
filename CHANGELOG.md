@@ -23,6 +23,13 @@
 - `check` reports an unreadable `date` as an error, and an undated page under a parent ordered by date as a
   warning.
 
+- Link previews and canonical URLs (#16): every page declares `og:type` (`article`, with `article:published_time`,
+  for a dated page), `og:locale`, a `twitter:card` and `robots: max-image-preview:large`; with a `siteUrl`, also
+  `<link rel="canonical">`, `og:url` and an `og:image` with its size and alt text. The image is the page's hero
+  image or `main.json`'s new `defaultImage`, published as a 1200×630 JPEG crop (`<name>-og.jpg`), since LinkedIn
+  doesn't reliably show WebP. `check` warns when pages have images but no `siteUrl`, and about a `defaultImage`
+  that matches no declared image.
+
 ### Changed
 
 - Every page's `<title>` now ends with the site title (`My post · My site`), except the home page's, which is just

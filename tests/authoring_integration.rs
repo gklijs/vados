@@ -17,7 +17,7 @@ use vados::authoring::luma::{self as luma_authoring, LumaEventDisplay};
 use vados::authoring::menu as menu_authoring;
 use vados::authoring::page;
 use vados::authoring::social::{self, GivenSocialLink, RecognizedSocialProvider};
-use vados::check::check;
+use vados::check::{check, FindingKind};
 use vados::generator::generate;
 use vados::init::{self, ProjectBasics};
 
@@ -254,12 +254,18 @@ fn authoring_every_kind_of_content_still_checks_clean() {
     )
     .unwrap();
 
+    // The project was scaffolded without a site URL, so the one thing left
+    // to say is that link previews can't show the hero image just attached.
     let report = check(&project.source, &project.img_source);
     assert!(
-        report.findings.is_empty(),
+        report
+            .findings
+            .iter()
+            .all(|f| f.kind == FindingKind::PreviewImageWithoutSiteUrl),
         "expected the fully authored project to check clean, got {:?}",
         report.findings
     );
+    assert!(report.passed());
 }
 
 #[test]

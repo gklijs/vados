@@ -1,6 +1,6 @@
 use crate::bulma::{Color, ImageType};
 use crate::config_files::{favicon_media_type, MainConfig, MenuConfig, Notification, PageConfig};
-use crate::feed::{feed_href, feed_title};
+use crate::feed::{feed_href, feed_title, page_url};
 use crate::files::write_raw;
 use crate::image::ProcessedImage;
 use crate::luma::BUTTON_SCRIPT_URL;
@@ -8,8 +8,8 @@ use crate::structure::{Item, SocialItem, Structure};
 use crate::templates::{
     BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate, DisplayDate,
     ExternalNotificationTemplate, FeedLink, FooterTemplate, InternalImageTemplate,
-    InternalNotificationTemplate, LumaEventView, LumaEventsTemplate, NavigationTemplate,
-    PageTemplate, SideMenuTemplate,
+    InternalNotificationTemplate, LinkPreview, LinkPreviewImage, LumaEventView, LumaEventsTemplate,
+    NavigationTemplate, PageTemplate, SideMenuTemplate,
 };
 use crate::ui_text::{ui_text, UiText};
 use askama::Template;
@@ -36,6 +36,9 @@ pub(crate) struct GenericContent {
     favicon: Option<Favicon>,
     site_title: String,
     title_separator: String,
+    /// The usable `siteUrl`, without a trailing slash.
+    site_url: Option<String>,
+    default_image: Option<String>,
     /// Whether feeds are published at all: only with a usable `siteUrl`.
     feeds_published: bool,
 }
@@ -89,6 +92,8 @@ impl GenericContent {
             favicon,
             site_title: main_config.site_title.clone(),
             title_separator: main_config.get_title_separator().to_string(),
+            site_url: main_config.get_site_url().map(String::from),
+            default_image: main_config.default_image.clone(),
             feeds_published: main_config.get_site_url().is_some(),
         }
     }
@@ -591,6 +596,7 @@ fn get_page(
             &generic_content.title_separator,
         ),
         site_title: &generic_content.site_title,
+        preview: link_preview(path, item, structure, generic_content),
         description,
         language: &generic_content.language,
         ui: generic_content.ui,
@@ -619,6 +625,42 @@ fn get_page(
     }
     .render()
     .unwrap()
+}
+
+/// See vados.allium's `PagesPreviewWell`.
+fn link_preview(
+    path: &str,
+    item: &Item,
+    structure: &Structure,
+    generic_content: &GenericContent,
+) -> LinkPreview {
+    let site_url = generic_content.site_url.as_deref();
+    let image = site_url.and_then(|site_url| {
+        let processed = item
+            .image
+            .iter()
+            .chain(&generic_content.default_image)
+            .filter_map(|r| structure.get_image(r))
+            .find(|i| i.preview.is_some())?;
+        let preview = processed.preview.as_ref()?;
+        Some(LinkPreviewImage {
+            url: format!("{site_url}{}", preview.path),
+            width: preview.width,
+            height: preview.height,
+            alt: processed.alt.clone(),
+        })
+    });
+    LinkPreview {
+        og_type: if item.date.is_some() {
+            "article"
+        } else {
+            "website"
+        },
+        locale: generic_content.language.replace('-', "_"),
+        published_time: item.date.map(|d| d.to_rfc3339()),
+        url: site_url.map(|u| page_url(u, path)),
+        image,
+    }
 }
 
 /// A page's `<title>`: its own title followed by the site's, so browser tabs

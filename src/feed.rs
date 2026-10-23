@@ -58,7 +58,8 @@ pub(crate) fn feed_title(item: &Item, site_title: &str) -> String {
     }
 }
 
-fn page_url(site_url: &str, path: &str) -> String {
+/// A page's address in full.
+pub(crate) fn page_url(site_url: &str, path: &str) -> String {
     if path == "/" {
         format!("{site_url}/")
     } else {

@@ -4,9 +4,11 @@ use crate::files::{empty, write_raw};
 use dashmap::DashMap;
 use fast_image_resize::images::Image;
 use fast_image_resize::{FilterType, MulDiv, PixelType, ResizeAlg, ResizeOptions, Resizer};
-use image::GenericImage;
+use image::codecs::jpeg::JpegEncoder;
 use image::ImageReader;
+use image::{DynamicImage, ExtendedColorType, GenericImage, GenericImageView, ImageEncoder};
 use std::borrow::Borrow;
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
@@ -20,6 +22,9 @@ pub(crate) struct ImageProcessor<'a> {
     resizer: Resizer,
     img_source: &'a str,
     destination: &'a str,
+    /// The reference keys of the images that also get a link-preview crop:
+    /// every page's hero image and the site's default one.
+    preview_keys: HashSet<String>,
     pub(crate) meta_cache: DashMap<String, Arc<ProcessedImage>>,
 }
 
@@ -30,7 +35,23 @@ pub(crate) struct ProcessedImage {
     pub(crate) ratio: ImageRatio,
     pub(crate) srcset: String,
     pub(crate) src: String,
+    /// The image as link previews show it, when it's used as one.
+    pub(crate) preview: Option<PreviewImage>,
 }
+
+/// A JPEG crop of an image in the 1.91:1 shape LinkedIn, Facebook, X and
+/// Mastodon all show link previews in. JPEG, not WebP: LinkedIn doesn't
+/// reliably show a WebP preview. See `vados.allium`'s `LinkPreviewImage`.
+#[derive(Debug)]
+pub(crate) struct PreviewImage {
+    pub(crate) path: String,
+    pub(crate) width: u32,
+    pub(crate) height: u32,
+}
+
+const PREVIEW_WIDTH: u32 = 1200;
+const PREVIEW_HEIGHT: u32 = 630;
+const PREVIEW_QUALITY: u8 = 85;
 
 #[derive(Debug)]
 struct ImageProcessingError {
@@ -46,12 +67,17 @@ impl Display for ImageProcessingError {
 impl Error for ImageProcessingError {}
 
 impl<'a> ImageProcessor<'a> {
-    pub(crate) fn new(img_source: &'a str, destination: &'a str) -> ImageProcessor<'a> {
+    pub(crate) fn new(
+        img_source: &'a str,
+        destination: &'a str,
+        preview_keys: HashSet<String>,
+    ) -> ImageProcessor<'a> {
         let resizer = Resizer::new();
         ImageProcessor {
             resizer,
             img_source,
             destination,
+            preview_keys,
             meta_cache: DashMap::new(),
         }
     }
@@ -84,6 +110,26 @@ impl<'a> ImageProcessor<'a> {
             },
             Err(e) => return Err(Box::new(e)),
         };
+        let file_base = match reference.file_name.rsplit_once('.') {
+            None => {
+                return Err(Box::new(ImageProcessingError {
+                    details: String::from("file name doesn't contain a period"),
+                }))
+            }
+            Some((first, _)) => String::from(first),
+        };
+        let base_path = if path_start.is_empty() {
+            format!("/{}", file_base)
+        } else {
+            format!("{}/{}", path_start, file_base)
+        };
+        let preview = if self.preview_keys.contains(&base_path) {
+            let path = format!("/img{}/{}-og.jpg", path_start, file_base);
+            Some(self.write_preview(&origin, path)?)
+        } else {
+            None
+        };
+
         let ratio = ImageRatio::best_fitting(&origin.width(), &origin.height());
         let mut width = ratio.get_width(&origin.height());
         let mut height = ratio.get_height(&origin.width());
@@ -105,15 +151,6 @@ impl<'a> ImageProcessor<'a> {
             cropped.borrow().to_image().into_raw(),
             PixelType::U8x4,
         )?;
-        let file_base = match reference.file_name.rsplit_once('.') {
-            None => {
-                return Err(Box::new(ImageProcessingError {
-                    details: String::from("file name doesn't contain a period"),
-                }))
-            }
-            Some((first, _)) => String::from(first),
-        };
-
         // Premultiplied once, up front, rather than once per variant: every
         // variant below resizes the same source pixels, so repeating this per
         // iteration would multiply by alpha again on top of the previous
@@ -150,11 +187,6 @@ impl<'a> ImageProcessor<'a> {
             src = path;
         }
         let srcset = srcset_part.join(", ");
-        let base_path = if path_start.is_empty() {
-            format!("/{}", file_base)
-        } else {
-            format!("{}/{}", path_start, file_base)
-        };
         Ok((
             base_path,
             Arc::new(ProcessedImage {
@@ -163,8 +195,68 @@ impl<'a> ImageProcessor<'a> {
                 ratio,
                 srcset,
                 src,
+                preview,
             }),
         ))
+    }
+
+    /// Writes the link-preview crop of `origin` to `path`, unless an earlier
+    /// run already did: centre-cropped to 1.91:1 and scaled to 1200 pixels
+    /// wide, or kept at its own size when it's smaller than that. Any
+    /// transparency is flattened onto white, since JPEG has none.
+    fn write_preview(
+        &mut self,
+        origin: &DynamicImage,
+        path: String,
+    ) -> Result<PreviewImage, Box<dyn Error>> {
+        let (origin_width, origin_height) = origin.dimensions();
+        let (crop_width, crop_height) =
+            if origin_width * PREVIEW_HEIGHT > origin_height * PREVIEW_WIDTH {
+                (
+                    origin_height * PREVIEW_WIDTH / PREVIEW_HEIGHT,
+                    origin_height,
+                )
+            } else {
+                (origin_width, origin_width * PREVIEW_HEIGHT / PREVIEW_WIDTH)
+            };
+        let (width, height) = if crop_width > PREVIEW_WIDTH {
+            (PREVIEW_WIDTH, PREVIEW_HEIGHT)
+        } else {
+            (crop_width, crop_height)
+        };
+        if empty(self.destination, &path) {
+            let x = (origin_width - crop_width) / 2;
+            let y = (origin_height - crop_height) / 2;
+            let cropped = origin.view(x, y, crop_width, crop_height).to_image();
+            let rgb: Vec<u8> = cropped
+                .pixels()
+                .flat_map(|p| {
+                    let [r, g, b, a] = p.0;
+                    let over_white =
+                        |c: u8| ((c as u32 * a as u32 + 255 * (255 - a as u32)) / 255) as u8;
+                    [over_white(r), over_white(g), over_white(b)]
+                })
+                .collect();
+            let src_image = Image::from_vec_u8(crop_width, crop_height, rgb, PixelType::U8x3)?;
+            let mut dst_image = Image::new(width, height, PixelType::U8x3);
+            let resize_options =
+                ResizeOptions::new().resize_alg(ResizeAlg::Convolution(FilterType::Lanczos3));
+            self.resizer
+                .resize(&src_image, &mut dst_image, &resize_options)?;
+            let mut jpeg = vec![];
+            JpegEncoder::new_with_quality(&mut jpeg, PREVIEW_QUALITY).write_image(
+                dst_image.buffer(),
+                width,
+                height,
+                ExtendedColorType::Rgb8,
+            )?;
+            write_raw(self.destination, &path, jpeg);
+        }
+        Ok(PreviewImage {
+            path,
+            width,
+            height,
+        })
     }
 }
 
@@ -218,8 +310,12 @@ pub(crate) fn prune_orphaned_variants(
             {
                 base
             }
-            _ => continue,
+            _ => match file_name.strip_suffix("-og.jpg") {
+                Some(base) => base,
+                None => continue,
+            },
         };
+        let is_preview = file_name.ends_with("-og.jpg");
         let path_start = entry
             .path()
             .parent()
@@ -231,7 +327,11 @@ pub(crate) fn prune_orphaned_variants(
         } else {
             format!("/{}/{}", path_start, file_base)
         };
-        if !meta_cache.contains_key(&key) {
+        // A preview crop also goes once its image is no longer used as one.
+        let still_used = meta_cache
+            .get(&key)
+            .is_some_and(|i| !is_preview || i.preview.is_some());
+        if !still_used {
             match fs::remove_file(entry.path()) {
                 Ok(_) => println!("Pruned orphaned image variant {}", entry.path().display()),
                 Err(e) => println!(

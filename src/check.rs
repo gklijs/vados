@@ -72,6 +72,8 @@ pub enum FindingKind {
     MalformedSiteUrl,
     FeedWithoutSiteUrl,
     UndatedPageLeftOutOfFeed,
+    PreviewImageWithoutSiteUrl,
+    UnknownDefaultImageReference,
 }
 
 impl FindingKind {
@@ -103,7 +105,9 @@ impl FindingKind {
             | MissingFaviconFile
             | UntranslatedInterfaceLanguage
             | UndatedPageInDateOrderedSection
-            | UndatedPageLeftOutOfFeed => Severity::Warning,
+            | UndatedPageLeftOutOfFeed
+            | PreviewImageWithoutSiteUrl
+            | UnknownDefaultImageReference => Severity::Warning,
         }
     }
 }
@@ -154,6 +158,10 @@ impl fmt::Display for FindingKind {
             UndatedPageLeftOutOfFeed => {
                 "page has no date, so it is left out of its parent's feed"
             }
+            PreviewImageWithoutSiteUrl => {
+                "pages have images, but main.json has no usable siteUrl, so link previews show none"
+            }
+            UnknownDefaultImageReference => "default image reference matches no declared image",
         })
     }
 }
@@ -369,6 +377,26 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                     detail: None,
                 });
             }
+        }
+        if let Some(image_ref) = &main_config.default_image {
+            if !image_keys.contains(image_ref.as_str()) {
+                findings.push(Finding {
+                    kind: FindingKind::UnknownDefaultImageReference,
+                    location: format!("{}/main.json", source),
+                    detail: Some(image_ref.clone()),
+                });
+            }
+        }
+        // Reported once for the site rather than once per page: the fix is
+        // the one siteUrl. A malformed one is already an error of its own.
+        let has_preview_image =
+            main_config.default_image.is_some() || pages.values().any(|p| p.image.is_some());
+        if main_config.site_url.is_none() && has_preview_image {
+            findings.push(Finding {
+                kind: FindingKind::PreviewImageWithoutSiteUrl,
+                location: format!("{}/main.json", source),
+                detail: None,
+            });
         }
         if !is_translated(main_config.get_language()) {
             findings.push(Finding {
@@ -1180,6 +1208,26 @@ mod tests {
         site.write_source("menu.json", VALID_MENU_JSON);
         site.write_source("page.json", VALID_PAGE_JSON);
         site
+    }
+
+    #[test]
+    fn unknown_default_image_reference_is_a_warning() {
+        let site = site_with_main_json_extra(
+            "default_image_unknown",
+            r#""siteUrl": "https://example.com", "defaultImage": "/nope""#,
+        );
+
+        let report = site.check();
+
+        assert_eq!(
+            count_kind(&report, FindingKind::UnknownDefaultImageReference),
+            1
+        );
+        assert_eq!(
+            count_kind(&report, FindingKind::PreviewImageWithoutSiteUrl),
+            0
+        );
+        assert!(report.passed());
     }
 
     #[test]

@@ -211,6 +211,11 @@ Two optional `main.json` settings describe the site to search engines and browse
 - Every page's `<title>` is its own title followed by the site title (`My post · My site`), so browser tabs and
   search results say whose site it is; the home page's is just the site title. `titleSeparator` changes the ` · `
   in between. Link previews get the bare page title, plus the site title as `og:site_name`.
+- Link previews (LinkedIn, Mastodon, Slack, X, ...) get the page's type (`article` for a dated page), language and,
+  with a `siteUrl`, its canonical URL and an image: the page's hero `image`, or else `main.json`'s `defaultImage`
+  (an image reference, like a page's). vados publishes a 1200×630 JPEG crop of every image used this way next to its
+  WebP variants (e.g. `/img/photos/batman-og.jpg`), since LinkedIn doesn't reliably show WebP. `check` warns when
+  pages have images but there's no `siteUrl` to point previews at them.
 - `favicon` is a file in the source root -- SVG, PNG or ICO -- published at the site root and linked as every
   page's icon. `vados init` asks for one (leave it blank to skip). `check` warns when the file is missing; `generate` then publishes the site without an icon.
 

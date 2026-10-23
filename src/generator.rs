@@ -3,7 +3,8 @@ extern crate core;
 use crate::content::{to_content_items, ContentHelper, GenericContent};
 use crate::feed::write_feeds;
 use crate::files::{
-    get_all_directory_paths, get_image_list, get_main_config, get_menu_config, write_html,
+    get_all_directory_paths, get_hero_image_references, get_image_list, get_main_config,
+    get_menu_config, write_html,
 };
 use crate::image::{prune_orphaned_variants, ImageProcessor};
 use crate::structure::Structure;
@@ -14,7 +15,16 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
     let main_config = get_main_config(source);
     let menu_config = get_menu_config(source);
 
-    let mut image_processor = ImageProcessor::new(img_source, destination);
+    // Link previews need the site URL to point at their image, so only then
+    // is it worth making their crops.
+    let preview_keys = if main_config.get_site_url().is_some() {
+        let mut keys = get_hero_image_references(source);
+        keys.extend(main_config.default_image.clone());
+        keys
+    } else {
+        Default::default()
+    };
+    let mut image_processor = ImageProcessor::new(img_source, destination, preview_keys);
     for directory_path in get_all_directory_paths(img_source) {
         if let Some(l) = get_image_list(&directory_path) {
             image_processor.process_list(&directory_path, l.list)

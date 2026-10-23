@@ -56,16 +56,26 @@ fn generated_site() -> &'static Path {
 fn check_reports_no_findings_on_the_real_site() {
     let report = check(&fixture_root(), &fixture_img_root());
 
-    // The one thing the real content gets wrong: a log entry opens with a
-    // `#` heading of its own, a second `<h1>` now that the page title is
-    // one. A warning, so the check still passes.
+    // What the real content gets wrong: a log entry opens with a `#`
+    // heading of its own, a second `<h1>` now that the page title is one,
+    // and the site has no siteUrl for link previews to show its images.
+    // Both are warnings, so the check still passes.
     assert_eq!(
         report
             .findings
             .iter()
             .map(|f| (f.kind, f.location.as_str()))
             .collect::<Vec<_>>(),
-        [(FindingKind::TopLevelHeadingInContent, "/log/2022/3/7")],
+        [
+            (FindingKind::TopLevelHeadingInContent, "/log/2022/3/7"),
+            (
+                FindingKind::PreviewImageWithoutSiteUrl,
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/tests/fixtures/vados_bass/root/main.json"
+                )
+            ),
+        ],
         "a real, currently-deployed site should check clean; got {:?}",
         report.findings
     );
