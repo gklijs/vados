@@ -195,7 +195,11 @@ impl ImageRatio {
 
 pub(crate) enum ImageType {
     Main,
-    Sub,
+    /// A child tile's image; `eager` for the first row, which is above the
+    /// fold and often the largest thing a listing page paints.
+    Sub {
+        eager: bool,
+    },
     Side,
 }
 
@@ -203,22 +207,29 @@ impl ImageType {
     pub(crate) fn sizes(&self) -> &'static str {
         match self {
             ImageType::Main => "(min-width: 1408px) 986px, (min-width: 769px) calc(75vw - 94px), calc(100vw - 64px)",
-            ImageType::Sub => "(min-width: 1408px) 425px, (min-width: 769px) calc(37.5vw - 106px), calc(100vw - 112px)",
+            ImageType::Sub { .. } => "(min-width: 1408px) 425px, (min-width: 769px) calc(37.5vw - 106px), calc(100vw - 112px)",
             ImageType::Side => "(min-width: 1408px) 318px, (min-width: 769px) calc(25vw - 94px), calc(100vw - 112px)",
         }
     }
     pub(crate) fn decoding(&self) -> &'static str {
         match self {
             ImageType::Main => "sync",
-            ImageType::Sub => "async",
+            ImageType::Sub { .. } => "async",
             ImageType::Side => "async",
         }
     }
     pub(crate) fn loading(&self) -> &'static str {
         match self {
-            ImageType::Main => "eager",
-            ImageType::Sub => "lazy",
-            ImageType::Side => "lazy",
+            ImageType::Main | ImageType::Sub { eager: true } => "eager",
+            ImageType::Sub { eager: false } | ImageType::Side => "lazy",
+        }
+    }
+    /// Only the hero image jumps the queue: it's what the page is about, and
+    /// usually the largest thing it paints.
+    pub(crate) fn fetch_priority(&self) -> Option<&'static str> {
+        match self {
+            ImageType::Main => Some("high"),
+            ImageType::Sub { .. } | ImageType::Side => None,
         }
     }
 }

@@ -50,6 +50,10 @@
 
 ### Changed
 
+- Faster Largest Contentful Paint (#23): a page's hero image is fetched with `fetchpriority="high"`, and the first row
+  of child-tile images loads eagerly instead of lazily. Every `<img>` gives `width` and `height`, and its fallback
+  `src` is the widest variant up to 986 pixels instead of the 159 pixel thumbnail, for browsers and crawlers that
+  don't read `srcset`.
 - Every page's `<title>` now ends with the site title (`My post · My site`), except the home page's, which is just
   the site title, and pages declare the site title as `og:site_name` (#15). `main.json`'s optional `titleSeparator`
   changes the ` · `.

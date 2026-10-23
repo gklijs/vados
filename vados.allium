@@ -894,9 +894,12 @@ entity SiteImage {
     -- than every standard width.
     variant_widths: widths_up_to(config.responsive_widths, source_width)
 
-    -- The widest published variant is what a client falls back to when it
-    -- cannot choose from the set.
-    fallback_width: variant_widths.first
+    -- What a client or crawler that cannot choose from the set falls back
+    -- to: a mid-size variant, the widest up to config.fallback_max_width, or
+    -- the narrowest when every one is wider. Neither a thumbnail nor the
+    -- full-size image.
+    fallback_width:
+        widest_up_to(variant_widths, config.fallback_max_width) ?? variant_widths.last
 }
 
 -- One problem a check run found. A finding is a record, not an exception: it is
@@ -1398,6 +1401,7 @@ config {
 
     -- Responsive variant widths, widest first.
     responsive_widths: List<Integer> = [ 1972, 1479, 986, 632, 425, 318, 159 ]
+    fallback_max_width: Integer = 986
 
     -- Which findings fail a check. Fixed policy rather than something a site
     -- can change: each of these either breaks an invariant this spec states, or
@@ -3600,10 +3604,15 @@ surface PublishedPage {
         page.side_notification_color
 
     @guarantee ImagePlacementDrivesLoading
-        -- A page's hero image is placed as `main` and fetched eagerly; images
-        -- inside notifications are placed as `sub` and images inside side
-        -- notifications as `side`, and both are deferred. Placement also
-        -- determines the display size.
+        -- A page's hero image is placed as `main`, fetched eagerly and ahead
+        -- of everything else the page loads, since it is usually the largest
+        -- thing the page paints. Images inside notifications are placed as
+        -- `sub` and deferred, except in the first row of the page's left and
+        -- right notifications, which is above the fold and fetched eagerly.
+        -- Images inside side notifications are placed as `side` and
+        -- deferred. Placement also determines the display size. Every image
+        -- states the size of its fallback variant, so its space is reserved
+        -- before it loads.
 
     @guarantee FeedsAreDiscoverable
         -- Every page of a section with a published feed names that feed in a
