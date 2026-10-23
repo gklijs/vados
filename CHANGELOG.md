@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 - 2026-10-23
 
 ### Added
 
@@ -75,6 +75,7 @@
   page (#14). Bulma styles them by class, so nothing looks different. `check` warns about a top-level heading (`#` or
   `<h1>`) in a page's content, since that would make a second one.
 - A page without content of its own gets a placeholder paragraph instead of a heading.
+- The default CSS links Bulma 0.9.4 instead of 0.9.3, and dependencies are updated.
 
 ### Fixed
 
