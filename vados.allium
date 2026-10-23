@@ -463,6 +463,11 @@ entity SiteConfig {
     site_url: String?
     usable_site_url: if site_url != null and is_site_url(site_url): site_url else: null
 
+    -- What separates a page's title from the site title in the title browser
+    -- tabs and search results show. See Page.document_title.
+    title_separator: String?
+    effective_title_separator: title_separator ?? config.default_title_separator
+
     -- Defaults apply when the maintainer says nothing.
     default_css_included: include_default_css ?? true
     default_js_included: include_default_js ?? true
@@ -525,6 +530,16 @@ entity Page {
     -- summary, or the site's description when it has none. See
     -- PagesAreDescribed.
     description: summary ?? run.site_config.description
+
+    -- What browser tabs and search results show: the page title, then the
+    -- site title, so they say whose site it is. The home page, and a page
+    -- titled after the site anyway, show just the site title. Link previews
+    -- show the site name separately, so they get the bare page title.
+    document_title:
+        if is_root or title = run.site_config.site_title:
+            run.site_config.site_title
+        else: concat_text(title, run.site_config.effective_title_separator,
+                          run.site_config.site_title)
 
     transitions status {
         discovered -> published
@@ -1294,6 +1309,7 @@ config {
     default_navbar_color: Color = warning
     default_background_class: String = "has-background-light"
     default_language: String = "en"
+    default_title_separator: String = " · "
     default_css_links: List<String> = [
         "https://cdn.jsdelivr.net/npm/@mdi/font@6.5.95/css/materialdesignicons.min.css",
         "https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css"
@@ -3386,6 +3402,7 @@ surface PublishedPage {
         page.feed_title when page.publishes_feed and page.run.site_config.usable_site_url != null
 
         page.title
+        page.document_title
         page.sub_title
         page.published_date
         page.summary
@@ -3545,6 +3562,11 @@ surface PublishedPage {
         -- Luma's register-button script is loaded only by pages that show a
         -- register button, once per page however many they show. Pages
         -- without a Luma event make no request to Luma at all.
+
+    @guarantee PagesNameTheirSite
+        -- Every page's title, as browser tabs and search results show it, is
+        -- its document_title, and every page names the site title as the
+        -- site its link previews belong to.
 
     @guarantee HeadingsOutlineThePage
         -- The page's title is its one top-level heading, so search engines

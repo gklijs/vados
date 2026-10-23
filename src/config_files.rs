@@ -36,6 +36,10 @@ pub(crate) struct MainConfig {
     /// to give every link in full. See `vados.allium`'s `SiteConfig.site_url`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) site_url: Option<String>,
+    /// What goes between a page's title and the site title in `<title>`;
+    /// ` · ` when absent. See `vados.allium`'s `SiteConfig.title_separator`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) title_separator: Option<String>,
     pub(crate) footer_content: String,
 }
 
@@ -77,6 +81,9 @@ impl MainConfig {
             .map(str::trim)
             .filter(|u| is_site_url(u))
             .map(|u| u.trim_end_matches('/'))
+    }
+    pub(crate) fn get_title_separator(&self) -> &str {
+        self.title_separator.as_deref().unwrap_or(" · ")
     }
     pub(crate) fn get_css_links(&self) -> Vec<String> {
         match self.include_default_css {

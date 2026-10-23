@@ -35,6 +35,7 @@ pub(crate) struct GenericContent {
     description: Option<String>,
     favicon: Option<Favicon>,
     site_title: String,
+    title_separator: String,
     /// Whether feeds are published at all: only with a usable `siteUrl`.
     feeds_published: bool,
 }
@@ -87,6 +88,7 @@ impl GenericContent {
             description,
             favicon,
             site_title: main_config.site_title.clone(),
+            title_separator: main_config.get_title_separator().to_string(),
             feeds_published: main_config.get_site_url().is_some(),
         }
     }
@@ -582,6 +584,13 @@ fn get_page(
         .or(generic_content.description.as_deref());
     PageTemplate {
         title: &item.title,
+        document_title: document_title(
+            path,
+            &item.title,
+            &generic_content.site_title,
+            &generic_content.title_separator,
+        ),
+        site_title: &generic_content.site_title,
         description,
         language: &generic_content.language,
         ui: generic_content.ui,
@@ -612,6 +621,18 @@ fn get_page(
     .unwrap()
 }
 
+/// A page's `<title>`: its own title followed by the site's, so browser tabs
+/// and search results say whose site it is. The home page, and any page
+/// already titled after the site, just carry the site title. See
+/// vados.allium's `Page.document_title`.
+fn document_title(path: &str, title: &str, site_title: &str, separator: &str) -> String {
+    if path == "/" || title.trim() == site_title.trim() {
+        String::from(site_title)
+    } else {
+        format!("{title}{separator}{site_title}")
+    }
+}
+
 fn get_luma_events(item: &Item, ui: &UiText) -> Option<String> {
     if item.luma_events.is_empty() {
         return None;
@@ -636,6 +657,27 @@ fn get_luma_events(item: &Item, ui: &UiText) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn document_title_follows_the_page_title_with_the_site_title() {
+        assert_eq!(
+            document_title("/blog/post", "A post", "My site", " · "),
+            "A post · My site"
+        );
+        assert_eq!(
+            document_title("/blog/post", "A post", "My site", " | "),
+            "A post | My site"
+        );
+    }
+
+    #[test]
+    fn document_title_is_just_the_site_title_on_the_home_page_or_when_they_match() {
+        assert_eq!(document_title("/", "Home", "My site", " · "), "My site");
+        assert_eq!(
+            document_title("/about", "My site", "My site", " · "),
+            "My site"
+        );
+    }
 
     #[test]
     fn ensure_content_reference_leaves_a_markdown_reference_untouched() {

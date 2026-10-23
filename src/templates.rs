@@ -8,7 +8,12 @@ use askama::Template;
 #[derive(Template)]
 #[template(path = "page.html")]
 pub(crate) struct PageTemplate<'a> {
+    /// The page's own title, as link previews show it next to the site name.
     pub(crate) title: &'a str,
+    /// What browser tabs and search results show: the page title followed by
+    /// the site title. See `document_title`.
+    pub(crate) document_title: String,
+    pub(crate) site_title: &'a str,
     pub(crate) description: Option<&'a str>,
     pub(crate) language: &'a str,
     pub(crate) ui: &'a UiText,
