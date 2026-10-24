@@ -286,8 +286,11 @@ fn resolve_notification(
     highlight: bool,
 ) -> String {
     let id = match placement {
+        TilePlacement::Left => format!("sub-l-{}", index),
         TilePlacement::Right => format!("sub-r-{}", index),
-        _ => format!("sub-l-{}", index),
+        // Side notifications get their ids from `items_to_side_notifications`;
+        // this function is only called for the two child-tile columns.
+        TilePlacement::Side | TilePlacement::SideLast => format!("sub-s-{}", index),
     };
     // The first row of child tiles is above the fold.
     let eager = index == 0;
@@ -960,6 +963,48 @@ mod tests {
             .collect();
         let tiles = in_reading_order(left, vec![tile("r0", TilePlacement::Right)]);
         assert!(tiles.iter().any(|t| t.contains("is-row-span-12-tablet")));
+    }
+
+    #[test]
+    fn a_right_notification_reads_after_the_latest_tile_on_its_row() {
+        // Three latest pages leave the right column one row short: the page's
+        // own right notification pairs with the third latest page, so it
+        // reads before the left column's notification on a phone. The tile
+        // keeps its column; see vados.allium's Notification and
+        // ChildTilesPairUp.
+        let left = vec![
+            tile("latest-0", TilePlacement::Left),
+            tile("latest-2", TilePlacement::Left),
+            tile("sub-l-0", TilePlacement::Left),
+        ];
+        let right = vec![
+            tile("latest-1", TilePlacement::Right),
+            tile("sub-r-0", TilePlacement::Right),
+        ];
+        let ids: Vec<String> = in_reading_order(left, right)
+            .iter()
+            .map(|t| t.rsplit("id=").next().unwrap().to_string())
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                r#""latest-0">"#,
+                r#""latest-1">"#,
+                r#""latest-2">"#,
+                r#""sub-r-0">"#,
+                r#""sub-l-0">"#
+            ]
+        );
+    }
+
+    #[test]
+    fn a_span_is_inserted_before_any_later_classes() {
+        let tile = r#"<a class="notification is-link is-col-span-2-mobile extra" id="x">"#;
+        let spanned = spanning_rows(tile, 3);
+        assert!(
+            spanned.contains("is-col-span-2-mobile is-row-span-3-tablet extra"),
+            "{spanned}"
+        );
     }
 
     #[test]
