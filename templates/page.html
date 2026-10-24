@@ -55,7 +55,7 @@
     <div class="container">
         {% if let Some(b) = breadcrumbs %}{{ b|safe }}{% endif %}
         <div class="{% if let Some(_) = side_menu %}columns is-flex-direction-row-reverse{% else %}columns{% endif %}">
-            <div class="column is-9" data-document="index" id="main-content">
+            <div class="column is-9 is-flex is-flex-direction-column" data-document="index" id="main-content">
                 {{ main_content|safe }}
                 {% if let Some(l) = luma_events %}
                 <div class="block" id="luma-events">
@@ -63,8 +63,8 @@
                 </div>
                 {% endif %}
                 {% if !child_tiles.is_empty() %}
-                <div class="fixed-grid has-2-cols" id="child-tiles">
-                    <div class="grid is-gap-3">
+                <div class="fixed-grid has-2-cols is-flex-grow-1 is-flex is-flex-direction-column" id="child-tiles">
+                    <div class="grid is-gap-3 is-flex-grow-1">
                         {% for t in child_tiles %}
                         {{ t|safe }}
                         {% endfor %}
@@ -72,7 +72,7 @@
                 </div>
                 {% endif %}
             </div>
-            <div class="column" id="side-column">
+            <div class="column is-flex is-flex-direction-column" id="side-column">
                 {% if let Some(s) = side_menu %}
                 <div class="box p-1 is-hidden-mobile" id="side-menu-desktop">
                     {{ s|safe }}

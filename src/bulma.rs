@@ -19,18 +19,24 @@ pub(crate) enum Color {
 }
 
 impl Color {
+    /// The colour's Bulma class, and the Bulma theme matching the colour's
+    /// brightness, so what sits on it -- headings, code, a navbar's menus --
+    /// reads as on a light or dark page whatever the reader's colour scheme.
+    /// Which theme follows from the text colour Bulma picks for each colour
+    /// (its `-invert`): dark text means a light colour. See vados.allium's
+    /// `FollowsTheReadersColourScheme`.
     pub(crate) fn to_css_class(&self) -> &'static str {
         match self {
-            Color::White => "is-white",
-            Color::Black => "is-black",
-            Color::Light => "is-light",
-            Color::Dark => "is-dark",
-            Color::Primary => "is-primary",
-            Color::Link => "is-link",
-            Color::Info => "is-info",
-            Color::Success => "is-success",
-            Color::Warning => "is-warning",
-            Color::Danger => "is-danger",
+            Color::White => "is-white theme-light",
+            Color::Black => "is-black theme-dark",
+            Color::Light => "is-light theme-light",
+            Color::Dark => "is-dark theme-dark",
+            Color::Primary => "is-primary theme-light",
+            Color::Link => "is-link theme-dark",
+            Color::Info => "is-info theme-light",
+            Color::Success => "is-success theme-light",
+            Color::Warning => "is-warning theme-light",
+            Color::Danger => "is-danger theme-light",
         }
     }
 }
@@ -54,6 +60,9 @@ pub(crate) enum TilePlacement {
     Right,
     /// The side column, next to the page's own content.
     Side,
+    /// The last notification in the side column, which grows to fill it
+    /// down to the bottom of the page's content.
+    SideLast,
 }
 
 impl TilePlacement {
@@ -65,8 +74,23 @@ impl TilePlacement {
             TilePlacement::Right => " cell mb-0 is-col-start-2-tablet is-col-span-2-mobile",
             // A link is inline by default; the grid makes cells blocks.
             TilePlacement::Side => " is-block",
+            TilePlacement::SideLast => " is-block is-flex-grow-1",
         }
     }
+}
+
+/// The most rows Bulma's grid can make a cell span.
+pub(crate) const MAX_ROW_SPAN: usize = 12;
+
+/// A rendered child tile made to span `rows` rows of the grid from where it
+/// starts, on a tablet and wider; on a phone the tiles stack anyway.
+pub(crate) fn spanning_rows(tile: &str, rows: usize) -> String {
+    let rows = rows.clamp(1, MAX_ROW_SPAN);
+    tile.replacen(
+        r#"is-col-span-2-mobile""#,
+        &format!(r#"is-col-span-2-mobile is-row-span-{rows}-tablet""#),
+        1,
+    )
 }
 
 pub(crate) fn default_js_links() -> Vec<String> {

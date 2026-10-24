@@ -451,14 +451,15 @@ fn a_page_shows_the_latest_dated_pages_from_elsewhere_first() {
     };
     // Newest first, at any depth, unlisted pages left out, cut at the limit;
     // the newest sits left, the next right, the third left again, before the
-    // page's own tile.
+    // page's own tile. The right column ends after one tile, so that one
+    // stretches down alongside the three on the left.
     let left = "cell mb-0 is-col-start-1-tablet is-col-span-2-mobile";
     let right = "cell mb-0 is-col-start-2-tablet is-col-span-2-mobile";
     assert!(home.contains(&format!(
-        r#"class="notification is-link {left}" href="/blog/2026/deep" target="_self" id="latest-0""#
+        r#"class="notification is-link theme-dark {left}" href="/blog/2026/deep" target="_self" id="latest-0""#
     )));
     assert!(home.contains(&format!(
-        r#"{right}" href="/blog/post" target="_self" id="latest-1""#
+        r#"{right} is-row-span-3-tablet" href="/blog/post" target="_self" id="latest-1""#
     )));
     assert!(home.contains(&format!(
         r#"{left}" href="/talks/one" target="_self" id="latest-2""#

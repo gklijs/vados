@@ -1,5 +1,5 @@
 use crate::authoring::social::{fediverse_handle_of, MASTODON_ICON};
-use crate::bulma::{Color, ImageType, TilePlacement};
+use crate::bulma::{spanning_rows, Color, ImageType, TilePlacement};
 use crate::config_files::{favicon_media_type, MainConfig, MenuConfig, Notification, PageConfig};
 use crate::feed::{feed_href, feed_title, page_url};
 use crate::files::write_raw;
@@ -348,6 +348,7 @@ pub(crate) fn items_to_side_notifications(
     ui: &UiText,
 ) -> Vec<String> {
     let mut result = vec![];
+    let last = items.len().saturating_sub(1);
     for (i, item) in items.iter().enumerate() {
         let id = format!("sub-s-{}", i);
         let color = Color::Info.to_css_class();
@@ -364,7 +365,11 @@ pub(crate) fn items_to_side_notifications(
             image,
             content: None,
             id,
-            placement: TilePlacement::Side,
+            placement: if i == last {
+                TilePlacement::SideLast
+            } else {
+                TilePlacement::Side
+            },
         }
         .render()
         .unwrap();
@@ -737,8 +742,21 @@ fn get_page(
 /// The child tiles row by row, the left one of each pair first: the order
 /// the grid places them in and a phone stacks them in. Each tile carries the
 /// column it belongs in, so once one column runs out the other's tiles stay
-/// put. See vados.allium's `ChildTilesPairUp`.
-fn in_reading_order(left: Vec<String>, right: Vec<String>) -> Vec<String> {
+/// put, and the shorter column's last tile stretches down alongside them, so
+/// both columns end together. See vados.allium's `ChildTilesPairUp`.
+fn in_reading_order(mut left: Vec<String>, mut right: Vec<String>) -> Vec<String> {
+    let rows = left.len().max(right.len());
+    let shorter = if left.len() < right.len() {
+        &mut left
+    } else {
+        &mut right
+    };
+    let count = shorter.len();
+    if let Some(last) = shorter.last_mut() {
+        if count < rows {
+            *last = spanning_rows(last, rows - count + 1);
+        }
+    }
     let mut tiles = Vec::with_capacity(left.len() + right.len());
     let (mut left, mut right) = (left.into_iter(), right.into_iter());
     loop {
@@ -872,6 +890,77 @@ fn get_luma_events(item: &Item, ui: &UiText) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn tile(name: &str, placement: TilePlacement) -> String {
+        format!(
+            r#"<a class="notification is-link{}" id="{name}">"#,
+            placement.to_css_classes()
+        )
+    }
+
+    #[test]
+    fn child_tiles_read_row_by_row_left_first() {
+        let left = vec![
+            tile("l0", TilePlacement::Left),
+            tile("l1", TilePlacement::Left),
+        ];
+        let right = vec![
+            tile("r0", TilePlacement::Right),
+            tile("r1", TilePlacement::Right),
+        ];
+        let ids: Vec<String> = in_reading_order(left, right)
+            .iter()
+            .map(|t| t.rsplit("id=").next().unwrap().to_string())
+            .collect();
+        assert_eq!(ids, [r#""l0">"#, r#""r0">"#, r#""l1">"#, r#""r1">"#]);
+    }
+
+    #[test]
+    fn the_shorter_columns_last_tile_spans_the_rows_left_over() {
+        let left = (0..4)
+            .map(|i| tile(&format!("l{i}"), TilePlacement::Left))
+            .collect();
+        let right = vec![
+            tile("r0", TilePlacement::Right),
+            tile("r1", TilePlacement::Right),
+        ];
+        let tiles = in_reading_order(left, right);
+        let r1 = tiles.iter().find(|t| t.contains(r#"id="r1""#)).unwrap();
+        assert!(
+            r1.contains("is-col-span-2-mobile is-row-span-3-tablet\""),
+            "{r1}"
+        );
+        let spanning = tiles.iter().filter(|t| t.contains("is-row-span")).count();
+        assert_eq!(spanning, 1);
+    }
+
+    #[test]
+    fn even_or_one_sided_columns_span_nothing() {
+        let even = in_reading_order(
+            vec![tile("l0", TilePlacement::Left)],
+            vec![tile("r0", TilePlacement::Right)],
+        );
+        let one_sided = in_reading_order(
+            vec![
+                tile("l0", TilePlacement::Left),
+                tile("l1", TilePlacement::Left),
+            ],
+            vec![],
+        );
+        assert!(even
+            .iter()
+            .chain(&one_sided)
+            .all(|t| !t.contains("is-row-span")));
+    }
+
+    #[test]
+    fn a_span_never_exceeds_what_bulma_offers() {
+        let left = (0..20)
+            .map(|i| tile(&format!("l{i}"), TilePlacement::Left))
+            .collect();
+        let tiles = in_reading_order(left, vec![tile("r0", TilePlacement::Right)]);
+        assert!(tiles.iter().any(|t| t.contains("is-row-span-12-tablet")));
+    }
 
     #[test]
     fn document_title_follows_the_page_title_with_the_site_title() {
