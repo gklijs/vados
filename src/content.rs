@@ -1,6 +1,8 @@
 use crate::authoring::social::{fediverse_handle_of, MASTODON_ICON};
 use crate::bulma::{spanning_rows, Color, ImageType, TilePlacement};
-use crate::config_files::{favicon_media_type, MainConfig, MenuConfig, Notification, PageConfig};
+use crate::config_files::{
+    favicon_media_type, ColorScheme, MainConfig, MenuConfig, Notification, PageConfig,
+};
 use crate::feed::{feed_href, feed_title, page_url};
 use crate::files::write_raw;
 use crate::highlight::{self, highlight_code_blocks, HIGHLIGHTED_MARKER};
@@ -30,6 +32,11 @@ pub(crate) struct ContentItems {
 
 pub(crate) struct GenericContent {
     background_class: String,
+    /// Bulma's `data-theme` for `<html>`, when the site is pinned to one.
+    data_theme: Option<&'static str>,
+    /// Whether the last side notification grows to end with the page's
+    /// content.
+    stretch_side_notification: bool,
     css_links: Vec<String>,
     js_links: Vec<String>,
     footer: String,
@@ -108,6 +115,8 @@ impl GenericContent {
             .and_then(|f| publish_favicon(source, destination, f));
         GenericContent {
             background_class,
+            data_theme: main_config.color_scheme.map(ColorScheme::to_data_theme),
+            stretch_side_notification: main_config.stretch_side_notification.unwrap_or(false),
             css_links,
             js_links,
             footer,
@@ -288,7 +297,7 @@ fn resolve_notification(
     let id = match placement {
         TilePlacement::Left => format!("sub-l-{}", index),
         TilePlacement::Right => format!("sub-r-{}", index),
-        TilePlacement::Side | TilePlacement::SideLast => {
+        TilePlacement::Side => {
             unreachable!("side notifications are rendered by `items_to_side_notifications`")
         }
     };
@@ -351,7 +360,6 @@ pub(crate) fn items_to_side_notifications(
     ui: &UiText,
 ) -> Vec<String> {
     let mut result = vec![];
-    let last = items.len().saturating_sub(1);
     for (i, item) in items.iter().enumerate() {
         let id = format!("sub-s-{}", i);
         let color = Color::Info.to_css_class();
@@ -368,11 +376,7 @@ pub(crate) fn items_to_side_notifications(
             image,
             content: None,
             id,
-            placement: if i == last {
-                TilePlacement::SideLast
-            } else {
-                TilePlacement::Side
-            },
+            placement: TilePlacement::Side,
         }
         .render()
         .unwrap();
@@ -720,6 +724,8 @@ fn get_page(
         favicon_type: generic_content.favicon.as_ref().and_then(|f| f.media_type),
         feeds: get_feed_links(path, structure, generic_content),
         background_class: &generic_content.background_class,
+        data_theme: generic_content.data_theme,
+        stretch_side_notification: generic_content.stretch_side_notification,
         navigation: page_helper.navigation,
         breadcrumbs: page_helper.breadcrumbs,
         side_menu: page_helper.side_menu,

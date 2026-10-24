@@ -86,6 +86,7 @@ pub enum FindingKind {
     UnknownIcon,
     OutdatedBulmaStylesheet,
     OutdatedBulmaDependency,
+    BulmaSassImport,
 }
 
 impl FindingKind {
@@ -126,7 +127,8 @@ impl FindingKind {
             | MissingStaticDir
             | StaticFileShadowedByPage
             | UnresolvedLatestSource
-            | UnknownIcon => Severity::Warning,
+            | UnknownIcon
+            | BulmaSassImport => Severity::Warning,
         }
     }
 }
@@ -185,6 +187,9 @@ impl fmt::Display for FindingKind {
             UnknownIcon => "icon is not a Material Design Icons name, so it is left out",
             OutdatedBulmaStylesheet => {
                 "stylesheet loads Bulma before 1.0, which lacks the classes vados now lays pages out with"
+            }
+            BulmaSassImport => {
+                "sass/main.scss loads Bulma with the deprecated @import; Bulma 1.0 is loaded with @use \"bulma/sass\" with (...)"
             }
             OutdatedBulmaDependency => {
                 "package.json asks for Bulma before 1.0, so the compiled stylesheet lacks the classes vados now lays pages out with"
@@ -526,6 +531,14 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
         });
     }
 
+    if let Some((location, line)) = bulma_sass_import(source) {
+        findings.push(Finding {
+            kind: FindingKind::BulmaSassImport,
+            location,
+            detail: Some(line),
+        });
+    }
+
     CheckReport { findings }
 }
 
@@ -796,11 +809,7 @@ fn is_outdated_bulma_link(link: &str) -> bool {
 /// working directory when that has none. See vados.allium's
 /// `outdated_bulma_dependency`.
 fn outdated_bulma_dependency(source: &str) -> Option<(String, String)> {
-    let path = Path::new(source)
-        .canonicalize()
-        .ok()
-        .and_then(|source| source.parent().map(|parent| parent.join("package.json")))
-        .unwrap_or_else(|| PathBuf::from("package.json"));
+    let path = project_dir(source).join("package.json");
     let manifest: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
     for section in ["dependencies", "devDependencies"] {
@@ -816,6 +825,31 @@ fn outdated_bulma_dependency(source: &str) -> Option<(String, String)> {
         }
     }
     None
+}
+
+/// The directory the site's build files (`package.json`, `sass/`) are in:
+/// the source directory's parent, or the working directory when that has
+/// none.
+fn project_dir(source: &str) -> PathBuf {
+    Path::new(source)
+        .canonicalize()
+        .ok()
+        .and_then(|source| source.parent().map(Path::to_path_buf))
+        .unwrap_or_default()
+}
+
+/// The first line of the project's `sass/main.scss` that loads Bulma with
+/// `@import`, with the file's location. See vados.allium's
+/// `bulma_sass_import`.
+fn bulma_sass_import(source: &str) -> Option<(String, String)> {
+    let path = project_dir(source).join("sass").join("main.scss");
+    let line = std::fs::read_to_string(&path)
+        .ok()?
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("@import") && line.to_ascii_lowercase().contains("bulma"))?
+        .to_string();
+    Some((path.display().to_string(), line))
 }
 
 /// Whether a dependency spec only allows versions before 1.0: every
@@ -1757,6 +1791,43 @@ mod tests {
             site.root.join("package.json").to_str().unwrap()
         ));
         assert!(!report.passed());
+    }
+
+    #[test]
+    fn an_import_of_bulma_in_main_scss_is_a_warning() {
+        let site = TestSite::new("bulma_sass_import");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site.write_project(
+            "sass/main.scss",
+            "$primary: #ff00aa;\n\n  @import \"bulma/bulma\";\n",
+        );
+
+        let report = site.check();
+
+        assert_eq!(count_kind(&report, FindingKind::BulmaSassImport), 1);
+        assert!(has_kind_at(
+            &report,
+            FindingKind::BulmaSassImport,
+            site.root.join("sass/main.scss").to_str().unwrap()
+        ));
+        assert!(report.passed(), "a warning does not fail the check");
+        assert_eq!(FindingKind::BulmaSassImport.severity(), Severity::Warning);
+    }
+
+    #[test]
+    fn a_use_of_bulma_or_an_import_of_something_else_is_clean() {
+        let site = TestSite::new("bulma_sass_use");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site.write_project(
+            "sass/main.scss",
+            "@use \"bulma/sass\" with ($primary: #ff00aa);\n@import \"extras\";\n",
+        );
+
+        assert!(site.check().findings.is_empty());
     }
 
     #[test]

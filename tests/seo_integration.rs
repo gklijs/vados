@@ -185,6 +185,56 @@ fn without_a_site_url_pages_give_no_absolute_links() {
     assert!(!site.destination.join("img/batman-og.jpg").exists());
 }
 
+#[test]
+fn a_site_follows_the_readers_colour_scheme_unless_pinned() {
+    let site = blog("colour_scheme_default", "");
+    site.generate();
+    assert!(!site.published("index.html").contains("data-theme"));
+
+    for scheme in ["light", "dark"] {
+        let site = blog(
+            &format!("colour_scheme_{scheme}"),
+            &format!(r#", "colorScheme": "{scheme}""#),
+        );
+        site.generate();
+        for page in ["index.html", "blog.html", "blog/post.html"] {
+            let html = site.published(page);
+            assert!(
+                html.contains(&format!(r#"lang="en-GB" data-theme="{scheme}">"#)),
+                "{page}"
+            );
+        }
+    }
+}
+
+#[test]
+fn the_last_side_notification_stretches_only_when_asked() {
+    let side = r#"<div class="column is-flex is-flex-direction-column"#;
+    let site = blog("stretch_default", "");
+    site.generate();
+    let html = site.published("blog/post.html");
+    assert!(html.contains(side) && html.contains(r#"id="side-column""#));
+    assert!(!html.contains("stretch-last\" id=\"side-column"));
+    assert!(!html.contains("is-flex-grow-1\" href"));
+
+    let site = blog("stretch_on", r#", "stretchSideNotification": true"#);
+    site.generate();
+    let html = site.published("blog/post.html");
+    assert!(html.contains(r#"stretch-last" id="side-column""#));
+    assert!(html.contains("#side-column.stretch-last>.notification:last-child{flex-grow:1;}"));
+}
+
+#[test]
+fn an_unknown_colour_scheme_is_a_site_config_error() {
+    let site = blog("colour_scheme_unknown", r#", "colorScheme": "sepia""#);
+    let report = site.check();
+    assert!(report
+        .findings
+        .iter()
+        .any(|f| f.kind == vados::check::FindingKind::SiteConfigUnreadable));
+    assert!(!report.passed());
+}
+
 /// The JSON-LD a published page carries, parsed.
 fn structured_data(html: &str) -> serde_json::Value {
     let start = html

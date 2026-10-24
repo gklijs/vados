@@ -25,6 +25,8 @@ pub(crate) struct PageTemplate<'a> {
     pub(crate) favicon_type: Option<&'a str>,
     pub(crate) feeds: Vec<FeedLink>,
     pub(crate) background_class: &'a str,
+    pub(crate) data_theme: Option<&'a str>,
+    pub(crate) stretch_side_notification: bool,
     pub(crate) navigation: &'a str,
     pub(crate) breadcrumbs: Option<String>,
     pub(crate) side_menu: Option<&'a String>,

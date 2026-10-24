@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html class="has-navbar-fixed-top" lang="{{ language }}">
+<html class="has-navbar-fixed-top" lang="{{ language }}"{% if let Some(t) = data_theme %} data-theme="{{ t }}"{% endif %}>
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -46,7 +46,7 @@
     {% for css_link in css_links %}
     <link href="{{ css_link }}" rel="stylesheet">
     {% endfor %}
-    <style>.skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:0.5em 1em;background:#fff;color:#000;}.skip-link:focus{left:0.5em;top:0.5em;}#nav-bar .navbar-burger{flex-shrink:0;}@media screen and (max-width:1023px){ #nav-site-title{flex-shrink:1;min-width:0;}#nav-site-title>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}#nav-socials{display:flex;flex-wrap:wrap;}}</style>
+    <style>.skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:0.5em 1em;background:#fff;color:#000;}.skip-link:focus{left:0.5em;top:0.5em;}#side-column.stretch-last>.notification:last-child{flex-grow:1;}#nav-bar .navbar-burger{flex-shrink:0;}@media screen and (max-width:1023px){ #nav-site-title{flex-shrink:1;min-width:0;}#nav-site-title>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}#nav-socials{display:flex;flex-wrap:wrap;}}</style>
 </head>
 <body>
 <a class="skip-link" href="#main">{{ ui.skip_link }}</a>
@@ -72,7 +72,7 @@
                 </div>
                 {% endif %}
             </div>
-            <div class="column is-flex is-flex-direction-column" id="side-column">
+            <div class="column is-flex is-flex-direction-column{% if stretch_side_notification %} stretch-last{% endif %}" id="side-column">
                 {% if let Some(s) = side_menu %}
                 <div class="box p-1 is-hidden-mobile" id="side-menu-desktop">
                     {{ s|safe }}

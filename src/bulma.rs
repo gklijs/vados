@@ -60,9 +60,6 @@ pub(crate) enum TilePlacement {
     Right,
     /// The side column, next to the page's own content.
     Side,
-    /// The last notification in the side column, which grows to fill it
-    /// down to the bottom of the page's content.
-    SideLast,
 }
 
 impl TilePlacement {
@@ -73,9 +70,8 @@ impl TilePlacement {
             TilePlacement::Left => " cell mb-0 is-col-start-1-tablet is-col-span-2-mobile",
             TilePlacement::Right => " cell mb-0 is-col-start-2-tablet is-col-span-2-mobile",
             // Side tiles are links in a flex column, not grid cells; make
-            // them blocks, and let the last one take the leftover height.
+            // them blocks.
             TilePlacement::Side => " is-block",
-            TilePlacement::SideLast => " is-block is-flex-grow-1",
         }
     }
 }

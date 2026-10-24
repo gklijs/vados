@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `"colorScheme": "light"` or `"dark"` in `main.json` pins every page to that Bulma theme (`data-theme` on `<html>`)
+  instead of following the reader's colour-scheme preference, for a site with a fixed palette. An unknown value is a
+  `main.json` error in `check`.
+- `check` warns about a `sass/main.scss` that still loads Bulma with `@import`.
+- A README section on moving an existing site to Bulma 1.0: `@use ... with`, the removed `$colors` map, footer colour
+  variables and the tile CSS vados no longer emits.
+
 ### Changed
 
 - **Breaking:** Bulma 1.0 (#31). The default stylesheet is `bulma@1.0.4`. Pages are laid out with Bulma columns and a
@@ -15,8 +24,8 @@
 - Child tiles are placed row by row, the left one of each pair first, so the reading order is the document order at
   every width; the inline CSS `order` and the custom CSS that stacked the columns on a phone are gone. The page
   still fills evenly: the shorter column's last tile spans the rows left over, the tiles grow to end with a taller
-  side column, and the last side notification grows to end with the page's content. The page's own content box now
-  spans its column.
+  side column. With `"stretchSideNotification": true` in `main.json` the last side notification also grows to end with
+  the page's content; it is off by default. The page's own content box now spans its column.
 - Notifications and the navbar carry the Bulma theme matching their colour (`theme-light` or `theme-dark`), so
   Markdown headings, code and menus on them stay readable in either colour scheme.
 - `vados init` scaffolds `"bulma": "^1.0.4"` and a `sass/main.scss` that uses `@use "bulma/sass" with ($primary: ...)`
