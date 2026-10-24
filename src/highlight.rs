@@ -123,35 +123,29 @@ mod engine {
         for (selectors, declarations) in &dark {
             let scoped: Vec<String> = selectors
                 .iter()
-                .map(|s| format!(":where(:root:not([data-theme=light]):not(.theme-light)) {s}"))
+                .map(|s| format!(":where(:root:not([data-theme=light])) {s}"))
                 .collect();
             css.push_str(&format!("{} {{{}}}\n", scoped.join(", "), declarations));
         }
         css.push_str("}\n");
-        for (selectors, declarations) in &dark {
-            let scoped: Vec<String> = selectors
-                .iter()
-                .flat_map(|s| [format!("[data-theme=dark] {s}"), format!(".theme-dark {s}")])
-                .collect();
-            css.push_str(&format!("{} {{{}}}\n", scoped.join(", "), declarations));
-        }
-        // A light notification keeps the light colours when the reader or
-        // page is dark; the media rule's `:where` has no specificity and
-        // these come last, so they win. They exclude the root: a page
-        // pinned light already has no dark scopes to override, and matching
-        // its root would also make a dark notification on it light again.
-        for (selectors, declarations) in &light {
-            let scoped: Vec<String> = selectors
-                .iter()
-                .flat_map(|s| {
-                    [
-                        format!("[data-theme=light]:not(:root) {s}"),
-                        format!(".theme-light:not(:root) {s}"),
-                    ]
-                })
-                .collect();
-            css.push_str(&format!("{} {{{}}}\n", scoped.join(", "), declarations));
-        }
+        // Every scope below has the same specificity, so the order decides:
+        // a page pinning a theme comes first, then the light notifications,
+        // then the dark ones. The nearest pin is not what wins, but a
+        // notification's own theme beats the page's, which is the
+        // combination that occurs. The media rule's `:where` has none, so
+        // all of these beat it.
+        let mut scope = |rules: &[(Vec<String>, String)], scopes: &[&str]| {
+            for (selectors, declarations) in rules {
+                let scoped: Vec<String> = selectors
+                    .iter()
+                    .flat_map(|s| scopes.iter().map(move |scope| format!("{scope} {s}")))
+                    .collect();
+                css.push_str(&format!("{} {{{}}}\n", scoped.join(", "), declarations));
+            }
+        };
+        scope(&dark, &["[data-theme=dark]"]);
+        scope(&light, &["[data-theme=light]", ".theme-light"]);
+        scope(&dark, &[".theme-dark"]);
         css
     }
 }
@@ -322,7 +316,7 @@ mod tests {
         let css = stylesheet();
         assert!(css.contains("@media (prefers-color-scheme: dark)"), "{css}");
         assert!(
-            css.contains(":where(:root:not([data-theme=light]):not(.theme-light)) .hl-"),
+            css.contains(":where(:root:not([data-theme=light])) .hl-"),
             "{css}"
         );
         assert!(css.contains("[data-theme=dark] .hl-"), "{css}");
@@ -330,33 +324,30 @@ mod tests {
     }
 
     #[test]
-    fn a_light_notification_keeps_light_colours_in_a_dark_scheme() {
+    fn a_notification_keeps_its_own_theme_whatever_the_page_does() {
         let css = stylesheet();
-        // The light overrides come after the dark scopes, and only below the
-        // root, so a light tile wins on a dark page without making a dark
-        // tile on a light page lose.
-        let dark = css.find(".theme-dark .hl-").unwrap();
-        let light = css.find("\n[data-theme=light]:not(:root) .hl-").unwrap() + 1;
-        assert!(dark < light, "{css}");
-        let rule = css[light..].lines().next().unwrap();
-        assert!(rule.contains(", .theme-light:not(:root) .hl-"), "{rule}");
-        let light_colours = colours(&css).0;
+        // Same specificity throughout, so the order decides: the media rule
+        // (no specificity), a page pinning dark, light scopes, dark scopes.
+        let at = |needle: &str| {
+            css.find(needle)
+                .unwrap_or_else(|| panic!("{needle}: {css}"))
+        };
+        let media = at("@media");
+        let page_dark = at("\n[data-theme=dark] .hl-");
+        let light = at("\n[data-theme=light] .hl-");
+        let dark = at("\n.theme-dark .hl-");
+        assert!(
+            media < page_dark && page_dark < light && light < dark,
+            "{css}"
+        );
+        let rule = css[light + 1..].lines().next().unwrap();
+        assert!(rule.contains(", .theme-light .hl-"), "{rule}");
+        // The light scopes carry the light colours.
         let rule_colour = |rule: &str| rule.split('#').nth(1).map(|r| r[..6].to_string());
         let base = css.lines().find(|l| l.starts_with(".hl-")).unwrap();
         assert_eq!(rule_colour(rule), rule_colour(base));
-        assert!(!light_colours.is_empty());
-    }
-
-    #[test]
-    fn a_pinned_root_theme_does_not_override_a_notification_pinning_the_other() {
-        let css = stylesheet();
-        // The light overrides must not scope through the root: with a
-        // light-pinned root, a dark notification's own `.theme-dark` scope
-        // has to win.
-        assert!(!css.contains("\n[data-theme=light] .hl-"), "{css}");
-        assert!(!css.contains("\n.theme-light .hl-"), "{css}");
-        assert!(css.contains("[data-theme=light]:not(:root) .hl-"), "{css}");
-        assert!(css.contains(".theme-light:not(:root) .hl-"), "{css}");
+        // No scope reaches through the root.
+        assert!(!css.contains(":not(:root)"), "{css}");
     }
 
     /// The colours of the rules inside and outside the dark scopes.
@@ -372,8 +363,9 @@ mod tests {
                 in_media = false;
                 continue;
             }
-            let is_dark = in_media || line.starts_with("[data-theme=dark]");
-            let is_dark = is_dark && !line.starts_with("[data-theme=light]");
+            let is_dark = in_media
+                || line.starts_with("[data-theme=dark]")
+                || line.starts_with(".theme-dark");
             for hex in line.split('#').skip(1).map(|r| &r[..6]) {
                 let channel = |i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap();
                 let rgb = [channel(0), channel(2), channel(4)];

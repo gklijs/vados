@@ -25,7 +25,7 @@ use crate::ui_text::is_translated;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Whether a finding fails the check. Fixed policy, mirroring
 /// `config.error_finding_kinds` in the spec: a finding is an error when it
@@ -780,26 +780,27 @@ fn check_luma_events(page_path: &str, events: &[LumaEvent], findings: &mut Vec<F
 }
 
 /// Whether a stylesheet link names Bulma before 1.0, as a CDN link carries
-/// it (`bulma@0.9.4`, `bulma@~0.9`, `bulma/0.9.4`). See vados.allium's
-/// `outdated_bulma_stylesheet`.
+/// it (`bulma@0.9.4`, `bulma@~0.9`, `bulma/0.9.4`). Only the version right
+/// after the name counts. See vados.allium's `outdated_bulma_stylesheet`.
 fn is_outdated_bulma_link(link: &str) -> bool {
     let link = link.to_ascii_lowercase();
     let version = ["bulma@", "bulma/"]
         .iter()
         .find_map(|prefix| link.split(prefix).nth(1));
-    version.and_then(version_major) == Some(0)
+    version.and_then(leading_version_major) == Some(0)
 }
 
 /// The `package.json` next to the source tree, when its Bulma dependency
 /// asks for a version before 1.0, with the manifest's location and the
-/// version spec. See vados.allium's `outdated_bulma_dependency`.
+/// version spec. The manifest is in the source directory's parent, or the
+/// working directory when that has none. See vados.allium's
+/// `outdated_bulma_dependency`.
 fn outdated_bulma_dependency(source: &str) -> Option<(String, String)> {
-    let source = Path::new(source);
-    let project = match source.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent,
-        _ => Path::new(""),
-    };
-    let path = project.join("package.json");
+    let path = Path::new(source)
+        .canonicalize()
+        .ok()
+        .and_then(|source| source.parent().map(|parent| parent.join("package.json")))
+        .unwrap_or_else(|| PathBuf::from("package.json"));
     let manifest: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
     for section in ["dependencies", "devDependencies"] {
@@ -810,22 +811,32 @@ fn outdated_bulma_dependency(source: &str) -> Option<(String, String)> {
         else {
             continue;
         };
-        if version_major(spec).is_some_and(|major| major == 0) {
+        if spec_is_outdated(spec) {
             return Some((path.display().to_string(), spec.to_string()));
         }
     }
     None
 }
 
-/// The first number in a version spec (`^0.9.4`, `~0.9`, `>=1.0`, `0.x`), if
-/// it has one. Specs without a number (`latest`, `*`, a path) leave the
-/// version unknown.
-fn version_major(spec: &str) -> Option<u32> {
-    let start = spec.find(|c: char| c.is_ascii_digit())?;
-    let digits: String = spec[start..]
-        .chars()
-        .take_while(|c| c.is_ascii_digit())
+/// Whether a dependency spec only allows versions before 1.0: every
+/// alternative (`a || b`) must start below 1.0, so a range that also allows
+/// 1.x is not outdated. Specs without a number (`latest`, `*`) are unknown.
+fn spec_is_outdated(spec: &str) -> bool {
+    let majors: Vec<Option<u32>> = spec
+        .split("||")
+        .map(|alternative| {
+            let start = alternative.find(|c: char| c.is_ascii_digit())?;
+            leading_version_major(&alternative[start..])
+        })
         .collect();
+    !majors.is_empty() && majors.iter().all(|major| *major == Some(0))
+}
+
+/// The major of a version at the start of `text` (`0.9.4/css`, `~0.9`, `1`),
+/// after any range operator; `None` when it doesn't start with a number.
+fn leading_version_major(text: &str) -> Option<u32> {
+    let text = text.trim_start_matches(['^', '~', '=', 'v', ' ']);
+    let digits: String = text.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
 }
 
@@ -1681,10 +1692,32 @@ mod tests {
             "https://cdn.jsdelivr.net/npm/bulma@latest/css/bulma.min.css"
         ));
         assert!(!is_outdated_bulma_link("/css/main.min.css"));
+        // Only the version right after the name counts.
+        assert!(!is_outdated_bulma_link("/css/bulma/theme.css?v=0"));
+        assert!(!is_outdated_bulma_link("/css/bulma/bulma.min.css"));
         assert_eq!(
             FindingKind::OutdatedBulmaStylesheet.severity(),
             Severity::Error
         );
+    }
+
+    #[test]
+    fn a_dependency_spec_is_outdated_only_when_it_cannot_reach_bulma_1() {
+        for outdated in ["^0.9.4", "~0.9", "0.x", "=0.9.4", "v0.9.4", "^0.8 || ^0.9"] {
+            assert!(spec_is_outdated(outdated), "{outdated}");
+        }
+        for fine in ["^1.0.4", "1", ">=1.0", "^0.9 || ^1.0", "latest", "*", ""] {
+            assert!(!spec_is_outdated(fine), "{fine}");
+        }
+    }
+
+    #[test]
+    fn the_manifest_is_found_from_a_source_directory_given_as_a_relative_path() {
+        let site = TestSite::new("bulma_0_package_relative");
+        site.write_project("package.json", r#"{"dependencies":{"bulma":"^0.9.4"}}"#);
+        let source = site.source.join("..").join("source");
+        let found = outdated_bulma_dependency(source.to_str().unwrap());
+        assert_eq!(found.map(|(_, spec)| spec).as_deref(), Some("^0.9.4"));
     }
 
     #[test]

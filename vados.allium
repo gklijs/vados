@@ -401,10 +401,14 @@ entity GenerationRun {
     source_location: String
     image_source_location: String
 
-    -- The package manifest next to the source tree may ask for a specific
-    -- Bulma version; `null` when there is no manifest, no Bulma dependency,
-    -- or a spec whose version cannot be read (`latest`, `*`, a file path).
-    bulma_package_version: String?
+    -- The package manifest next to the source tree (the parent of the source
+    -- directory, or the working directory when that has no parent) may ask
+    -- for a specific Bulma version, in `dependencies` or `devDependencies`;
+    -- `null` when there is no manifest, no Bulma dependency, or a spec whose
+    -- version cannot be read (`latest`, `*`, a file path). A spec naming
+    -- several ranges (`||`) is read as its highest.
+    package_manifest_location: parent_of(source_location) + "/package.json"
+    bulma_package_version: bulma_version_in_manifest(package_manifest_location)
 
     -- Only a generate run has somewhere to put a site. A check run produces no
     -- output, so it is given no destination at all; see CheckRunHasNoDestination.
@@ -1959,7 +1963,7 @@ rule RunStructuralChecks {
             Finding.created(
                 run: run,
                 kind: outdated_bulma_dependency,
-                location: run.source_location,
+                location: run.package_manifest_location,
                 detail: run.bulma_package_version
             )
 
