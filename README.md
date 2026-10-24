@@ -283,10 +283,36 @@ with `color` in `menu.json`.
 
 A page's own content sits in Bulma columns, with its left and right notifications in a two-column Bulma grid below it,
 read row by row; on a phone they stack in that same order. Side by side the page fills evenly: the shorter column's
-last tile stretches down alongside the longer one, the tiles grow to end with a taller side column, and the last side
-notification grows to end with the page's content. A site that sets its own `cssFiles`, or compiles Bulma through
+last tile stretches down alongside the longer one, and the tiles grow to end with a taller side column. With
+`"stretchSideNotification": true` in `main.json` the last side notification also grows to end with the page's content;
+without it, side notifications keep their own height. A site that sets its own `cssFiles`, or compiles Bulma through
 `package.json`, must use Bulma 1.0 or later: Bulma 0.9's tiles are no longer used, and `check` fails on a stylesheet
 or dependency still on Bulma 0.x. After bumping `package.json`, run `npm run build` to rewrite the compiled CSS.
+
+A site with a fixed palette, which isn't meant to change with the reader's preference, can opt out: `"colorScheme":
+"light"` (or `"dark"`) in `main.json` pins every page to that Bulma theme with `data-theme` on `<html>`. Colours chosen
+for notifications and the navbar keep their own theme either way. The theme a chosen colour carries is based on Bulma's
+default colours (a light `warning` and `info`, a dark `link`), so a site that recolours these to something of the
+opposite brightness gets the wrong hint on that colour and needs CSS of its own for what sits on it.
+
+### Moving an existing site to Bulma 1.0
+
+1. Set `"bulma": "^1.0.4"` in `package.json` and run `npm install`.
+2. In `sass/main.scss`, replace `$primary: ...; @import "bulma/bulma";` by
+   `@use "bulma/sass" with ($primary: ...);`. Bulma's variables are given as it is loaded now; `@import` still works
+   but is deprecated. In `package.json`, build with `sass --load-path=node_modules --quiet-deps ...`.
+3. Check the other variables you set. Bulma 1.0 has no `$colors` map: the named colours are `$primary`, `$link`, `$info`,
+   `$success`, `$warning` and `$danger`, and `$custom-colors` adds more. Bulma's own defaults for `$link` and the
+   others now apply where the old stylesheet left them out, so a tile in a colour you never styled may now show one.
+   `$footer-background-color` and the other footer variables still exist, but default to colours that follow the colour
+   scheme; set `--bulma-footer-background-color` in CSS to colour the footer in both.
+4. Drop CSS that was written for Bulma 0.9's tiles or for vados's old mobile layout: anything on `.tile`, `.is-ancestor`,
+   `.is-parent`, `#child-tiles-left`, `#child-tiles-right`, or an inline `order` on `#sub-l-*`/`#sub-r-*`. vados no
+   longer emits them.
+5. Run `npm run build`, then `vados check`: it fails while `cssFiles` or `package.json` still name Bulma 0.x, and warns
+   about an `@import` of Bulma left in `sass/main.scss`.
+6. Look at dark mode, or pin the site with `colorScheme`. Your own `$title-color` or other colour overrides apply in
+   both themes.
 
 ## Code blocks
 

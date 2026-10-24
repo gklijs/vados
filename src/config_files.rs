@@ -63,7 +63,34 @@ pub(crate) struct MainConfig {
     /// See `vados.allium`'s `SiteConfig.code_highlight`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) code_highlight: Option<bool>,
+    /// Pins the site to Bulma's light or dark theme instead of following the
+    /// reader's colour-scheme preference. See `vados.allium`'s
+    /// `SiteConfig.color_scheme` and `FollowsTheReadersColourScheme`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) color_scheme: Option<ColorScheme>,
+    /// Whether the last side notification grows to end where the page's
+    /// content does; off when absent. See `vados.allium`'s
+    /// `SiteConfig.stretch_side_notification`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) stretch_side_notification: Option<bool>,
     pub(crate) footer_content: String,
+}
+
+/// A colour scheme a site can be pinned to; Bulma's `data-theme` values.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum ColorScheme {
+    Light,
+    Dark,
+}
+
+impl ColorScheme {
+    pub(crate) fn to_data_theme(self) -> &'static str {
+        match self {
+            ColorScheme::Light => "light",
+            ColorScheme::Dark => "dark",
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone)]

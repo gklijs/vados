@@ -248,6 +248,8 @@ enum FindingKind {
                                -- out with
     outdated_bulma_dependency  -- package.json asks for Bulma before 1.0, so
                                -- the compiled stylesheet has the same problem
+    bulma_sass_import          -- sass/main.scss next to the source tree loads
+                               -- Bulma with the deprecated @import; a warning
 
     -- Notifications.
     dead_internal_notification_link
@@ -410,6 +412,12 @@ entity GenerationRun {
     package_manifest_location: parent_of(source_location) + "/package.json"
     bulma_package_version: bulma_version_in_manifest(package_manifest_location)
 
+    -- The first line of `sass/main.scss`, in the same directory as the
+    -- manifest, that loads Bulma with `@import`; `null` when there is none
+    -- or no such file.
+    sass_location: parent_of(source_location) + "/sass/main.scss"
+    bulma_import_line: bulma_import_in_sass(sass_location)
+
     -- Only a generate run has somewhere to put a site. A check run produces no
     -- output, so it is given no destination at all; see CheckRunHasNoDestination.
     destination: String?
@@ -529,6 +537,18 @@ entity SiteConfig {
     -- CodeIsHighlighted.
     code_highlight: Boolean?
     highlights_code: code_highlight ?? true
+
+    -- Pins every page to Bulma's light or dark theme (`data-theme` on the
+    -- document element) instead of following the reader's colour-scheme
+    -- preference, for a site whose palette is fixed. See
+    -- FollowsTheReadersColourScheme.
+    color_scheme: light | dark | null
+
+    -- Whether the last side notification grows to end where the page's
+    -- content does, which leaves it tall and mostly empty beside a short
+    -- notification. Off unless the maintainer turns it on. See
+    -- ChildTilesPairUp.
+    stretch_side_notification: Boolean?
 
     fediverse_creator: String?
     effective_fediverse_creator:
@@ -1965,6 +1985,14 @@ rule RunStructuralChecks {
                 kind: outdated_bulma_dependency,
                 location: run.package_manifest_location,
                 detail: run.bulma_package_version
+            )
+
+        if run.bulma_import_line != null:
+            Finding.created(
+                run: run,
+                kind: bulma_sass_import,
+                location: run.sass_location,
+                detail: run.bulma_import_line
             )
 
         if site != null and site.site_url != null and not is_site_url(site.site_url):
@@ -3866,8 +3894,9 @@ surface PublishedPage {
         -- the page fills evenly: when one column has fewer tiles, its last
         -- tile stretches down alongside the other's (as far as Bulma's grid
         -- lets a tile span, twelve rows); the child tiles grow to end where
-        -- a taller side column does; and the last side notification grows
-        -- to end where the page's content does.
+        -- a taller side column does; and, only when the site sets
+        -- stretch_side_notification, the last side notification grows to
+        -- end where the page's content does.
 
     @guarantee FollowsTheReadersColourScheme
         -- With the default stylesheet a page is shown in Bulma's light or
@@ -3877,7 +3906,10 @@ surface PublishedPage {
         -- what sits on a chosen colour uses the Bulma theme matching it
         -- (light for a colour Bulma puts dark text on, dark otherwise), so
         -- headings and code in a notification, and the navbar's menus,
-        -- read the same in either scheme.
+        -- read the same in either scheme. A site can opt out of following
+        -- the reader: with a colour scheme set, every page is pinned to that
+        -- theme whatever the reader prefers, and colours chosen for
+        -- notifications keep their own theme as before.
 
     @guarantee UnlistedPagesAreListedNowhere
         -- A page that is not listed is published like any other, in the
