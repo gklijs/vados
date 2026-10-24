@@ -46,7 +46,7 @@
     {% for css_link in css_links %}
     <link href="{{ css_link }}" rel="stylesheet">
     {% endfor %}
-    <style>.skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:0.5em 1em;background:#fff;color:#000;}.skip-link:focus{left:0.5em;top:0.5em;}@media screen and (max-width:768px){ #child-tiles{display:flex;flex-direction:column;gap:1.5rem;padding:0.75rem;}#child-tiles-left,#child-tiles-right{display:contents;}#child-tiles .tile.is-child{margin-bottom:0!important;}}#nav-bar .navbar-burger{flex-shrink:0;}@media screen and (max-width:1023px){ #nav-site-title{flex-shrink:1;min-width:0;}#nav-site-title>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}#nav-socials{display:flex;flex-wrap:wrap;}}</style>
+    <style>.skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:0.5em 1em;background:#fff;color:#000;}.skip-link:focus{left:0.5em;top:0.5em;}#nav-bar .navbar-burger{flex-shrink:0;}@media screen and (max-width:1023px){ #nav-site-title{flex-shrink:1;min-width:0;}#nav-site-title>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}#nav-socials{display:flex;flex-wrap:wrap;}}</style>
 </head>
 <body>
 <a class="skip-link" href="#main">{{ ui.skip_link }}</a>
@@ -54,32 +54,27 @@
 <main class="section {{background_class}}" id="main" tabindex="-1">
     <div class="container">
         {% if let Some(b) = breadcrumbs %}{{ b|safe }}{% endif %}
-        <div class="{% if let Some(_) = side_menu %}tile is-ancestor is-flex-direction-row-reverse{% else %}tile is-ancestor{% endif %}">
-            <div class="tile is-9 is-vertical" data-document="index" id="main-content">
-                <div class="tile is-parent">
-                    {{ main_content|safe }}
-                </div>
+        <div class="{% if let Some(_) = side_menu %}columns is-flex-direction-row-reverse{% else %}columns{% endif %}">
+            <div class="column is-9" data-document="index" id="main-content">
+                {{ main_content|safe }}
                 {% if let Some(l) = luma_events %}
-                <div class="tile is-vertical is-parent" id="luma-events">
+                <div class="block" id="luma-events">
                     {{ l|safe }}
                 </div>
                 {% endif %}
-                <div class="tile is-horizontal" id="child-tiles">
-                    <div class="tile is-vertical is-parent" id="child-tiles-left">
-                        {% for s in left_sub_notifications %}
-                        {{ s|safe}}
-                        {% endfor %}
-                    </div>
-                    <div class="tile is-vertical is-parent" id="child-tiles-right">
-                        {% for s in right_sub_notifications %}
-                        {{ s|safe }}
+                {% if !child_tiles.is_empty() %}
+                <div class="fixed-grid has-2-cols" id="child-tiles">
+                    <div class="grid is-gap-3">
+                        {% for t in child_tiles %}
+                        {{ t|safe }}
                         {% endfor %}
                     </div>
                 </div>
+                {% endif %}
             </div>
-            <div class="tile is-vertical is-parent">
+            <div class="column" id="side-column">
                 {% if let Some(s) = side_menu %}
-                <div class="tile is-child is-hidden-mobile box p-1" id="side-menu-desktop">
+                <div class="box p-1 is-hidden-mobile" id="side-menu-desktop">
                     {{ s|safe }}
                 </div>
                 {% endif %}

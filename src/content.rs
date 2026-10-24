@@ -1,5 +1,5 @@
 use crate::authoring::social::{fediverse_handle_of, MASTODON_ICON};
-use crate::bulma::{Color, ImageType};
+use crate::bulma::{Color, ImageType, TilePlacement};
 use crate::config_files::{favicon_media_type, MainConfig, MenuConfig, Notification, PageConfig};
 use crate::feed::{feed_href, feed_title, page_url};
 use crate::files::write_raw;
@@ -239,24 +239,10 @@ pub(crate) fn to_content_items(
         mut d => d.split_off(source.len()),
     };
     let left_sub_notifications = page_config.left_notifications.as_ref().map(|n| {
-        resolve_notifications(
-            source,
-            &path,
-            n,
-            NotificationSide::Left,
-            structure,
-            highlight,
-        )
+        resolve_notifications(source, &path, n, TilePlacement::Left, structure, highlight)
     });
     let right_sub_notifications = page_config.right_notifications.as_ref().map(|n| {
-        resolve_notifications(
-            source,
-            &path,
-            n,
-            NotificationSide::Right,
-            structure,
-            highlight,
-        )
+        resolve_notifications(source, &path, n, TilePlacement::Right, structure, highlight)
     });
     let item = Item::new(path, page_config);
     ContentItems {
@@ -266,17 +252,11 @@ pub(crate) fn to_content_items(
     }
 }
 
-#[derive(Clone, Copy)]
-enum NotificationSide {
-    Left,
-    Right,
-}
-
 fn resolve_notifications(
     source: &str,
     path: &str,
     notifications: &[Notification],
-    side: NotificationSide,
+    placement: TilePlacement,
     structure: &Structure,
     highlight: bool,
 ) -> Vec<String> {
@@ -284,16 +264,11 @@ fn resolve_notifications(
         .iter()
         .enumerate()
         .map(|(i, notification)| {
-            let (id, order) = match side {
-                NotificationSide::Left => (format!("sub-l-{}", i), 2 * i as isize),
-                NotificationSide::Right => (format!("sub-r-{}", i), 2 * i as isize + 1),
-            };
             resolve_notification(
                 source,
                 path,
                 notification.clone(),
-                id,
-                order,
+                (placement, i),
                 structure,
                 highlight,
             )
@@ -301,20 +276,25 @@ fn resolve_notifications(
         .collect()
 }
 
+/// Renders the `index`th notification in the left or right column.
 fn resolve_notification(
     source: &str,
     path: &str,
     notification: Notification,
-    id: String,
-    order: isize,
+    (placement, index): (TilePlacement, usize),
     structure: &Structure,
     highlight: bool,
 ) -> String {
+    let id = match placement {
+        TilePlacement::Right => format!("sub-r-{}", index),
+        _ => format!("sub-l-{}", index),
+    };
+    // The first row of child tiles is above the fold.
+    let eager = index == 0;
     let content = get_content(source, path, &notification.content, highlight);
-    let image = notification.image.and_then(|i| {
-        // The first row of child tiles is above the fold.
-        structure.process_image(&i, ImageType::Sub { eager: order < 2 })
-    });
+    let image = notification
+        .image
+        .and_then(|i| structure.process_image(&i, ImageType::Sub { eager }));
     match notification.url {
         None => {
             let color = notification.color.unwrap_or(Color::Info).to_css_class();
@@ -324,7 +304,7 @@ fn resolve_notification(
                 image,
                 content,
                 id,
-                order: Some(order),
+                placement,
             }
             .render()
             .unwrap()
@@ -340,7 +320,7 @@ fn resolve_notification(
                 image,
                 content: Some(content),
                 id,
-                order: Some(order),
+                placement,
             }
             .render()
             .unwrap()
@@ -354,7 +334,7 @@ fn resolve_notification(
                 image,
                 content,
                 id,
-                order: Some(order),
+                placement,
             }
             .render()
             .unwrap()
@@ -384,7 +364,7 @@ pub(crate) fn items_to_side_notifications(
             image,
             content: None,
             id,
-            order: None,
+            placement: TilePlacement::Side,
         }
         .render()
         .unwrap();
@@ -679,10 +659,11 @@ fn get_page(
     let (mut left, mut right) = latest_tiles(path, item, structure, generic_content.ui);
     left.extend(structure.get_left_sub_notifications(path).iter().cloned());
     right.extend(structure.get_right_sub_notifications(path).iter().cloned());
+    let child_tiles = in_reading_order(left, right);
     // Only a page that shows highlighted code loads its stylesheet.
     let mut css_links = generic_content.css_links.clone();
     let shows_highlighted_code = std::iter::once(page_helper.main_content)
-        .chain(left.iter().chain(&right).map(String::as_str))
+        .chain(child_tiles.iter().map(String::as_str))
         .chain(std::iter::once(generic_content.footer.as_str()))
         .any(|html| html.contains(HIGHLIGHTED_MARKER));
     if shows_highlighted_code {
@@ -736,8 +717,7 @@ fn get_page(
         side_menu: page_helper.side_menu,
         main_content: page_helper.main_content,
         luma_events: get_luma_events(item, generic_content.ui),
-        left_sub_notifications: &left,
-        right_sub_notifications: &right,
+        child_tiles: &child_tiles,
         side_notifications: &structure.get_side_notifications(path, generic_content.ui),
         footer: &generic_content.footer,
         css_links: &css_links,
@@ -754,6 +734,21 @@ fn get_page(
     .unwrap()
 }
 
+/// The child tiles row by row, the left one of each pair first: the order
+/// the grid places them in and a phone stacks them in. Each tile carries the
+/// column it belongs in, so once one column runs out the other's tiles stay
+/// put. See vados.allium's `ChildTilesPairUp`.
+fn in_reading_order(left: Vec<String>, right: Vec<String>) -> Vec<String> {
+    let mut tiles = Vec::with_capacity(left.len() + right.len());
+    let (mut left, mut right) = (left.into_iter(), right.into_iter());
+    loop {
+        match (left.next(), right.next()) {
+            (None, None) => return tiles,
+            (l, r) => tiles.extend(l.into_iter().chain(r)),
+        }
+    }
+}
+
 /// The page's `latest` pages as child tiles, split over the left and right
 /// columns the way they pair up: the newest left, the next right, and so on.
 /// See vados.allium's `LatestPagesComeFirst`.
@@ -767,7 +762,6 @@ fn latest_tiles(
         return (vec![], vec![]);
     };
     let pages = structure.get_latest(path, &latest.sources(), latest.depth, latest.get_limit());
-    let count = pages.len();
     let (mut left, mut right) = (vec![], vec![]);
     for (i, page) in pages.iter().enumerate() {
         let image = page
@@ -789,9 +783,11 @@ fn latest_tiles(
             image,
             content,
             id: format!("latest-{}", i),
-            // Before the page's own tiles, which start at 0, once the
-            // columns are stacked on a phone.
-            order: Some(i as isize - count as isize),
+            placement: if i % 2 == 0 {
+                TilePlacement::Left
+            } else {
+                TilePlacement::Right
+            },
         }
         .render()
         .unwrap();

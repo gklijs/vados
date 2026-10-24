@@ -1,5 +1,5 @@
 {% for e in events %}
-<section class="tile is-child box p-2" aria-labelledby="luma-event-{{ loop.index }}">
+<section class="box p-2" aria-labelledby="luma-event-{{ loop.index }}">
     <h2 class="title is-4" id="luma-event-{{ loop.index }}">
         <a href="{{ e.event_url }}">{{ e.title }}</a>
     </h2>

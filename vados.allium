@@ -243,6 +243,9 @@ enum FindingKind {
     -- Site configuration.
     missing_favicon_file
     untranslated_interface_language
+    outdated_bulma_stylesheet  -- an extra stylesheet loads Bulma before 1.0,
+                               -- whose tiles vados no longer lays pages out
+                               -- with; the page loses its layout, not content
 
     -- Notifications.
     dead_internal_notification_link
@@ -750,7 +753,8 @@ entity Page {
 -- A notification the maintainer attached to a page, in the left or right
 -- column. Notifications are inherited by the page's whole subtree. Where the
 -- two columns stack into one (on a phone) they read in pairs: left 0, right
--- 0, left 1, right 1, ... -- the same order they pair up in side by side.
+-- 0, left 1, right 1, ... -- the same order they pair up in side by side
+-- (see ChildTilesPairUp).
 entity Notification {
     page: Page
     side: NotificationSide
@@ -1385,11 +1389,13 @@ entity FeedEnablementBlock {
 config {
     -- Bulma defaults applied when the maintainer configures nothing.
     default_navbar_color: Color = warning
-    default_background_class: String = "has-background-light"
+    -- Bulma's soft light: a light grey behind white boxes, and a dark grey
+    -- in Bulma's dark theme, so it follows the reader's colour scheme.
+    default_background_class: String = "has-background-light-soft"
     default_language: String = "en"
     default_title_separator: String = " · "
     default_css_links: List<String> = [
-        "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
+        "https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
     ]
     default_js_links: List<String> = [ "/js/vados.js" ]
 
@@ -1927,6 +1933,15 @@ rule RunStructuralChecks {
                 kind: luma_event_without_title,
                 location: e.page.path,
                 detail: e.event_id
+            )
+
+        for css in (site?.extra_css_files ?? [])
+            where is_outdated_bulma_link(css):
+            Finding.created(
+                run: run,
+                kind: outdated_bulma_stylesheet,
+                location: run.source_location,
+                detail: css
             )
 
         if site != null and site.site_url != null and not is_site_url(site.site_url):
@@ -3795,8 +3810,11 @@ surface PublishedPage {
         -- generated, not in the visitor's browser, so it reads the same
         -- without scripts; one without a language, in a language vados
         -- doesn't know, or indented rather than fenced, stays plain, as
-        -- does inline code. Every colour is readable on the code's
-        -- background (at least 4.5:1). Only a page showing highlighted code
+        -- does inline code. Code is coloured with a light set and a dark
+        -- set, the dark one applying wherever Bulma's dark theme does (see
+        -- FollowsTheReadersColourScheme), and every colour is readable on
+        -- the code's background in its own theme (at least 4.5:1). Only a
+        -- page showing highlighted code
         -- loads the stylesheet for it. Content given as HTML is never
         -- changed.
 
@@ -3814,6 +3832,20 @@ surface PublishedPage {
         -- child tiles with their title, date, summary and image -- before
         -- its own left and right notifications, the newest left, the next
         -- right and so on, so they read newest first at every width.
+
+    @guarantee ChildTilesPairUp
+        -- A page's child tiles -- its latest pages, then its own left and
+        -- right notifications -- sit in two columns of equal width, each
+        -- tile in the column it belongs to, read row by row: the left tile
+        -- of each pair, then the right. On a phone the columns stack into
+        -- one in that same order, without restyling the page, so the
+        -- reading order is the document order at every width.
+
+    @guarantee FollowsTheReadersColourScheme
+        -- With the default stylesheet a page is shown in Bulma's light or
+        -- dark theme, following the reader's colour-scheme preference; the
+        -- default background follows it too. Colours the maintainer chose --
+        -- the navbar, a notification, a brand colour -- stay as chosen.
 
     @guarantee UnlistedPagesAreListedNowhere
         -- A page that is not listed is published like any other, in the

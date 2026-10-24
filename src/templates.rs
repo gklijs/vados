@@ -1,4 +1,4 @@
-use crate::bulma::ImageType;
+use crate::bulma::{ImageType, TilePlacement};
 use crate::page_date::PageDate;
 use crate::structure::MenuType::Internal;
 use crate::structure::{MenuItem, SocialItem};
@@ -30,8 +30,8 @@ pub(crate) struct PageTemplate<'a> {
     pub(crate) side_menu: Option<&'a String>,
     pub(crate) main_content: &'a str,
     pub(crate) luma_events: Option<String>,
-    pub(crate) left_sub_notifications: &'a Vec<String>,
-    pub(crate) right_sub_notifications: &'a Vec<String>,
+    /// Left and right child tiles, row by row; see `in_reading_order`.
+    pub(crate) child_tiles: &'a Vec<String>,
     pub(crate) side_notifications: &'a Vec<String>,
     pub(crate) footer: &'a str,
     pub(crate) css_links: &'a [String],
@@ -150,12 +150,7 @@ pub(crate) struct InternalNotificationTemplate<'a> {
     pub(crate) image: Option<String>,
     pub(crate) content: Option<String>,
     pub(crate) id: String,
-    /// The tile's place among a page's child tiles once both columns are
-    /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
-    /// `2i + 1`, so they read in the order they pair up on wider screens.
-    /// Tiles of the page's latest pages come before those, counting up to
-    /// -1. `None` for side tiles.
-    pub(crate) order: Option<isize>,
+    pub(crate) placement: TilePlacement,
 }
 
 #[derive(Template)]
@@ -167,12 +162,7 @@ pub(crate) struct ExternalNotificationTemplate<'a> {
     pub(crate) image: Option<String>,
     pub(crate) content: String,
     pub(crate) id: String,
-    /// The tile's place among a page's child tiles once both columns are
-    /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
-    /// `2i + 1`, so they read in the order they pair up on wider screens.
-    /// Tiles of the page's latest pages come before those, counting up to
-    /// -1. `None` for side tiles.
-    pub(crate) order: Option<isize>,
+    pub(crate) placement: TilePlacement,
 }
 
 #[derive(Template)]
@@ -183,12 +173,7 @@ pub(crate) struct ContentNotificationTemplate<'a> {
     pub(crate) image: Option<String>,
     pub(crate) content: String,
     pub(crate) id: String,
-    /// The tile's place among a page's child tiles once both columns are
-    /// stacked into one on mobile: left tile `i` is `2i`, right tile `i` is
-    /// `2i + 1`, so they read in the order they pair up on wider screens.
-    /// Tiles of the page's latest pages come before those, counting up to
-    /// -1. `None` for side tiles.
-    pub(crate) order: Option<isize>,
+    pub(crate) placement: TilePlacement,
 }
 
 #[derive(Template)]

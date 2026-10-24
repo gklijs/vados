@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Breaking:** Bulma 1.0 (#31). The default stylesheet is `bulma@1.0.4`. Pages are laid out with Bulma columns and a
+  two-column Bulma grid instead of Bulma 0.9's tiles, which Bulma 1.0 no longer has. A site that sets its own
+  `cssFiles` must load Bulma 1.0 or later, or its pages lose their layout; `check` warns about a stylesheet still
+  loading Bulma 0.x.
+- Dark mode: Bulma follows the reader's colour-scheme preference. The default background is now
+  `has-background-light-soft`, which follows it too (`has-background-light` stays light in the dark theme).
+  Highlighted code gets a dark set of colours (base16 Ocean) in Bulma's dark theme; both sets stay at 4.5:1 or more
+  on Bulma's code background in their theme.
+- Child tiles are placed row by row, the left one of each pair first, so the reading order is the document order at
+  every width; the inline CSS `order` and the custom CSS that stacked the columns on a phone are gone. Side
+  notifications no longer stretch to fill the side column, and the page's own content box spans its column.
+- `vados init` scaffolds `"bulma": "^1.0.4"` and a `sass/main.scss` that uses `@use "bulma/sass" with ($primary: ...)`
+  instead of the deprecated `@import`; `npm run build` passes `--load-path=node_modules --quiet-deps`. An existing
+  site moving to Bulma 1.0 can make the same change by hand.
+
 ## 0.3.0 - 2026-10-23
 
 ### Added

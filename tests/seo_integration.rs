@@ -452,25 +452,34 @@ fn a_page_shows_the_latest_dated_pages_from_elsewhere_first() {
     // Newest first, at any depth, unlisted pages left out, cut at the limit;
     // the newest sits left, the next right, the third left again, before the
     // page's own tile.
-    assert!(
-        home.contains(r#"href="/blog/2026/deep" target="_self" id="latest-0" style="order: -3;""#)
-    );
-    assert!(home.contains(r#"id="latest-1" style="order: -2;""#));
-    assert!(home.contains(r#"id="latest-2" style="order: -1;""#));
+    let left = "cell mb-0 is-col-start-1-tablet is-col-span-2-mobile";
+    let right = "cell mb-0 is-col-start-2-tablet is-col-span-2-mobile";
+    assert!(home.contains(&format!(
+        r#"class="notification is-link {left}" href="/blog/2026/deep" target="_self" id="latest-0""#
+    )));
+    assert!(home.contains(&format!(
+        r#"{right}" href="/blog/post" target="_self" id="latest-1""#
+    )));
+    assert!(home.contains(&format!(
+        r#"{left}" href="/talks/one" target="_self" id="latest-2""#
+    )));
+    assert!(home.contains(&format!(r#"{left}" id="sub-l-0""#)));
+    assert!(!home.contains("order:"));
     assert!(home.contains("<p>Deep &amp; new</p>"));
     assert!(home.contains(r#"<time datetime="2026-10-23">"#));
     assert!(!home.contains(">Old post<"));
     assert!(!home.contains(">Hidden post<"));
 
-    let left = &home[position(r#"id="child-tiles-left""#)..position(r#"id="child-tiles-right""#)];
-    let right = &home[position(r#"id="child-tiles-right""#)..];
-    let in_left = |needle: &str| {
-        left.find(needle)
-            .unwrap_or_else(|| panic!("{needle} not left"))
+    // Row by row, which is also the order a phone stacks them in.
+    let tiles = &home[position(r#"id="child-tiles""#)..];
+    let at = |needle: &str| {
+        tiles
+            .find(needle)
+            .unwrap_or_else(|| panic!("{needle} is not a child tile"))
     };
-    assert!(in_left(">Deep post<") < in_left(">A talk<"));
-    assert!(in_left(">A talk<") < in_left(">Own<"));
-    assert!(right.contains(">A post<"));
+    assert!(at(">Deep post<") < at(">A post<"));
+    assert!(at(">A post<") < at(">A talk<"));
+    assert!(at(">A talk<") < at(">Own<"));
 }
 
 #[cfg(feature = "highlight")]
