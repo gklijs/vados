@@ -72,7 +72,8 @@ impl TilePlacement {
         match self {
             TilePlacement::Left => " cell mb-0 is-col-start-1-tablet is-col-span-2-mobile",
             TilePlacement::Right => " cell mb-0 is-col-start-2-tablet is-col-span-2-mobile",
-            // A link is inline by default; the grid makes cells blocks.
+            // Side tiles are links in a flex column, not grid cells; make
+            // them blocks, and let the last one take the leftover height.
             TilePlacement::Side => " is-block",
             TilePlacement::SideLast => " is-block is-flex-grow-1",
         }
@@ -86,10 +87,15 @@ pub(crate) const MAX_ROW_SPAN: usize = 12;
 /// starts, on a tablet and wider; on a phone the tiles stack anyway.
 pub(crate) fn spanning_rows(tile: &str, rows: usize) -> String {
     let rows = rows.clamp(1, MAX_ROW_SPAN);
-    tile.replacen(
-        r#"is-col-span-2-mobile""#,
-        &format!(r#"is-col-span-2-mobile is-row-span-{rows}-tablet""#),
-        1,
+    const ANCHOR: &str = "is-col-span-2-mobile";
+    let Some(anchor) = tile.find(ANCHOR) else {
+        return tile.to_string();
+    };
+    let insert_at = anchor + ANCHOR.len();
+    format!(
+        "{} is-row-span-{rows}-tablet{}",
+        &tile[..insert_at],
+        &tile[insert_at..]
     )
 }
 

@@ -284,8 +284,9 @@ with `color` in `menu.json`.
 A page's own content sits in Bulma columns, with its left and right notifications in a two-column Bulma grid below it,
 read row by row; on a phone they stack in that same order. Side by side the page fills evenly: the shorter column's
 last tile stretches down alongside the longer one, the tiles grow to end with a taller side column, and the last side
-notification grows to end with the page's content. A site that sets its own `cssFiles` must load Bulma 1.0 or
-later: Bulma 0.9's tiles are no longer used, and `check` warns about a stylesheet still loading Bulma 0.x.
+notification grows to end with the page's content. A site that sets its own `cssFiles`, or compiles Bulma through
+`package.json`, must use Bulma 1.0 or later: Bulma 0.9's tiles are no longer used, and `check` fails on a stylesheet
+or dependency still on Bulma 0.x. After bumping `package.json`, run `npm run build` to rewrite the compiled CSS.
 
 ## Code blocks
 

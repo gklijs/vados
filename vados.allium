@@ -244,8 +244,10 @@ enum FindingKind {
     missing_favicon_file
     untranslated_interface_language
     outdated_bulma_stylesheet  -- an extra stylesheet loads Bulma before 1.0,
-                               -- whose tiles vados no longer lays pages out
-                               -- with; the page loses its layout, not content
+                               -- which lacks the classes vados now lays pages
+                               -- out with
+    outdated_bulma_dependency  -- package.json asks for Bulma before 1.0, so
+                               -- the compiled stylesheet has the same problem
 
     -- Notifications.
     dead_internal_notification_link
@@ -398,6 +400,11 @@ entity GenerationRun {
     mode: RunMode
     source_location: String
     image_source_location: String
+
+    -- The package manifest next to the source tree may ask for a specific
+    -- Bulma version; `null` when there is no manifest, no Bulma dependency,
+    -- or a spec whose version cannot be read (`latest`, `*`, a file path).
+    bulma_package_version: String?
 
     -- Only a generate run has somewhere to put a site. A check run produces no
     -- output, so it is given no destination at all; see CheckRunHasNoDestination.
@@ -751,10 +758,11 @@ entity Page {
 }
 
 -- A notification the maintainer attached to a page, in the left or right
--- column. Notifications are inherited by the page's whole subtree. Where the
--- two columns stack into one (on a phone) they read in pairs: left 0, right
--- 0, left 1, right 1, ... -- the same order they pair up in side by side
--- (see ChildTilesPairUp).
+-- column. Notifications are inherited by the page's whole subtree. On a
+-- phone the columns stack into one, row by row with every other child tile:
+-- a tile keeps the column it belongs to, so after an odd number of latest
+-- tiles the right column's next notification can read before the left
+-- column's first one (see ChildTilesPairUp).
 entity Notification {
     page: Page
     side: NotificationSide
@@ -1454,7 +1462,9 @@ config {
         luma_event_without_title,
         unreadable_page_date,
         malformed_site_url,
-        feed_without_site_url
+        feed_without_site_url,
+        outdated_bulma_stylesheet,
+        outdated_bulma_dependency
     }
 
     -- The two severities themselves. Neither is adjustable; they are named here
@@ -1942,6 +1952,15 @@ rule RunStructuralChecks {
                 kind: outdated_bulma_stylesheet,
                 location: run.source_location,
                 detail: css
+            )
+
+        if run.bulma_package_version != null
+            and is_outdated_bulma_version(run.bulma_package_version):
+            Finding.created(
+                run: run,
+                kind: outdated_bulma_dependency,
+                location: run.source_location,
+                detail: run.bulma_package_version
             )
 
         if site != null and site.site_url != null and not is_site_url(site.site_url):

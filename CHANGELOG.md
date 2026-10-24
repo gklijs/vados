@@ -6,8 +6,8 @@
 
 - **Breaking:** Bulma 1.0 (#31). The default stylesheet is `bulma@1.0.4`. Pages are laid out with Bulma columns and a
   two-column Bulma grid instead of Bulma 0.9's tiles, which Bulma 1.0 no longer has. A site that sets its own
-  `cssFiles` must load Bulma 1.0 or later, or its pages lose their layout; `check` warns about a stylesheet still
-  loading Bulma 0.x.
+  `cssFiles`, or compiles Bulma through `package.json`, must use Bulma 1.0 or later, or its pages lose their layout;
+  `check` fails on a stylesheet or dependency still on Bulma 0.x.
 - Dark mode: Bulma follows the reader's colour-scheme preference. The default background is now
   `has-background-light-soft`, which follows it too (`has-background-light` stays light in the dark theme).
   Highlighted code gets a dark set of colours (base16 Ocean) in Bulma's dark theme; both sets stay at 4.5:1 or more

@@ -1,7 +1,9 @@
 //! The `check` command: a pre-flight validation pass over the source and
 //! image trees. It walks exactly the trees `generate` would and declares the
 //! same things from them, per `vados.allium`'s `SourceTree` surface, but it
-//! never writes anything and never decodes an image. Its whole point is to
+//! never writes anything and never decodes an image. It also reads the
+//! package manifest next to the source tree, to tell whether the site's
+//! compiled stylesheet still uses Bulma before 1.0. Its whole point is to
 //! find every problem in one pass instead of stopping at the first one, so
 //! every check below runs regardless of what earlier checks found.
 
@@ -83,6 +85,7 @@ pub enum FindingKind {
     UnresolvedLatestSource,
     UnknownIcon,
     OutdatedBulmaStylesheet,
+    OutdatedBulmaDependency,
 }
 
 impl FindingKind {
@@ -101,7 +104,9 @@ impl FindingKind {
             | LumaEventWithoutTitle
             | UnreadablePageDate
             | MalformedSiteUrl
-            | FeedWithoutSiteUrl => Severity::Error,
+            | FeedWithoutSiteUrl
+            | OutdatedBulmaStylesheet
+            | OutdatedBulmaDependency => Severity::Error,
             ImagesManifestUnreadable
             | MissingContentFile
             | TopLevelHeadingInContent
@@ -121,8 +126,7 @@ impl FindingKind {
             | MissingStaticDir
             | StaticFileShadowedByPage
             | UnresolvedLatestSource
-            | UnknownIcon
-            | OutdatedBulmaStylesheet => Severity::Warning,
+            | UnknownIcon => Severity::Warning,
         }
     }
 }
@@ -180,7 +184,10 @@ impl fmt::Display for FindingKind {
             MissingStaticDir => "static directory does not exist",
             UnknownIcon => "icon is not a Material Design Icons name, so it is left out",
             OutdatedBulmaStylesheet => {
-                "stylesheet loads Bulma 0.x, which has the tiles vados no longer uses, so pages lose their layout"
+                "stylesheet loads Bulma before 1.0, which lacks the classes vados now lays pages out with"
+            }
+            OutdatedBulmaDependency => {
+                "package.json asks for Bulma before 1.0, so the compiled stylesheet lacks the classes vados now lays pages out with"
             }
             UnresolvedLatestSource => "page shows the latest pages from a path that matches no page",
             StaticFileShadowedByPage => {
@@ -508,6 +515,17 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
         }
     }
 
+    // The manifest sits next to the source tree, not in it. A site that
+    // compiles Bulma through `npm run build` has no `cssFiles` link naming
+    // Bulma, so this is the only place its version shows up in check.
+    if let Some((location, spec)) = outdated_bulma_dependency(source) {
+        findings.push(Finding {
+            kind: FindingKind::OutdatedBulmaDependency,
+            location,
+            detail: Some(spec),
+        });
+    }
+
     CheckReport { findings }
 }
 
@@ -762,11 +780,53 @@ fn check_luma_events(page_path: &str, events: &[LumaEvent], findings: &mut Vec<F
 }
 
 /// Whether a stylesheet link names Bulma before 1.0, as a CDN link carries
-/// it (`bulma@0.9.4`, `bulma/0.9.4`). See vados.allium's
+/// it (`bulma@0.9.4`, `bulma@~0.9`, `bulma/0.9.4`). See vados.allium's
 /// `outdated_bulma_stylesheet`.
 fn is_outdated_bulma_link(link: &str) -> bool {
     let link = link.to_ascii_lowercase();
-    ["bulma@0.", "bulma/0."].iter().any(|p| link.contains(p))
+    let version = ["bulma@", "bulma/"]
+        .iter()
+        .find_map(|prefix| link.split(prefix).nth(1));
+    version.and_then(version_major) == Some(0)
+}
+
+/// The `package.json` next to the source tree, when its Bulma dependency
+/// asks for a version before 1.0, with the manifest's location and the
+/// version spec. See vados.allium's `outdated_bulma_dependency`.
+fn outdated_bulma_dependency(source: &str) -> Option<(String, String)> {
+    let source = Path::new(source);
+    let project = match source.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new(""),
+    };
+    let path = project.join("package.json");
+    let manifest: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).ok()?).ok()?;
+    for section in ["dependencies", "devDependencies"] {
+        let Some(spec) = manifest
+            .get(section)
+            .and_then(|dependencies| dependencies.get("bulma"))
+            .and_then(|version| version.as_str())
+        else {
+            continue;
+        };
+        if version_major(spec).is_some_and(|major| major == 0) {
+            return Some((path.display().to_string(), spec.to_string()));
+        }
+    }
+    None
+}
+
+/// The first number in a version spec (`^0.9.4`, `~0.9`, `>=1.0`, `0.x`), if
+/// it has one. Specs without a number (`latest`, `*`, a path) leave the
+/// version unknown.
+fn version_major(spec: &str) -> Option<u32> {
+    let start = spec.find(|c: char| c.is_ascii_digit())?;
+    let digits: String = spec[start..]
+        .chars()
+        .take_while(|c| c.is_ascii_digit())
+        .collect();
+    digits.parse().ok()
 }
 
 #[cfg(test)]
@@ -839,6 +899,12 @@ mod tests {
 
         fn write_image(&self, rel_path: &str, contents: &str) {
             let path = self.img_source.join(rel_path);
+            fs::create_dir_all(path.parent().unwrap()).unwrap();
+            fs::write(path, contents).unwrap();
+        }
+
+        fn write_project(&self, rel_path: &str, contents: &str) {
+            let path = self.root.join(rel_path);
             fs::create_dir_all(path.parent().unwrap()).unwrap();
             fs::write(path, contents).unwrap();
         }
@@ -1595,21 +1661,85 @@ mod tests {
     }
 
     #[test]
-    fn a_bulma_0_stylesheet_is_a_warning() {
+    fn a_bulma_0_stylesheet_is_an_error() {
         assert!(is_outdated_bulma_link(
             "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
         ));
         assert!(is_outdated_bulma_link(
             "https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
         ));
+        assert!(is_outdated_bulma_link(
+            "https://cdn.jsdelivr.net/npm/bulma@~0.9.4/css/bulma.min.css"
+        ));
+        assert!(is_outdated_bulma_link(
+            "https://cdn.jsdelivr.net/npm/bulma@0/css/bulma.min.css"
+        ));
         assert!(!is_outdated_bulma_link(
             "https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
+        ));
+        assert!(!is_outdated_bulma_link(
+            "https://cdn.jsdelivr.net/npm/bulma@latest/css/bulma.min.css"
         ));
         assert!(!is_outdated_bulma_link("/css/main.min.css"));
         assert_eq!(
             FindingKind::OutdatedBulmaStylesheet.severity(),
-            Severity::Warning
+            Severity::Error
         );
+    }
+
+    #[test]
+    fn a_bulma_0_stylesheet_in_main_json_is_an_error() {
+        let site = TestSite::new("bulma_0_stylesheet");
+        let main_json = VALID_MAIN_JSON.replace(
+            r#""cssFiles": []"#,
+            r#""cssFiles": ["https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"]"#,
+        );
+        site.write_source("main.json", &main_json);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+
+        let report = site.check();
+
+        assert_eq!(count_kind(&report, FindingKind::OutdatedBulmaStylesheet), 1);
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn a_bulma_0_package_dependency_is_an_error() {
+        let site = TestSite::new("bulma_0_package");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site.write_project(
+            "package.json",
+            r#"{"devDependencies":{"sass":"^1.77.6","bulma":"^0.9.4"}}"#,
+        );
+
+        let report = site.check();
+
+        assert_eq!(count_kind(&report, FindingKind::OutdatedBulmaDependency), 1);
+        assert!(has_kind_at(
+            &report,
+            FindingKind::OutdatedBulmaDependency,
+            site.root.join("package.json").to_str().unwrap()
+        ));
+        assert!(!report.passed());
+    }
+
+    #[test]
+    fn a_bulma_1_package_dependency_is_clean() {
+        let site = TestSite::new("bulma_1_package");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("menu.json", VALID_MENU_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site.write_project(
+            "package.json",
+            r#"{"devDependencies":{"sass":"^1.77.6","bulma":"^1.0.4"}}"#,
+        );
+
+        let report = site.check();
+
+        assert!(report.findings.is_empty(), "{:?}", report.findings);
     }
 
     #[test]
