@@ -276,10 +276,15 @@ GitHub Pages and Cloudflare Pages serve for unknown paths.
 Pages are styled with [Bulma](https://bulma.io/) 1.0, by default loaded from jsDelivr. Bulma follows the reader's
 colour-scheme preference, so pages show its dark theme to readers who prefer one, and so does the default background
 (`has-background-light-soft`). Colours a site chooses -- the navbar, notification colours, brand colours of social
-icons -- stay as chosen in both themes, so pick ones that read well on either.
+icons -- stay as chosen in both themes. What sits on a chosen colour follows that colour instead of the reader's
+scheme (Bulma's `theme-light` on a light colour, `theme-dark` on a dark one), so a heading in a yellow notification
+stays dark, and a yellow navbar's menus stay light. A brand colour that is hard to see on the navbar can be overridden
+with `color` in `menu.json`.
 
 A page's own content sits in Bulma columns, with its left and right notifications in a two-column Bulma grid below it,
-read row by row; on a phone they stack in that same order. A site that sets its own `cssFiles` must load Bulma 1.0 or
+read row by row; on a phone they stack in that same order. Side by side the page fills evenly: the shorter column's
+last tile stretches down alongside the longer one, the tiles grow to end with a taller side column, and the last side
+notification grows to end with the page's content. A site that sets its own `cssFiles` must load Bulma 1.0 or
 later: Bulma 0.9's tiles are no longer used, and `check` warns about a stylesheet still loading Bulma 0.x.
 
 ## Code blocks

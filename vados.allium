@@ -3839,13 +3839,22 @@ surface PublishedPage {
         -- tile in the column it belongs to, read row by row: the left tile
         -- of each pair, then the right. On a phone the columns stack into
         -- one in that same order, without restyling the page, so the
-        -- reading order is the document order at every width.
+        -- reading order is the document order at every width. Side by side
+        -- the page fills evenly: when one column has fewer tiles, its last
+        -- tile stretches down alongside the other's (as far as Bulma's grid
+        -- lets a tile span, twelve rows); the child tiles grow to end where
+        -- a taller side column does; and the last side notification grows
+        -- to end where the page's content does.
 
     @guarantee FollowsTheReadersColourScheme
         -- With the default stylesheet a page is shown in Bulma's light or
         -- dark theme, following the reader's colour-scheme preference; the
         -- default background follows it too. Colours the maintainer chose --
-        -- the navbar, a notification, a brand colour -- stay as chosen.
+        -- the navbar, a notification, a brand colour -- stay as chosen, and
+        -- what sits on a chosen colour uses the Bulma theme matching it
+        -- (light for a colour Bulma puts dark text on, dark otherwise), so
+        -- headings and code in a notification, and the navbar's menus,
+        -- read the same in either scheme.
 
     @guarantee UnlistedPagesAreListedNowhere
         -- A page that is not listed is published like any other, in the

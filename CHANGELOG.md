@@ -13,8 +13,12 @@
   Highlighted code gets a dark set of colours (base16 Ocean) in Bulma's dark theme; both sets stay at 4.5:1 or more
   on Bulma's code background in their theme.
 - Child tiles are placed row by row, the left one of each pair first, so the reading order is the document order at
-  every width; the inline CSS `order` and the custom CSS that stacked the columns on a phone are gone. Side
-  notifications no longer stretch to fill the side column, and the page's own content box spans its column.
+  every width; the inline CSS `order` and the custom CSS that stacked the columns on a phone are gone. The page
+  still fills evenly: the shorter column's last tile spans the rows left over, the tiles grow to end with a taller
+  side column, and the last side notification grows to end with the page's content. The page's own content box now
+  spans its column.
+- Notifications and the navbar carry the Bulma theme matching their colour (`theme-light` or `theme-dark`), so
+  Markdown headings, code and menus on them stay readable in either colour scheme.
 - `vados init` scaffolds `"bulma": "^1.0.4"` and a `sass/main.scss` that uses `@use "bulma/sass" with ($primary: ...)`
   instead of the deprecated `@import`; `npm run build` passes `--load-path=node_modules --quiet-deps`. An existing
   site moving to Bulma 1.0 can make the same change by hand.
