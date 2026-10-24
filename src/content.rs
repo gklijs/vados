@@ -288,9 +288,9 @@ fn resolve_notification(
     let id = match placement {
         TilePlacement::Left => format!("sub-l-{}", index),
         TilePlacement::Right => format!("sub-r-{}", index),
-        // Side notifications get their ids from `items_to_side_notifications`;
-        // this function is only called for the two child-tile columns.
-        TilePlacement::Side | TilePlacement::SideLast => format!("sub-s-{}", index),
+        TilePlacement::Side | TilePlacement::SideLast => {
+            unreachable!("side notifications are rendered by `items_to_side_notifications`")
+        }
     };
     // The first row of child tiles is above the fold.
     let eager = index == 0;
