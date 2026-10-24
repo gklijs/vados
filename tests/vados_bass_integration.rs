@@ -182,10 +182,12 @@ fn generated_pages_match_facts_observed_on_the_live_site() {
     // Only the first two social links sit in the brand on a phone, so the
     // burger stays on screen; the third is in the burger menu instead.
     assert_eq!(index.matches("navbar-item is-hidden-desktop").count(), 2);
-    // Child tiles carry their reading order for the stacked mobile layout:
-    // left tile i is 2i, right tile i is 2i + 1.
-    assert!(index.contains(r#"id="sub-l-0" style="order: 0;""#));
-    assert!(index.contains(r#"id="sub-r-0" style="order: 1;""#));
+    // Child tiles are grid cells pinned to their column, left before right,
+    // so a phone stacks them in the order they pair up.
+    let left = index.find(r#"is-col-start-1-tablet is-col-span-2-mobile" id="sub-l-0""#);
+    let right = index.find(r#"is-col-start-2-tablet is-col-span-2-mobile" id="sub-r-0""#);
+    assert!(left.is_some() && right.is_some() && left < right);
+    assert!(!index.contains("tile is-"));
     // Footer, shared site-wide from main.json's footerContent.
     assert!(index.contains("Creative Commons Attribution-NonCommercial-ShareAlike"));
     assert!(index.contains("vados_bass"));

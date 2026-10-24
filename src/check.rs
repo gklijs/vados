@@ -82,6 +82,7 @@ pub enum FindingKind {
     StaticFileShadowedByPage,
     UnresolvedLatestSource,
     UnknownIcon,
+    OutdatedBulmaStylesheet,
 }
 
 impl FindingKind {
@@ -120,7 +121,8 @@ impl FindingKind {
             | MissingStaticDir
             | StaticFileShadowedByPage
             | UnresolvedLatestSource
-            | UnknownIcon => Severity::Warning,
+            | UnknownIcon
+            | OutdatedBulmaStylesheet => Severity::Warning,
         }
     }
 }
@@ -177,6 +179,9 @@ impl fmt::Display for FindingKind {
             UnknownDefaultImageReference => "default image reference matches no declared image",
             MissingStaticDir => "static directory does not exist",
             UnknownIcon => "icon is not a Material Design Icons name, so it is left out",
+            OutdatedBulmaStylesheet => {
+                "stylesheet loads Bulma 0.x, which has the tiles vados no longer uses, so pages lose their layout"
+            }
             UnresolvedLatestSource => "page shows the latest pages from a path that matches no page",
             StaticFileShadowedByPage => {
                 "static file has the same path as a generated page, which replaces it"
@@ -409,6 +414,17 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                     detail: Some(favicon.clone()),
                 });
             }
+        }
+        for css in main_config
+            .css_files
+            .iter()
+            .filter(|f| is_outdated_bulma_link(f))
+        {
+            findings.push(Finding {
+                kind: FindingKind::OutdatedBulmaStylesheet,
+                location: format!("{}/main.json", source),
+                detail: Some(css.clone()),
+            });
         }
         if let Some(url) = &main_config.site_url {
             if !is_site_url(url) {
@@ -743,6 +759,14 @@ fn check_luma_events(page_path: &str, events: &[LumaEvent], findings: &mut Vec<F
             report(FindingKind::DuplicateLumaEvent);
         }
     }
+}
+
+/// Whether a stylesheet link names Bulma before 1.0, as a CDN link carries
+/// it (`bulma@0.9.4`, `bulma/0.9.4`). See vados.allium's
+/// `outdated_bulma_stylesheet`.
+fn is_outdated_bulma_link(link: &str) -> bool {
+    let link = link.to_ascii_lowercase();
+    ["bulma@0.", "bulma/0."].iter().any(|p| link.contains(p))
 }
 
 #[cfg(test)]
@@ -1568,6 +1592,24 @@ mod tests {
             "/blog"
         ));
         assert!(!report.passed());
+    }
+
+    #[test]
+    fn a_bulma_0_stylesheet_is_a_warning() {
+        assert!(is_outdated_bulma_link(
+            "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css"
+        ));
+        assert!(is_outdated_bulma_link(
+            "https://cdnjs.cloudflare.com/ajax/libs/bulma/0.9.3/css/bulma.min.css"
+        ));
+        assert!(!is_outdated_bulma_link(
+            "https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css"
+        ));
+        assert!(!is_outdated_bulma_link("/css/main.min.css"));
+        assert_eq!(
+            FindingKind::OutdatedBulmaStylesheet.severity(),
+            Severity::Warning
+        );
     }
 
     #[test]

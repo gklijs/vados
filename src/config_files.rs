@@ -78,7 +78,7 @@ pub(crate) struct AuthorConfig {
 impl MainConfig {
     pub(crate) fn get_background_class(&self) -> String {
         match self.background_class.as_ref() {
-            None => String::from("has-background-light"),
+            None => String::from("has-background-light-soft"),
             Some(s) => s.clone(),
         }
     }

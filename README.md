@@ -28,7 +28,7 @@ Requires a fairly recent stable Rust toolchain (see `rust-version` in `Cargo.tom
 
 `vados init` scaffolds a fresh, deployable project into the current directory: a `root/` source tree (`main.json`,
 `menu.json`, a home `page.json`, an empty `static/` directory for [static files](#static-files-and-unlisted-pages)),
-an `imgroot/` image tree, a Sass entry that overrides Bulma's `$primary`, and a
+an `imgroot/` image tree, a Sass entry that loads Bulma with its `$primary` overridden, and a
 `netlify.toml` that builds and deploys with no further setup. It asks a few questions interactively (site title, home
 intro, primary color, footer text, site language, an optional favicon file to copy in, an optional site URL, social handles) and refuses to run if anything it would create
 already exists.
@@ -271,12 +271,23 @@ A page with `"listed": false` in its `page.json` is published in the site's layo
 side tiles, feeds or the sitemap. That suits a 404 page: `root/404/page.json` publishes `404.html`, which Netlify,
 GitHub Pages and Cloudflare Pages serve for unknown paths.
 
+## Bulma and dark mode
+
+Pages are styled with [Bulma](https://bulma.io/) 1.0, by default loaded from jsDelivr. Bulma follows the reader's
+colour-scheme preference, so pages show its dark theme to readers who prefer one, and so does the default background
+(`has-background-light-soft`). Colours a site chooses -- the navbar, notification colours, brand colours of social
+icons -- stay as chosen in both themes, so pick ones that read well on either.
+
+A page's own content sits in Bulma columns, with its left and right notifications in a two-column Bulma grid below it,
+read row by row; on a phone they stack in that same order. A site that sets its own `cssFiles` must load Bulma 1.0 or
+later: Bulma 0.9's tiles are no longer used, and `check` warns about a stylesheet still loading Bulma 0.x.
+
 ## Code blocks
 
 Fenced Markdown code blocks that name a language (```` ```rust ````, ```` ```python ````, ...) are highlighted when the
 site is generated: no script, and they read the same without one. Blocks without a language, in one vados doesn't
-know, or indented stay plain, as does inline code. The colours (GitHub's light theme, darkened where needed to stay
-readable on Bulma's code background) come from `/css/vados-highlight.css`, which only pages with highlighted code
+know, or indented stay plain, as does inline code. The colours (GitHub's light theme, and base16 Ocean in Bulma's dark
+theme, each adjusted where needed to stay readable on Bulma's code background in that theme) come from `/css/vados-highlight.css`, which only pages with highlighted code
 load. `"codeHighlight": false` in `main.json` turns it off. Building vados with `--no-default-features` leaves the
 highlighter out, about 1 MB of the binary.
 

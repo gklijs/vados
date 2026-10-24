@@ -98,65 +98,135 @@ mod engine {
         generator.finalize()
     }
 
-    /// GitHub's light colours: Bulma 0.9 has no dark mode, so code sits on
-    /// its light `pre` background whatever the reader's preference. The
-    /// theme's own background is left out for the same reason, and every
-    /// colour too faint to read on Bulma's background is darkened until it
-    /// is.
+    /// GitHub's light colours, and base16 Ocean's dark ones for readers
+    /// who prefer a dark scheme, which Bulma follows. Each theme's own
+    /// background is left out, so code sits on Bulma's `pre` background,
+    /// and every colour too faint to read on it is darkened (light) or
+    /// lightened (dark) until it is. The dark colours apply where Bulma's
+    /// dark theme does: by the reader's preference unless the page pins
+    /// light, or wherever a page pins dark.
     pub(super) fn stylesheet() -> String {
         let themes = ThemeSet::load_defaults();
-        let css = css_for_theme_with_class_style(&themes.themes["InspiredGitHub"], CLASS_STYLE)
-            .unwrap_or_default();
-        css.lines()
-            .filter(|l| !l.trim_start().starts_with("background-color"))
-            .map(|l| match l.split_once('#') {
-                Some((before, rest)) if rest.len() >= 6 => {
-                    let (hex, after) = rest.split_at(6);
-                    match super::readable(hex) {
-                        Some(color) => format!("{before}#{color}{after}"),
-                        None => l.to_string(),
-                    }
-                }
-                _ => l.to_string(),
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        let colours = |name: &str, background: [u8; 3]| {
+            let css = css_for_theme_with_class_style(&themes.themes[name], CLASS_STYLE)
+                .unwrap_or_default();
+            super::readable_rules(&css, background)
+        };
+        let light = colours("InspiredGitHub", super::LIGHT_CODE_BACKGROUND);
+        let dark = colours("base16-ocean.dark", super::DARK_CODE_BACKGROUND);
+        let mut css = String::from("/* Light: GitHub, after InspiredGitHub. */\n");
+        for (selectors, declarations) in &light {
+            css.push_str(&format!("{} {{{}}}\n", selectors.join(", "), declarations));
+        }
+        css.push_str("/* Dark: base16 Ocean. */\n@media (prefers-color-scheme: dark) {\n");
+        for (selectors, declarations) in &dark {
+            let scoped: Vec<String> = selectors
+                .iter()
+                .map(|s| format!(":root:not([data-theme=light]):not(.theme-light) {s}"))
+                .collect();
+            css.push_str(&format!("{} {{{}}}\n", scoped.join(", "), declarations));
+        }
+        css.push_str("}\n");
+        for (selectors, declarations) in &dark {
+            let scoped: Vec<String> = selectors
+                .iter()
+                .flat_map(|s| [format!("[data-theme=dark] {s}"), format!(".theme-dark {s}")])
+                .collect();
+            css.push_str(&format!("{} {{{}}}\n", scoped.join(", "), declarations));
+        }
+        css
     }
 }
 
-/// Bulma's `pre` background, which highlighted code sits on.
+/// Bulma's `pre` background, which highlighted code sits on, in its light
+/// theme: `--bulma-background`, hsl(221, 14%, 96%).
 #[cfg(feature = "highlight")]
-const CODE_BACKGROUND: [u8; 3] = [0xf5, 0xf5, 0xf5];
+const LIGHT_CODE_BACKGROUND: [u8; 3] = [0xf3, 0xf4, 0xf6];
+
+/// The same in Bulma's dark theme: hsl(221, 14%, 14%).
+#[cfg(feature = "highlight")]
+const DARK_CODE_BACKGROUND: [u8; 3] = [0x1f, 0x22, 0x29];
 
 /// WCAG's minimum contrast for body text.
 #[cfg(feature = "highlight")]
 const MIN_CONTRAST: f64 = 4.5;
 
-/// `hex` (`rrggbb`), darkened in steps until it reaches `MIN_CONTRAST`
-/// against `CODE_BACKGROUND`; `None` when it isn't a colour.
+/// A syntect theme stylesheet as rules -- each a list of selectors and its
+/// declarations -- without comments or backgrounds, and with every colour
+/// made `readable` on `background`.
 #[cfg(feature = "highlight")]
-fn readable(hex: &str) -> Option<String> {
+fn readable_rules(css: &str, background: [u8; 3]) -> Vec<(Vec<String>, String)> {
+    let mut without_comments = String::new();
+    let mut rest = css;
+    while let Some(start) = rest.find("/*") {
+        without_comments.push_str(&rest[..start]);
+        rest = rest[start..]
+            .find("*/")
+            .map_or("", |end| &rest[start + end + 2..]);
+    }
+    without_comments.push_str(rest);
+    without_comments
+        .split('}')
+        .filter_map(|rule| {
+            let (selectors, body) = rule.split_once('{')?;
+            let selectors: Vec<String> = selectors
+                .split(',')
+                .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
+                .filter(|s| !s.is_empty())
+                .collect();
+            let declarations: Vec<String> = body
+                .split(';')
+                .map(str::trim)
+                .filter(|d| !d.is_empty() && !d.starts_with("background"))
+                .map(|d| match d.split_once('#') {
+                    Some((before, hex)) if hex.len() >= 6 => {
+                        match readable(&hex[..6], background) {
+                            Some(colour) => format!("{before}#{colour}{}", &hex[6..]),
+                            None => d.to_string(),
+                        }
+                    }
+                    _ => d.to_string(),
+                })
+                .collect();
+            (!selectors.is_empty() && !declarations.is_empty())
+                .then(|| (selectors, format!(" {}; ", declarations.join("; "))))
+        })
+        .collect()
+}
+
+/// `hex` (`rrggbb`), moved away from `background` in steps -- darkened on a
+/// light background, lightened on a dark one -- until it reaches
+/// `MIN_CONTRAST` against it; `None` when it isn't a colour.
+#[cfg(feature = "highlight")]
+fn readable(hex: &str, background: [u8; 3]) -> Option<String> {
     let channel = |i: usize| u8::from_str_radix(hex.get(i..i + 2)?, 16).ok();
     let mut rgb = [channel(0)?, channel(2)?, channel(4)?];
-    while contrast(rgb, CODE_BACKGROUND) < MIN_CONTRAST {
-        rgb = rgb.map(|c| (c as f64 * 0.9) as u8);
+    let on_dark = luminance(background) < 0.5;
+    while contrast(rgb, background) < MIN_CONTRAST {
+        rgb = if on_dark {
+            rgb.map(|c| c + ((255 - c) as f64 * 0.1).ceil() as u8)
+        } else {
+            rgb.map(|c| (c as f64 * 0.9) as u8)
+        };
     }
     Some(format!("{:02x}{:02x}{:02x}", rgb[0], rgb[1], rgb[2]))
 }
 
 #[cfg(feature = "highlight")]
+fn luminance(rgb: [u8; 3]) -> f64 {
+    let [r, g, b] = rgb.map(|c| {
+        let c = c as f64 / 255.0;
+        if c <= 0.03928 {
+            c / 12.92
+        } else {
+            ((c + 0.055) / 1.055).powf(2.4)
+        }
+    });
+    0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+#[cfg(feature = "highlight")]
 fn contrast(a: [u8; 3], b: [u8; 3]) -> f64 {
-    let luminance = |rgb: [u8; 3]| {
-        let [r, g, b] = rgb.map(|c| {
-            let c = c as f64 / 255.0;
-            if c <= 0.03928 {
-                c / 12.92
-            } else {
-                ((c + 0.055) / 1.055).powf(2.4)
-            }
-        });
-        0.2126 * r + 0.7152 * g + 0.0722 * b
-    };
     let (la, lb) = (luminance(a), luminance(b));
     (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
 }
@@ -226,26 +296,80 @@ mod tests {
     fn the_stylesheet_colours_the_classes_without_a_background() {
         let css = stylesheet();
         assert!(css.contains(".hl-"), "{css}");
-        assert!(!css.contains("background-color"), "{css}");
+        assert!(!css.contains("background"), "{css}");
     }
 
     #[test]
-    fn every_colour_in_the_stylesheet_is_readable_on_bulmas_code_background() {
+    fn dark_colours_follow_bulmas_dark_theme() {
         let css = stylesheet();
-        let colours: Vec<&str> = css.split('#').skip(1).map(|r| &r[..6]).collect();
-        assert!(!colours.is_empty());
-        for hex in colours {
-            let channel = |i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap();
-            let rgb = [channel(0), channel(2), channel(4)];
-            assert!(contrast(rgb, CODE_BACKGROUND) >= MIN_CONTRAST, "#{hex}");
+        assert!(css.contains("@media (prefers-color-scheme: dark)"), "{css}");
+        assert!(
+            css.contains(":root:not([data-theme=light]):not(.theme-light) .hl-"),
+            "{css}"
+        );
+        assert!(css.contains("[data-theme=dark] .hl-"), "{css}");
+        assert!(css.contains(".theme-dark .hl-"), "{css}");
+    }
+
+    /// The colours of the rules inside and outside the dark scopes.
+    fn colours(css: &str) -> (Vec<[u8; 3]>, Vec<[u8; 3]>) {
+        let (mut light, mut dark) = (vec![], vec![]);
+        let mut in_media = false;
+        for line in css.lines() {
+            if line.starts_with("@media") {
+                in_media = true;
+                continue;
+            }
+            if line == "}" {
+                in_media = false;
+                continue;
+            }
+            let is_dark = in_media || line.starts_with("[data-theme=dark]");
+            for hex in line.split('#').skip(1).map(|r| &r[..6]) {
+                let channel = |i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap();
+                let rgb = [channel(0), channel(2), channel(4)];
+                if is_dark {
+                    dark.push(rgb)
+                } else {
+                    light.push(rgb)
+                }
+            }
+        }
+        (light, dark)
+    }
+
+    #[test]
+    fn every_colour_is_readable_on_bulmas_code_background_in_its_theme() {
+        let (light, dark) = colours(&stylesheet());
+        assert!(!light.is_empty() && !dark.is_empty());
+        for rgb in light {
+            assert!(
+                contrast(rgb, LIGHT_CODE_BACKGROUND) >= MIN_CONTRAST,
+                "{rgb:?}"
+            );
+        }
+        for rgb in dark {
+            assert!(
+                contrast(rgb, DARK_CODE_BACKGROUND) >= MIN_CONTRAST,
+                "{rgb:?}"
+            );
         }
     }
 
     #[test]
-    fn readable_leaves_dark_colours_alone_and_darkens_faint_ones() {
-        assert_eq!(readable("323232").as_deref(), Some("323232"));
-        let darkened = readable("b3b3b3").unwrap();
-        assert_ne!(darkened, "b3b3b3");
-        assert_eq!(readable("zzzzzz"), None);
+    fn readable_leaves_contrasting_colours_alone_and_moves_faint_ones() {
+        assert_eq!(
+            readable("323232", LIGHT_CODE_BACKGROUND).as_deref(),
+            Some("323232")
+        );
+        let darkened = readable("b3b3b3", LIGHT_CODE_BACKGROUND).unwrap();
+        assert!(darkened.as_str() < "b3b3b3", "{darkened}");
+        assert_eq!(
+            readable("c0c5ce", DARK_CODE_BACKGROUND).as_deref(),
+            Some("c0c5ce")
+        );
+        let lightened = readable("65737e", DARK_CODE_BACKGROUND).unwrap();
+        assert!(lightened.as_str() > "65737e", "{lightened}");
+        assert_eq!(readable("zzzzzz", LIGHT_CODE_BACKGROUND), None);
     }
 }

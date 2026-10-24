@@ -38,8 +38,35 @@ impl Color {
 pub(crate) fn default_css_links() -> Vec<String> {
     // No icon font: icons are inlined as SVG (see `icons.rs`).
     vec![String::from(
-        "https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css",
+        "https://cdn.jsdelivr.net/npm/bulma@1.0.4/css/bulma.min.css",
     )]
+}
+
+/// Where a notification sits on its page. Child tiles are cells of a
+/// two-column Bulma grid, read row by row: on a phone every cell spans both
+/// columns, so they stack in the order they pair up on wider screens. See
+/// `vados.allium`'s `ChildTilesPairUp`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TilePlacement {
+    /// The left column of the child tiles.
+    Left,
+    /// The right column of the child tiles.
+    Right,
+    /// The side column, next to the page's own content.
+    Side,
+}
+
+impl TilePlacement {
+    /// The classes to add after the notification's own, with a leading
+    /// space.
+    pub(crate) fn to_css_classes(self) -> &'static str {
+        match self {
+            TilePlacement::Left => " cell mb-0 is-col-start-1-tablet is-col-span-2-mobile",
+            TilePlacement::Right => " cell mb-0 is-col-start-2-tablet is-col-span-2-mobile",
+            // A link is inline by default; the grid makes cells blocks.
+            TilePlacement::Side => " is-block",
+        }
+    }
 }
 
 pub(crate) fn default_js_links() -> Vec<String> {
