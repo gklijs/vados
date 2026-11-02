@@ -9,17 +9,21 @@
 
 use crate::config_files::{
     is_site_url, ChildOrder, ImageList, MainConfig, MenuConfig, Notification, PageConfig,
+    PageSelection,
 };
 use crate::content::{
-    classify_content_reference, get_file_path, has_top_level_heading, ContentKind,
+    classify_content_reference, get_content, get_file_path, has_top_level_heading, ContentKind,
 };
+use crate::event::agenda_calendar_href;
 use crate::files::{
     get_all_directory_paths, get_page_directory_paths, get_static_files, static_dir_path,
 };
-use crate::icons::is_known_icon;
+use crate::icons::{is_known_icon, suggest_icons};
 use crate::image::reference_key_for;
+use crate::link_check::{headers_file_findings, page_links_in};
 use crate::luma::{is_luma_event_id, LumaEvent};
 use crate::page_date::PageDate;
+use crate::search::SEARCH_PATH;
 use crate::structure::{is_recognized_social_provider, parent_path};
 use crate::ui_text::is_translated;
 use std::collections::{HashMap, HashSet};
@@ -87,6 +91,21 @@ pub enum FindingKind {
     OutdatedBulmaStylesheet,
     OutdatedBulmaDependency,
     BulmaSassImport,
+    EmptyFeed,
+    UnresolvedSelectionSource,
+    SpareTileLinkMatchesNoPage,
+    NoindexedPageIsListed,
+    InvalidEvent,
+    EventWithoutSiteUrl,
+    BrokenInternalLink,
+    MissingLinkFragment,
+    MissingAsset,
+    BrokenExternalLink,
+    BrokenContentLink,
+    HeadersFileProblem,
+    OutputUnreadable,
+    SelectionDepthOfZero,
+    CalendarFileCollision,
 }
 
 impl FindingKind {
@@ -107,7 +126,12 @@ impl FindingKind {
             | MalformedSiteUrl
             | FeedWithoutSiteUrl
             | OutdatedBulmaStylesheet
-            | OutdatedBulmaDependency => Severity::Error,
+            | OutdatedBulmaDependency
+            | InvalidEvent
+            | BrokenInternalLink
+            | MissingLinkFragment
+            | MissingAsset
+            | OutputUnreadable => Severity::Error,
             ImagesManifestUnreadable
             | MissingContentFile
             | TopLevelHeadingInContent
@@ -128,7 +152,17 @@ impl FindingKind {
             | StaticFileShadowedByPage
             | UnresolvedLatestSource
             | UnknownIcon
-            | BulmaSassImport => Severity::Warning,
+            | BulmaSassImport
+            | EmptyFeed
+            | UnresolvedSelectionSource
+            | SpareTileLinkMatchesNoPage
+            | NoindexedPageIsListed
+            | EventWithoutSiteUrl
+            | BrokenExternalLink
+            | BrokenContentLink
+            | HeadersFileProblem
+            | SelectionDepthOfZero
+            | CalendarFileCollision => Severity::Warning,
         }
     }
 }
@@ -197,6 +231,29 @@ impl fmt::Display for FindingKind {
             UnresolvedLatestSource => "page shows the latest pages from a path that matches no page",
             StaticFileShadowedByPage => {
                 "static file has the same path as a generated page, which replaces it"
+            }
+            EmptyFeed => "page publishes a feed, but no dated page matches it, so it has no entries",
+            UnresolvedSelectionSource => {
+                "a feed, agenda or search draws from a path that matches no page"
+            }
+            SpareTileLinkMatchesNoPage => "spare tile link matches no page",
+            NoindexedPageIsListed => {
+                "page is kept out of search engines but is still in a menu or side tiles; set \"listed\": false if that isn't meant"
+            }
+            InvalidEvent => "event is not valid, so it is left off the page",
+            EventWithoutSiteUrl => {
+                "site has events or agendas, but main.json has no usable siteUrl, so no calendar files are written"
+            }
+            BrokenInternalLink => "link points at a page that was not generated",
+            MissingLinkFragment => "link points at an anchor that isn't on the target page",
+            MissingAsset => "page or stylesheet refers to a file that was not generated",
+            BrokenExternalLink => "link to another site looks broken",
+            BrokenContentLink => "content links to a page that doesn't exist",
+            HeadersFileProblem => "_headers file has something a host may reject",
+            OutputUnreadable => "generated site could not be read",
+            SelectionDepthOfZero => "a feed, agenda or search with depth 0 selects no pages below its sources",
+            CalendarFileCollision => {
+                "event page's calendar file has the same address as an agenda's, which replaces it"
             }
             DatedPageWithoutSummary => {
                 "dated page has no summary, so search engines and feeds have no description of it"
@@ -309,7 +366,26 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
 
     let static_dir = main_config.as_ref().and_then(|c| c.static_dir.as_deref());
     let pages = collect_pages(source, static_dir, &mut findings);
-    let page_paths: HashSet<&str> = pages.keys().map(|p| p.as_str()).collect();
+    let mut page_paths: HashSet<&str> = pages.keys().map(|p| p.as_str()).collect();
+    // `generate` publishes a search page when the site has none of its own.
+    let search = main_config.as_ref().and_then(MainConfig::get_search);
+    if search.is_some() {
+        page_paths.insert(SEARCH_PATH);
+    }
+
+    // What a content link can point at: a page, or a static file, some of which
+    // have no extension, like `_redirects` or `LICENSE`.
+    let static_paths: Vec<String> = static_dir
+        .map(|d| get_static_files(source, d))
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(published, _)| published)
+        .collect();
+    let link_targets: HashSet<&str> = page_paths
+        .iter()
+        .copied()
+        .chain(static_paths.iter().map(String::as_str))
+        .collect();
 
     if let Some(menu_config) = &menu_config {
         for item in &menu_config.main_menu {
@@ -342,7 +418,7 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                 findings.push(Finding {
                     kind: FindingKind::UnknownIcon,
                     location: url.clone(),
-                    detail: Some(icon.clone()),
+                    detail: Some(unknown_icon_detail(icon)),
                 });
             }
         }
@@ -361,11 +437,22 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
 
     for (path, page_config) in &pages {
         check_content_reference(source, path, &page_config.content, &mut findings);
+        let references = std::iter::once(&page_config.content).chain(
+            page_config
+                .left_notifications
+                .iter()
+                .flatten()
+                .chain(page_config.right_notifications.iter().flatten())
+                .map(|n| &n.content),
+        );
+        for reference in references {
+            check_content_links(source, path, path, reference, &link_targets, &mut findings);
+        }
         if let Some(icon) = page_config.icon.as_ref().filter(|i| !is_known_icon(i)) {
             findings.push(Finding {
                 kind: FindingKind::UnknownIcon,
                 location: path.clone(),
-                detail: Some(icon.clone()),
+                detail: Some(unknown_icon_detail(icon)),
             });
         }
         if has_top_level_heading(source, path, &page_config.content) {
@@ -405,6 +492,17 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
             &mut findings,
         );
         check_page_date(path, page_config, &pages, &mut findings);
+        check_page_selections(path, page_config, &pages, &page_paths, &mut findings);
+        check_noindex(path, page_config, menu_config.as_ref(), &mut findings);
+        if let Some(Err(problems)) = page_config.event.as_ref().map(|e| e.resolve()) {
+            for problem in problems {
+                findings.push(Finding {
+                    kind: FindingKind::InvalidEvent,
+                    location: path.clone(),
+                    detail: Some(problem),
+                });
+            }
+        }
         for source in page_config.latest.iter().flat_map(|l| l.sources()) {
             if !page_paths.contains(source) {
                 findings.push(Finding {
@@ -418,6 +516,14 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
 
     if let Some(main_config) = &main_config {
         check_content_reference(source, "/", &main_config.footer_content, &mut findings);
+        check_content_links(
+            source,
+            "/",
+            &format!("{}/main.json", source),
+            &main_config.footer_content,
+            &link_targets,
+            &mut findings,
+        );
         if let Some(favicon) = &main_config.favicon {
             if !Path::new(&format!("{}/{}", source, favicon)).is_file() {
                 findings.push(Finding {
@@ -470,6 +576,8 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                     detail: Some(static_dir.clone()),
                 });
             }
+            let static_headers = static_dir_path(source, static_dir).join("_headers");
+            findings.extend(headers_file_findings(&static_headers));
             let mut shadowed: Vec<(String, String)> = get_static_files(source, static_dir)
                 .into_iter()
                 .filter_map(|(published, from)| {
@@ -511,6 +619,48 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                 detail: None,
             });
         }
+        let has_calendars = pages
+            .values()
+            .any(|p| p.event.is_some() || p.get_agenda().is_some());
+        if main_config.get_site_url().is_none() && has_calendars {
+            findings.push(Finding {
+                kind: FindingKind::EventWithoutSiteUrl,
+                location: format!("{}/main.json", source),
+                detail: None,
+            });
+        }
+        for link in main_config.spare_tile.iter().flat_map(|s| &s.links) {
+            // A file at a fixed address (`/feed.xml`) isn't a page.
+            let names_a_file = link.url.rsplit('/').next().is_some_and(|l| l.contains('.'));
+            if link.url.starts_with('/') && !names_a_file && !page_paths.contains(link.url.as_str())
+            {
+                findings.push(Finding {
+                    kind: FindingKind::SpareTileLinkMatchesNoPage,
+                    location: format!("{}/main.json", source),
+                    detail: Some(link.url.clone()),
+                });
+            }
+        }
+        if search.as_ref().is_some_and(|s| s.depth == Some(0)) {
+            findings.push(Finding {
+                kind: FindingKind::SelectionDepthOfZero,
+                location: format!("{}/main.json", source),
+                detail: None,
+            });
+        }
+        for from in search
+            .iter()
+            .flat_map(|s| s.from.iter())
+            .flat_map(|f| f.paths())
+        {
+            if !page_paths.contains(from) {
+                findings.push(Finding {
+                    kind: FindingKind::UnresolvedSelectionSource,
+                    location: format!("{}/main.json", source),
+                    detail: Some(from.to_string()),
+                });
+            }
+        }
         if !is_translated(main_config.get_language()) {
             findings.push(Finding {
                 kind: FindingKind::UntranslatedInterfaceLanguage,
@@ -540,6 +690,24 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
     }
 
     CheckReport { findings }
+}
+
+/// The usable `siteUrl` in the source's main.json, if it can be read.
+pub fn usable_site_url(source: &str) -> Option<String> {
+    let file = File::open(format!("{}/main.json", source)).ok()?;
+    let config: MainConfig = serde_json::from_reader(file).ok()?;
+    config.get_site_url().map(String::from)
+}
+
+/// The name `check` couldn't find, and what to use instead when something
+/// close exists.
+fn unknown_icon_detail(icon: &str) -> String {
+    match suggest_icons(icon).as_slice() {
+        [] => {
+            format!("{icon}; pick a name from https://pictogrammers.com/library/mdi/ or remove it")
+        }
+        suggestions => format!("{icon}; did you mean {}?", suggestions.join(", ")),
+    }
 }
 
 fn read_json<T: serde::de::DeserializeOwned>(
@@ -746,7 +914,11 @@ fn check_page_date(
             let parent_orders_by_date = parent
                 .and_then(|p| p.child_order)
                 .is_some_and(|o| o != ChildOrder::Order);
-            let parent_publishes_feed = parent.is_some_and(|p| p.get_feed().is_some());
+            // A feed that names its sources picks its pages, and undated
+            // ones under it were never meant for it.
+            let parent_publishes_feed = parent
+                .and_then(PageConfig::get_feed)
+                .is_some_and(|f| f.from.is_none());
             // One warning per undated page: being left out of a feed is the
             // more consequential of the two.
             let kind = if parent_publishes_feed {
@@ -767,12 +939,144 @@ fn check_page_date(
     }
 }
 
+/// Links in a page's own content to pages that don't exist, without needing a
+/// build. Only addresses that can only be a page: anything naming a file could
+/// be a static file or something `generate` writes, which `--output` checks.
+fn check_content_links(
+    source: &str,
+    path: &str,
+    location: &str,
+    reference: &str,
+    link_targets: &HashSet<&str>,
+    findings: &mut Vec<Finding>,
+) {
+    let readable = match classify_content_reference(reference) {
+        ContentKind::Unrecognised => false,
+        ContentKind::InlineHtml => true,
+        ContentKind::MarkdownFile | ContentKind::HtmlFile => {
+            Path::new(&get_file_path(source, path, reference)).exists()
+        }
+    };
+    if !readable {
+        return;
+    }
+    for target in page_links_in(&get_content(source, path, reference, false)) {
+        let page = target.trim_end_matches('/');
+        let page = if page.is_empty() { "/" } else { page };
+        if !link_targets.contains(page) {
+            findings.push(Finding {
+                kind: FindingKind::BrokenContentLink,
+                location: String::from(location),
+                detail: Some(target),
+            });
+        }
+    }
+}
+
+/// What a page's feed and agenda draw from.
+fn check_page_selections(
+    page_path: &str,
+    page_config: &PageConfig,
+    pages: &HashMap<String, PageConfig>,
+    page_paths: &HashSet<&str>,
+    findings: &mut Vec<Finding>,
+) {
+    let feed = page_config.get_feed();
+    let agenda = page_config.get_agenda();
+    let sources = feed
+        .iter()
+        .flat_map(|f| f.from.iter())
+        .chain(agenda.iter().flat_map(|a| a.from.iter()))
+        .flat_map(|f| f.paths());
+    for from in sources {
+        if !page_paths.contains(from) {
+            findings.push(Finding {
+                kind: FindingKind::UnresolvedSelectionSource,
+                location: String::from(page_path),
+                detail: Some(from.to_string()),
+            });
+        }
+    }
+    if feed
+        .iter()
+        .map(|f| f.depth)
+        .chain(agenda.iter().map(|a| a.depth))
+        .any(|d| d == Some(0))
+    {
+        findings.push(Finding {
+            kind: FindingKind::SelectionDepthOfZero,
+            location: String::from(page_path),
+            detail: None,
+        });
+    }
+    if agenda.is_some() {
+        let calendar = agenda_calendar_href(page_path);
+        let event_page = calendar.strip_suffix(".ics").unwrap_or_default();
+        if pages.get(event_page).is_some_and(|p| p.event.is_some()) {
+            findings.push(Finding {
+                kind: FindingKind::CalendarFileCollision,
+                location: String::from(event_page),
+                detail: Some(calendar),
+            });
+        }
+    }
+    if let Some(feed) = &feed {
+        let selection: PageSelection = feed.selection(page_path);
+        let has_entry = pages.iter().any(|(path, page)| {
+            path != page_path
+                && selection.selects(path, page.listed.unwrap_or(true))
+                && page
+                    .date
+                    .as_deref()
+                    .is_some_and(|d| d.parse::<PageDate>().is_ok())
+        });
+        if !has_entry {
+            findings.push(Finding {
+                kind: FindingKind::EmptyFeed,
+                location: String::from(page_path),
+                detail: None,
+            });
+        }
+    }
+}
+
+/// A page kept out of search engines but still advertised on the site is
+/// probably a mistake, though sometimes meant, so it's only a warning.
+fn check_noindex(
+    page_path: &str,
+    page_config: &PageConfig,
+    menu_config: Option<&MenuConfig>,
+    findings: &mut Vec<Finding>,
+) {
+    if page_config.noindex != Some(true) {
+        return;
+    }
+    let in_main_menu = menu_config.is_some_and(|m| m.main_menu.iter().any(|i| i.url == page_path));
+    let listed = page_config.listed.unwrap_or(true) && page_path != "/";
+    if in_main_menu || listed {
+        findings.push(Finding {
+            kind: FindingKind::NoindexedPageIsListed,
+            location: String::from(page_path),
+            detail: None,
+        });
+    }
+}
+
 fn check_luma_events(page_path: &str, events: &[LumaEvent], findings: &mut Vec<Finding>) {
     let mut counts: HashMap<&str, usize> = HashMap::new();
     for event in events {
         *counts.entry(event.event_id.as_str()).or_insert(0) += 1;
     }
     for event in events {
+        if let Some(Err(problems)) = event.schedule() {
+            for problem in problems {
+                findings.push(Finding {
+                    kind: FindingKind::InvalidEvent,
+                    location: String::from(page_path),
+                    detail: Some(format!("{}: {problem}", event.event_id)),
+                });
+            }
+        }
         let mut report = |kind| {
             findings.push(Finding {
                 kind,

@@ -1,0 +1,30 @@
+[hidden]{display:none!important;}
+.skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:0.5em 1em;background:#fff;color:#000;}
+.skip-link:focus{left:0.5em;top:0.5em;}
+#side-column.stretch-last>.notification:last-child{flex-grow:1;}
+#spare-tile>.box{height:100%;display:flex;flex-direction:column;justify-content:center;}
+#nav-bar{--vados-nav-ink-resolved:var(--vados-nav-ink,hsl(var(--bulma-navbar-h),var(--bulma-navbar-s),var(--bulma-navbar-item-color-l)));--vados-nav-accent-resolved:var(--vados-nav-accent,var(--vados-nav-ink-resolved));--bulma-navbar-burger-color:var(--vados-nav-ink-resolved);--bulma-navbar-dropdown-arrow:var(--vados-nav-ink-resolved);--bulma-navbar-tab-active-color:var(--vados-nav-ink-resolved);--bulma-navbar-tab-active-border-bottom-color:var(--vados-nav-accent-resolved);--bulma-navbar-tab-hover-border-bottom-color:var(--vados-nav-accent-resolved);--bulma-navbar-tab-hover-background-color:var(--vados-nav-hover,transparent);background-color:var(--vados-nav-bg,var(--bulma-navbar-background-color));}
+#nav-bar .navbar-menu{background-color:var(--vados-nav-bg,var(--bulma-navbar-background-color));}
+#nav-bar .navbar-brand>a.navbar-item,#nav-bar .navbar-start>a.navbar-item,#nav-bar .navbar-end>a.navbar-item,#nav-bar .navbar-link,#nav-bar .navbar-burger{color:var(--vados-nav-ink-resolved);}
+#nav-bar .navbar-link{background-color:transparent;}
+#nav-bar .navbar-link:hover,#nav-bar .navbar-link:focus{background-color:var(--vados-nav-hover,transparent);box-shadow:inset 0 -1px 0 var(--vados-nav-accent-resolved);}
+#nav-bar .navbar-item.is-tab.is-active,#nav-bar .navbar-link.is-active{font-weight:600;}
+#nav-bar .navbar-link.is-active{box-shadow:inset 0 -0.1875em 0 var(--vados-nav-accent-resolved);}
+#nav-bar .navbar-dropdown{--vados-nav-dropdown-ink-resolved:var(--vados-nav-dropdown-ink,var(--bulma-text-strong));--bulma-navbar-tab-active-color:var(--vados-nav-dropdown-ink-resolved);--bulma-navbar-tab-active-border-bottom-color:var(--vados-nav-dropdown-ink-resolved);--bulma-navbar-tab-hover-border-bottom-color:var(--vados-nav-dropdown-ink-resolved);--bulma-navbar-tab-hover-background-color:transparent;width:max-content;max-width:min(24rem,calc(100vw - 2rem));max-height:calc(100vh - var(--bulma-navbar-height) - 1rem);overflow-y:auto;background-color:var(--vados-nav-dropdown-bg,var(--bulma-navbar-dropdown-background-color));}
+#nav-bar .navbar-dropdown a.navbar-item,#nav-bar .navbar-dropdown a.navbar-item:not(.is-active,.is-selected){white-space:normal;color:var(--vados-nav-dropdown-ink-resolved);background-color:var(--vados-nav-dropdown-bg,hsl(var(--bulma-navbar-dropdown-item-h),var(--bulma-navbar-dropdown-item-s),calc(var(--bulma-navbar-dropdown-item-background-l) + var(--bulma-navbar-item-background-l-delta))));}
+#nav-bar a:focus-visible,#nav-bar button:focus-visible{outline:2px solid currentColor;outline-offset:-2px;}
+#nav-bar .navbar-burger{flex-shrink:0;}
+#nav-site-title{flex-shrink:1;min-width:0;}
+#nav-site-title>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+#main-menu{flex-shrink:1;min-width:0;}
+#flex-main-menu{min-width:0;flex-shrink:1;flex-wrap:wrap;}
+#nav-socials{display:flex;flex-wrap:wrap;flex-shrink:0;}
+#nav-bar .is-enhanced{display:flex;flex-wrap:wrap;align-items:stretch;}
+#nav-bar .is-enhanced>.navbar-link{flex-grow:1;padding-inline-end:0.25rem;}
+#nav-bar .is-enhanced>.navbar-link::after{display:none;}
+#nav-bar .is-enhanced>.navbar-dropdown{flex-basis:100%;}
+.nav-disclosure{appearance:none;display:inline-flex;align-items:center;justify-content:center;align-self:stretch;min-width:1.75rem;min-height:1.75rem;padding:0;background:transparent;border:0;color:var(--vados-nav-ink-resolved,inherit);cursor:pointer;}
+.nav-chevron{display:block;width:0.5em;height:0.5em;border:solid currentColor;border-width:0 2px 2px 0;transform:translateY(-0.1em) rotate(45deg);}
+.nav-disclosure[aria-expanded=true] .nav-chevron{transform:translateY(0.1em) rotate(-135deg);}
+@media (prefers-reduced-motion:no-preference){.nav-chevron{transition:transform 0.15s ease;}}
+@media (pointer:coarse){.nav-disclosure{min-width:2.75rem;min-height:2.75rem;}}

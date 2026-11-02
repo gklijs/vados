@@ -4,6 +4,7 @@
 //! `FeedEnablementRun`.
 
 use super::page::{page_dir, page_exists_at};
+use super::site_features::GivenFeedSelection;
 use crate::config_files::{is_site_url, FeedConfig, FeedSetting, MainConfig, PageConfig};
 use crate::feed::feed_href;
 use crate::json_files::{read_json, read_json_or, write_json_pretty};
@@ -77,6 +78,8 @@ pub struct FeedEnablementDetails {
     pub title: Option<String>,
     pub limit: Option<u32>,
     pub site_url: Option<String>,
+    /// Which pages it lists; the page's own direct children when not given.
+    pub selection: GivenFeedSelection,
 }
 
 /// What `page enable-feed` did, once it has. See `vados.allium`'s
@@ -115,10 +118,14 @@ pub fn enable_feed(
 
     let page_json = page_dir(source, path).join("page.json");
     let mut config = read_json_or(&page_json, || PageConfig::new(path))?;
-    let feed = FeedConfig {
+    // Only the title and limit are this command's to set; a selection the
+    // page already has stays.
+    let mut feed = FeedConfig {
         title: title.clone(),
         limit: details.limit,
+        ..config.get_feed().unwrap_or_default()
     };
+    details.selection.apply_to(&mut feed);
     // Plain `true` unless there's something to say, so page.json reads the
     // way the README shows it.
     config.feed = Some(if feed == FeedConfig::default() {
@@ -231,7 +238,7 @@ mod tests {
             FeedEnablementDetails {
                 title: Some(" Notes ".to_string()),
                 limit: Some(5),
-                site_url: None,
+                ..Default::default()
             },
         )
         .unwrap();
@@ -241,7 +248,8 @@ mod tests {
             config.get_feed(),
             Some(FeedConfig {
                 title: Some("Notes".to_string()),
-                limit: Some(5)
+                limit: Some(5),
+                ..FeedConfig::default()
             })
         );
         assert_eq!(outcome.site_url_written, None);

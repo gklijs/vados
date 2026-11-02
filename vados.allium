@@ -61,6 +61,11 @@
 --     icon-only controls (social links, the menu toggles), and structural
 --     guarantees every published page holds to -- a skip link, landmark
 --     regions, and keyboard-focusable, labelled navigation controls
+--   - Events: a page carrying validated event details, described to search
+--     engines and calendars, and agendas listing them
+--   - The optional site search, and which pages it, a feed and an agenda
+--     draw from (PageSelection)
+--   - Checking the generated output's own links (OutputCheck)
 --
 -- Excludes (implementation, deliberately not modelled):
 --   - The template engine and the individual template files / their markup,
@@ -107,6 +112,12 @@
 --     existing project. Only the bundle of inputs gathered and the resulting
 --     outcome are domain -- the same judgement already made for JSON parsing
 --     mechanics above
+--   - The iCalendar and schema.org formats themselves, and the time zone
+--     database. Only that nothing is invented for an event, that its times hold
+--     in its zone, and that its identity outlives a reschedule, are domain
+--   - The search script's mechanics. Only what is indexed, when the index is
+--     requested and how matches rank (see SiteSearchIsQuietAndAccessible) are
+--     domain
 --   - Luma's own URLs: the embed address, the register-button script
 --     address, the shape of an event's public page address, and the iframe's
 --     size and styling. These are Luma's to change (and have already moved
@@ -284,7 +295,41 @@ enum FindingKind {
 
     -- Icons.
     unknown_icon
+
+    -- Selections: a feed's, an agenda's or the search's sources.
+    empty_feed
+    unresolved_selection_source
+
+    -- Child tiles.
+    spare_tile_link_matches_no_page
+
+    -- Search engines.
+    noindexed_page_is_listed
+
+    -- Events.
+    invalid_event
+    event_without_site_url
+
+    -- The generated output (see OutputCheck).
+    broken_internal_link
+    missing_link_fragment
+    missing_asset
+    broken_external_link     -- only when asked for; only ever a warning
+    broken_content_link      -- found in source content, without a build
+    headers_file_problem     -- something a host may reject in a _headers file
+    output_unreadable        -- the generated site's directory can't be read
+    selection_depth_of_zero  -- selects nothing below its sources
+    calendar_file_collision  -- an agenda's calendar replaces an event page's
 }
+
+-- How someone attends an event.
+enum EventAttendance { online | in_person | mixed }
+
+enum EventStatus { scheduled | cancelled | postponed | rescheduled }
+
+-- What a feed entry carries as its content. A page without a summary keeps its
+-- content under `summary`, since an entry needs one or the other.
+enum FeedContent { full | summary }
 
 enum MenuLinkKind { internal | external }
 
@@ -480,6 +525,22 @@ entity SiteConfig {
     background_class: String?
     navbar_color: Color?
 
+    -- Which theme sits on the navbar, for a colour a site's own stylesheet
+    -- recolours to the opposite brightness, which vados can't see. Absent, the
+    -- theme follows the colour's default brightness in Bulma.
+    navbar_theme: light | dark | null
+
+    -- How many children a main menu dropdown lists; see DropdownsStayShort.
+    menu_dropdown_limit: Integer?
+    effective_menu_dropdown_limit:
+        menu_dropdown_limit ?? config.default_menu_dropdown_limit
+
+    -- What fills the cells child tiles leave over; see ChildTilesPairUp.
+    spare_tile: SpareTile?
+
+    -- Whether the site publishes a search; see SiteSearch.
+    search: SiteSearch?
+
     -- The site's content language, as an IETF BCP 47 tag (`"en"`, `"nl"`,
     -- `"fr-CA"`, ...). See SiteLanguageIsDeclared: every published page
     -- declares this on its root element, so assistive technology and
@@ -589,6 +650,60 @@ entity SiteConfig {
               else: extra_js_files
 }
 
+-- Which pages a feed, agenda or search draws from; the same idea as a page's
+-- latest_sources. A source selects the pages below it, at most `depth` levels
+-- down when given. Unlisted pages only come along when asked for, since
+-- "listed nowhere" otherwise includes all three.
+value PageSelection {
+    sources: List<String>
+    depth: Integer?
+    include_unlisted: Boolean
+}
+
+-- A block of links for the cells the shorter column of child tiles leaves over.
+value SpareTile {
+    title: String?
+    links: List<String>
+}
+
+-- The site search: an index of the selected pages, published with a page at
+-- "/search" unless the site has its own page there, which keeps its title, text
+-- and search-engine settings. The page vados makes for it is unlisted and
+-- noindexed. Pages with `noindex` are never indexed, whatever the selection
+-- says. See SiteSearchIsQuietAndAccessible.
+value SiteSearch {
+    selection: PageSelection
+    -- Whether the main menu gets an entry, when it names none of its own.
+    shows_in_menu: Boolean
+}
+
+-- An event as a page. Only `start` and `time_zone` are required. Nothing is
+-- invented: see EventsInventNothing. `start` and `end` carry a UTC offset and
+-- must be what `time_zone` shows at that moment, which rejects a wrong summer or
+-- winter offset and a time a clock change skips, while either occurrence of a
+-- repeated autumn hour stays valid. An invalid event is left off its page, and
+-- check reports it as invalid_event. So does one that can't be read at all,
+-- such as one missing a field: it costs only itself, not the page or the build.
+--
+-- `sequence` rises whenever the event changes, so calendar subscribers take the
+-- change. A build keeps no state to work that out, so page.json holds it, and
+-- `page set-event` raises it. The event's identity is its page's address, so it
+-- survives being rescheduled or cancelled as long as the path stays.
+value Event {
+    start: String
+    end: String?
+    time_zone: String
+    attendance: EventAttendance?
+    status: EventStatus?
+    organiser: String?
+    venue: String?
+    address: String?
+    cost: String?
+    registration_url: String?
+    virtual_url: String?
+    sequence: Integer?
+}
+
 -- One page of the site. Every directory under the source root is one page;
 -- directory nesting is page nesting. The source root is the page at "/".
 entity Page {
@@ -615,12 +730,31 @@ entity Page {
     latest_limit: given_latest_limit ?? config.default_latest_limit
     -- An unlisted page is published in the site's layout but listed
     -- nowhere: not in menus, side menus, side notifications, feeds or the
-    -- sitemap. A 404 page or a page only linked by hand is one.
+    -- sitemap. A 404 page or a page only linked by hand is one. A feed, agenda
+    -- or search can still ask for it through its PageSelection.
     listed: Boolean
+    -- A noindexed page asks search engines to follow its links but not show
+    -- it, and stays out of the sitemap and the site search. Not the same as
+    -- unlisted: an unlisted permalink can be indexed, and a listed page can
+    -- be noindexed, though check warns about that as noindexed_page_is_listed.
+    noindex: Boolean
+    -- This page's event, if it is one and it's valid.
+    event: Event?
+    -- Lists the selected pages' events on this page, soonest first. Without
+    -- sources it selects the pages below this one. Every event is in the page
+    -- and the browser hides those that have ended; see PastEventsNeedNoRebuild.
+    agenda: PageSelection?
+    -- Luma events on those pages and on this one join in when they say when
+    -- they are, which the maintainer types by hand since Luma is never asked.
+    agenda_events: soonest_first(selected_pages(agenda) where event != null)
     child_order: ChildOrder
     publishes_feed: Boolean
     given_feed_title: String?
     given_feed_limit: Integer?
+    -- Without sources a feed selects its own direct children, listed ones
+    -- only, which is what `"feed": true` always meant.
+    feed_selection: PageSelection
+    feed_content: FeedContent
     status: discovered | published
 
     -- A date that can't be read is reported and the page treated as
@@ -668,17 +802,17 @@ entity Page {
     -- "/a/b" as 2, and so on.
     depth: segment_count(path)
 
-    -- A page publishing a feed lists its dated children in it, newest first
-    -- whatever order the page itself lists them in, up to the feed's limit.
-    -- An undated child is left out: a feed entry must say when it was
-    -- published. The root's feed is titled after the site; any other after
+    -- A page publishing a feed lists the dated pages its selection takes,
+    -- newest first whatever order the page itself lists them in, up to the
+    -- feed's limit. An undated page is left out: a feed entry must say when it
+    -- was published. With no entries at all, check warns with empty_feed. The root's feed is titled after the site; any other after
     -- the site and the page together, unless page.json names it.
     feed_title:
         given_feed_title
             ?? (if is_root: run.site_config.site_title
                 else: section_feed_title(run.site_config.site_title, title))
     feed_limit: given_feed_limit ?? config.default_feed_limit
-    feed_entries: newest_first(children where published_date != null, feed_limit)
+    feed_entries: newest_first(selected_pages(feed_selection) where published_date != null, feed_limit)
 
     -- The feeds this page sits inside -- its own and every ancestor's -- so a
     -- feed reader pointed at any page of a section finds the section's
@@ -842,6 +976,14 @@ entity LumaEvent {
 
     given_display: LumaEventDisplay?
     given_button_label: String?
+
+    -- When it happens, typed by hand since Luma is never asked, and read like
+    -- an Event's. Only agendas and their calendars use these: without them the
+    -- event stays on its page and out of those. Invalid ones are reported as
+    -- invalid_event and leave it out of agendas, while it stays on its page.
+    given_start: String?
+    given_end: String?
+    given_time_zone: String?
 
     display: given_display ?? config.default_luma_event_display
     shows_event_page: display in {event_page, both}
@@ -1455,6 +1597,9 @@ config {
     -- How many of its newest pages a feed lists when page.json doesn't say.
     default_feed_limit: Integer = 20
 
+    -- How many children a main menu dropdown lists when main.json doesn't say.
+    default_menu_dropdown_limit: Integer = 12
+
     -- How many of the newest pages a page's latest_sources show when
     -- page.json doesn't say.
     default_latest_limit: Integer = 4
@@ -1488,7 +1633,12 @@ config {
         malformed_site_url,
         feed_without_site_url,
         outdated_bulma_stylesheet,
-        outdated_bulma_dependency
+        outdated_bulma_dependency,
+        invalid_event,
+        broken_internal_link,
+        missing_link_fragment,
+        missing_asset,
+        output_unreadable
     }
 
     -- The two severities themselves. Neither is adjustable; they are named here
@@ -2188,6 +2338,28 @@ rule RunStructuralChecks {
                     location: p.path,
                     detail: source
                 )
+
+        for p in run.pages where p.publishes_feed and count(p.feed_entries) = 0:
+            Finding.created(
+                run: run,
+                kind: empty_feed,
+                location: p.path
+            )
+
+        for p in run.pages where p.declares_invalid_event:
+            Finding.created(
+                run: run,
+                kind: invalid_event,
+                location: p.path,
+                detail: p.event_problem
+            )
+
+        for p in run.pages where p.noindex and p.listed and not p.is_root:
+            Finding.created(
+                run: run,
+                kind: noindexed_page_is_listed,
+                location: p.path
+            )
 
         -- A dated page still publishes without a summary; search engines and
         -- feed readers just have no description of it.
@@ -3004,6 +3176,31 @@ surface CheckInvocation {
         -- A check resolves references and asks whether files are present. It
         -- never decodes, crops or resizes an image, and never inspects image
         -- bytes for any reason.
+}
+
+-- The generated site's own links, checked by `check --output` or
+-- `generate --check-links`, since a mistake in hand-written HTML only shows in
+-- what was published.
+surface OutputCheck {
+    facing _: Maintainer
+
+    provides:
+        OutputCheckRequested(source, output)
+
+    @guarantee OutputLinksResolveAsHostsDo
+        -- Every internal link, fragment, image, srcset entry, stylesheet,
+        -- script, CSS url() and sitemap address must exist, resolved the way
+        -- static hosts do: "/agenda" is agenda.html, even with an agenda/
+        -- directory next to it. Absolute links to the site's own URL count as
+        -- internal. Each problem names its page and target.
+
+    @guarantee OutputCheckStaysOfflineUnlessAsked
+        -- No other site is contacted unless the maintainer asks. When asked,
+        -- each site gets one request at a time, and what comes back is only ever
+        -- a warning, for a clear "not there" or no answer at all: other sites'
+        -- availability must not decide whether a build passes. Addresses on
+        -- private networks are skipped, also through a redirect, so content
+        -- can't make the maintainer's machine call its own network.
 }
 
 -- What the maintainer gets back from a check: the whole list, plus the counts
@@ -3884,17 +4081,70 @@ surface PublishedPage {
         -- its own left and right notifications, the newest left, the next
         -- right and so on, so they read newest first at every width.
 
+    @guarantee MenuDropdownsAreDisclosures
+        -- A main menu entry with children is a link to its page plus a button
+        -- naming what it opens, in the interface language, with its children
+        -- out of the tab order until opened. Opening one closes the others;
+        -- Escape closes it and returns focus to the button, and when none is
+        -- open closes the burger menu and returns focus to that. Leaving it,
+        -- by focus or by a click elsewhere, closes it. Without the default
+        -- script the button is absent and hover and focus open the list.
+
+    @guarantee NoMenuItemIsOutOfReach
+        -- Whatever the width and text size, every main menu item can be
+        -- reached: a menu too wide for its bar wraps, the page stays clear of
+        -- the taller bar, and an open list stays on the screen and scrolls.
+
+    @guarantee DropdownsStayShort
+        -- A dropdown lists the first effective_menu_dropdown_limit children in
+        -- display order, then ends in a link to its section's page. Side menus
+        -- and side notifications are not cut short.
+
+    @guarantee ActiveNavItemIsReadable
+        -- A navbar item is active on its own page and the pages below it, by
+        -- whole path segments, and the exact page is marked as current for
+        -- assistive technology. An entry for the home page is active only there.
+        -- An active item takes the bar's own text colour, plus a non-colour cue. The bar, its open burger panel, controls and focus
+        -- ring follow custom properties a site can set; see the README.
+
+    @guarantee UnknownIconsLeaveNoGap
+        -- An icon name vados doesn't know leaves nothing behind where the
+        -- icon would have been. check names close alternatives when there are any.
+
+    @guarantee EventsInventNothing
+        -- A detail page.json doesn't give an event is shown as not confirmed,
+        -- and left out of structured data and calendar files. A missing cost
+        -- never means free; a registration link is never taken for where to
+        -- attend. An event page's structured data describes an Event instead of
+        -- a BlogPosting, and with a usable site URL it and every agenda publish
+        -- a calendar file.
+
+    @guarantee PastEventsNeedNoRebuild
+        -- An agenda's page holds every event it selects, and the browser hides
+        -- those that have ended, so a page cached for days stays correct.
+        -- Without a script every event stays visible.
+
+    @guarantee SiteSearchIsQuietAndAccessible
+        -- Nothing is requested until a non-empty search is submitted, and only
+        -- from the site itself. Every word must match, ignoring accents and
+        -- case; title matches come first, then the newest. Result counts are
+        -- announced to assistive technology, focus stays in the input, and
+        -- without a script the page says that search needs one.
+
     @guarantee ChildTilesPairUp
         -- A page's child tiles -- its latest pages, then its own left and
         -- right notifications -- sit in two columns of equal width, each
         -- tile in the column it belongs to, read row by row: the left tile
         -- of each pair, then the right. On a phone the columns stack into
         -- one in that same order, without restyling the page, so the
-        -- reading order is the document order at every width. Side by side
-        -- the page fills evenly: when one column has fewer tiles, its last
-        -- tile stretches down alongside the other's (as far as Bulma's grid
-        -- lets a tile span, twelve rows); the child tiles grow to end where
-        -- a taller side column does; and, only when the site sets
+        -- reading order is the document order at every width. Side by side,
+        -- when one column has fewer tiles, the site's spare_tile fills the
+        -- cells it is missing, on a tablet and wider only, since stacked tiles
+        -- leave none over. Without a spare tile, the last tile stretches down
+        -- alongside the other column's (as far as Bulma's grid lets a tile span,
+        -- twelve rows), unless it shows an image: that would look like a large
+        -- empty block, so those cells stay empty. The child tiles grow to end
+        -- where a taller side column does; and, only when the site sets
         -- stretch_side_notification, the last side notification grows to
         -- end where the page's content does.
 
@@ -3954,6 +4204,11 @@ surface PublishedPage {
 ------------------------------------------------------------
 -- Open Questions
 ------------------------------------------------------------
+
+-- `page set-event` and its siblings (`page enable-agenda`, `page set-noindex`,
+-- `search enable`, `spare-tile set`/`remove`, `navbar set`) are plain settings
+-- without a Run entity of their own, unlike the older authoring commands.
+open question "Do the simple settings commands need Run entities, or is a validated write enough?"
 
 -- PagePathIsUnique and SingleRootPage are stated invariants with no
 -- corresponding check finding, on the reasoning that a directory tree cannot

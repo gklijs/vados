@@ -93,6 +93,32 @@ pub struct LumaEventAttachmentDetails {
     pub title: String,
     pub display: Option<LumaEventDisplay>,
     pub button_label: Option<String>,
+    /// When it happens, for agendas and calendars; see `schedule_problems`.
+    pub start: Option<String>,
+    pub end: Option<String>,
+    pub time_zone: Option<String>,
+}
+
+/// What's wrong with when a Luma event says it happens, if anything. Nothing
+/// has to be given, but what is given must hold, like a page event's times.
+pub fn schedule_problems(
+    start: Option<String>,
+    end: Option<String>,
+    time_zone: Option<String>,
+) -> Vec<String> {
+    let event = LumaEvent {
+        event_id: String::new(),
+        title: None,
+        display: None,
+        button_label: None,
+        start,
+        end,
+        time_zone,
+    };
+    match event.schedule() {
+        Some(Err(problems)) => problems,
+        _ => vec![],
+    }
 }
 
 /// What `page add-luma-event` linked, once it has. See `vados.allium`'s
@@ -128,6 +154,9 @@ pub fn attach_luma_event(
             title: Some(title.clone()),
             display: details.display,
             button_label,
+            start: details.start,
+            end: details.end,
+            time_zone: details.time_zone,
         });
     write_json_pretty(page_dir(source, path).join("page.json"), &config)?;
     Ok(LumaEventAttachedOutcome {
@@ -182,6 +211,9 @@ mod tests {
             title: String::from(title),
             display: None,
             button_label: None,
+            start: None,
+            end: None,
+            time_zone: None,
         }
     }
 
@@ -250,6 +282,9 @@ mod tests {
                 title: String::from("Gig"),
                 display: Some(LumaEventDisplay::Both),
                 button_label: Some(String::from("Sign up")),
+                start: None,
+                end: None,
+                time_zone: None,
             },
         )
         .unwrap();

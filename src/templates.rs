@@ -1,4 +1,5 @@
 use crate::bulma::{ImageType, TilePlacement};
+use crate::config_files::SpareTileLink;
 use crate::page_date::PageDate;
 use crate::structure::MenuType::Internal;
 use crate::structure::{MenuItem, SocialItem};
@@ -39,6 +40,12 @@ pub(crate) struct PageTemplate<'a> {
     pub(crate) css_links: &'a [String],
     pub(crate) js_links: &'a [String],
     pub(crate) luma_button_script: Option<&'a str>,
+    /// `<meta name="robots">`: see `Item.noindex`.
+    pub(crate) robots: &'a str,
+    /// What vados adds to this page's main area itself: an agenda or search.
+    pub(crate) page_extra: Option<String>,
+    /// Scripts only this page needs, after the site's own.
+    pub(crate) page_scripts: Vec<&'a str>,
 }
 
 /// What a page tells link previews (Open Graph, X cards) and search engines
@@ -85,7 +92,7 @@ pub(crate) struct NavigationTemplate<'a> {
     pub(crate) path: &'a str,
     pub(crate) ui: &'a UiText,
     pub(crate) site_title: &'a str,
-    pub(crate) color: &'a str,
+    pub(crate) color: String,
     pub(crate) main_menu: &'a Vec<MenuItem>,
     pub(crate) socials: &'a Vec<SocialItem>,
     pub(crate) side_menu: Option<&'a String>,
@@ -138,6 +145,7 @@ pub(crate) struct ContentTemplate<'a> {
     pub(crate) image: Option<String>,
     pub(crate) content: String,
     pub(crate) feed: Option<FeedLink>,
+    pub(crate) event_details: Option<String>,
     pub(crate) ui: &'a UiText,
 }
 
@@ -195,4 +203,54 @@ pub(crate) struct InternalImageTemplate<'a> {
     pub(crate) width: u32,
     pub(crate) height: u32,
     pub(crate) alt: &'a str,
+}
+
+#[derive(Template)]
+#[template(path = "spare_tile.html")]
+pub(crate) struct SpareTileTemplate<'a> {
+    pub(crate) title: Option<&'a str>,
+    pub(crate) links: &'a [SpareTileLink],
+    pub(crate) start_class: &'a str,
+    pub(crate) rows: usize,
+}
+
+#[derive(Template)]
+#[template(path = "event_details.html")]
+pub(crate) struct EventDetailsTemplate<'a> {
+    pub(crate) ui: &'a UiText,
+    pub(crate) status: Option<&'a str>,
+    pub(crate) start: &'a str,
+    pub(crate) when: String,
+    pub(crate) rows: Vec<(&'static str, String)>,
+    pub(crate) registration_url: Option<&'a str>,
+    pub(crate) virtual_url: Option<&'a str>,
+    pub(crate) calendar_href: Option<String>,
+}
+
+/// One line of an agenda.
+pub(crate) struct AgendaEntry {
+    pub(crate) url: String,
+    pub(crate) title: String,
+    pub(crate) start: String,
+    /// When it's over, which decides when the browser hides it.
+    pub(crate) ends: String,
+    pub(crate) when: String,
+    pub(crate) status: Option<&'static str>,
+    pub(crate) summary: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "agenda.html")]
+pub(crate) struct AgendaTemplate<'a> {
+    pub(crate) ui: &'a UiText,
+    pub(crate) events: Vec<AgendaEntry>,
+    pub(crate) calendar_href: Option<String>,
+}
+
+#[derive(Template)]
+#[template(path = "search.html")]
+pub(crate) struct SearchTemplate<'a> {
+    pub(crate) ui: &'a UiText,
+    pub(crate) path: &'a str,
+    pub(crate) index_href: &'a str,
 }

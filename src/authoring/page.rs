@@ -202,6 +202,9 @@ pub fn create_page(
         child_order: details.child_order,
         feed: None,
         latest: None,
+        noindex: None,
+        event: None,
+        agenda: None,
     };
 
     let dir = page_dir(source, given_path);

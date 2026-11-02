@@ -264,6 +264,9 @@ fn authoring_every_kind_of_content_still_checks_clean() {
             title: "Team day".to_string(),
             display: Some(LumaEventDisplay::Both),
             button_label: None,
+            start: None,
+            end: None,
+            time_zone: None,
         },
     )
     .unwrap();
@@ -325,6 +328,9 @@ fn a_linked_luma_event_is_published_on_its_own_page_only() {
             title: "Jam night".to_string(),
             display: Some(LumaEventDisplay::RegisterButton),
             button_label: Some("Sign up".to_string()),
+            start: None,
+            end: None,
+            time_zone: None,
         },
     )
     .unwrap();
@@ -539,6 +545,7 @@ fn a_section_with_a_feed_publishes_its_newest_dated_posts_as_atom() {
             title: None,
             limit: Some(2),
             site_url: Some("https://example.com/".to_string()),
+            ..Default::default()
         },
     )
     .unwrap();

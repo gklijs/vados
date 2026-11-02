@@ -75,6 +75,9 @@ mod tests {
         structure.add_item(page("/blog", None, true));
         structure.add_item(page("/blog/a&b", Some("2026-10-22"), true));
         structure.add_item(page("/404", None, false));
+        let mut hidden = PageConfig::new("/check-your-email");
+        hidden.noindex = Some(true);
+        structure.add_item(Item::new(String::from("/check-your-email"), hidden));
 
         let xml = sitemap("https://example.com", &structure);
         assert_eq!(

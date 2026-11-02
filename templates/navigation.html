@@ -5,16 +5,20 @@
             <span></span><span></span><span></span>
         </button>
         {% endif %}
-        <a class="{% if path.len() <= 1 %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="/" id="nav-site-title">
+        <a class="{% if path.len() <= 1 %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="/" id="nav-site-title"{% if path.len() <= 1 %} aria-current="page"{% endif %}>
             <span class="is-large">{{ site_title }}</span>
         </a>
         {# Only the first two fit next to the title and burger on a phone; the rest are in the burger menu. #}
         {% for s in socials %}
         {% if loop.index0 < 2 %}
         <a class="navbar-item is-hidden-desktop" href="{{ s.get_url() }}" target="_blank" rel="me noopener" aria-label="{{ s.get_label() }}">
+            {% if crate::icons::is_known_icon(s.get_icon()) %}
             <span class="icon" style="color: #{{ s.get_color() }};">
                 {{ crate::icons::icon_svg(s.get_icon(), 24)|safe }}
             </span>
+            {% else %}
+            <span>{{ s.get_label() }}</span>
+            {% endif %}
         </a>
         {% endif %}
         {% endfor %}
@@ -25,29 +29,28 @@
             {% for menu_item in main_menu %}
             {% match menu_item.children %}
             {% when Some with (children) %}
-            <div class="navbar-item has-dropdown is-hoverable">
-                <a class="{% if path.starts_with(menu_item.url) %}navbar-link is-active{% else %}navbar-link{% endif %}" href="{{ menu_item.url }}" target="_self">
-                    {% if let Some(icon) = menu_item.icon %}
-                    <span class="icon">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
-                    {% endif %}
+            <div class="navbar-item has-dropdown is-hoverable" data-nav-disclosure>
+                <a class="{% if crate::structure::is_within(path, menu_item.url) %}navbar-link is-active{% else %}navbar-link{% endif %}" href="{{ menu_item.url }}" target="_self"{% if path == menu_item.url %} aria-current="page"{% endif %}>
+                    {% if let Some(icon) = menu_item.icon %}{{ crate::icons::icon_span(icon, 24, "icon")|safe }}{% endif %}
                     <span>{{ menu_item.title }}</span>
                 </a>
-                <div class="navbar-dropdown">
+                <button class="nav-disclosure" type="button" hidden aria-expanded="false" aria-controls="nav-subpages-{{ loop.index0 }}" aria-label="{{ ui.subpages_of }} {{ menu_item.title }}"><span class="nav-chevron" aria-hidden="true"></span></button>
+                {# Near the right edge a list opens leftwards; vados.js refines this by measuring, but this holds without it. #}
+                <div class="navbar-dropdown{% if main_menu.len() > 3 && loop.index + 1 >= main_menu.len() %} is-right{% endif %}" id="nav-subpages-{{ loop.index0 }}">
                     {% for child in children %}
-                    <a class="{% if path.starts_with(child.url) %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="{{ child.url }}" target="_self">
-                        {% if let Some(icon) = child.icon %}
-                        <span class="icon">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
-                        {% endif %}
+                    <a class="{% if crate::structure::is_within(path, child.url) %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="{{ child.url }}" target="_self"{% if path == child.url %} aria-current="page"{% endif %}>
+                        {% if let Some(icon) = child.icon %}{{ crate::icons::icon_span(icon, 24, "icon")|safe }}{% endif %}
                         <span>{{ child.title }}</span>
                     </a>
                     {% endfor %}
+                    {% if menu_item.more %}
+                    <a class="navbar-item is-tab nav-more" href="{{ menu_item.url }}" target="_self"><span>{{ ui.menu_more }} {{ menu_item.title }}</span></a>
+                    {% endif %}
                 </div>
             </div>
             {% when None %}
-            <a class="{% if path.starts_with(menu_item.url) %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="{{ menu_item.url }}" target="{% if menu_item.menu_type == Internal %}_self{% else %}_blank{% endif %}">
-                {% if let Some(icon) = menu_item.icon %}
-                <span class="icon">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
-                {% endif %}
+            <a class="{% if crate::structure::is_within(path, menu_item.url) %}navbar-item is-tab is-active{% else %}navbar-item is-tab{% endif %}" href="{{ menu_item.url }}" target="{% if menu_item.menu_type == Internal %}_self{% else %}_blank{% endif %}"{% if path == menu_item.url %} aria-current="page"{% endif %}>
+                {% if let Some(icon) = menu_item.icon %}{{ crate::icons::icon_span(icon, 24, "icon")|safe }}{% endif %}
                 <span>{{ menu_item.title }}</span>
             </a>
             {% endmatch %}
@@ -56,8 +59,12 @@
         <div class="navbar-end" id="nav-socials">
             {% for s in socials %}
             <a class="{% if loop.index0 < 2 %}navbar-item is-hidden-touch{% else %}navbar-item{% endif %}" href="{{ s.get_url() }}" target="_blank" rel="me noopener" aria-label="{{ s.get_label() }}">
+                {% if crate::icons::is_known_icon(s.get_icon()) %}
                 <span class="icon" style="color: #{{ s.get_color() }};">
                 {{ crate::icons::icon_svg(s.get_icon(), 36)|safe }}</span>
+                {% else %}
+                <span>{{ s.get_label() }}</span>
+                {% endif %}
             </a>
             {% endfor %}
         </div>

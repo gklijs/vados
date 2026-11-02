@@ -1,0 +1,17 @@
+<section class="box p-2" id="search">
+    {# Hidden by the script, so it also shows when the script fails to load. #}
+    <p id="search-no-script">{{ ui.search_needs_script }}</p>
+    <form id="search-form" hidden role="search" action="{{ path }}" method="get" data-index="{{ index_href }}" data-searching="{{ ui.search_searching }}" data-none="{{ ui.search_none }}" data-one="{{ ui.search_one }}" data-many="{{ ui.search_many }}" data-failed="{{ ui.search_failed }}">
+        <label class="label" for="search-input">{{ ui.search_label }}</label>
+        <div class="field has-addons">
+            <div class="control is-expanded">
+                <input class="input" id="search-input" type="search" name="q" autocomplete="off">
+            </div>
+            <div class="control">
+                <button class="button is-primary" type="submit">{{ ui.search_button }}</button>
+            </div>
+        </div>
+    </form>
+    <p class="mt-4" id="search-status" role="status"></p>
+    <ul class="mt-4" id="search-results"></ul>
+</section>

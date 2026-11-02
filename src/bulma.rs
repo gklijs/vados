@@ -39,6 +39,38 @@ impl Color {
             Color::Danger => "is-danger theme-light",
         }
     }
+
+    /// The classes of a navbar in this colour. `theme` replaces the theme the
+    /// colour's default brightness implies, for a site whose stylesheet
+    /// recolours it to the opposite brightness, which vados can't see.
+    pub(crate) fn to_navbar_class(&self, theme: Option<NavbarTheme>) -> String {
+        let class = self.to_css_class();
+        match theme {
+            None => String::from(class),
+            Some(theme) => {
+                let name = class.split(' ').next().unwrap_or_default();
+                format!("{name} {}", theme.to_css_class())
+            }
+        }
+    }
+}
+
+/// `main.json`'s `navbarTheme`: what sits on the navbar, when the colour's
+/// default brightness isn't what the site compiled.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum NavbarTheme {
+    Light,
+    Dark,
+}
+
+impl NavbarTheme {
+    fn to_css_class(self) -> &'static str {
+        match self {
+            NavbarTheme::Light => "theme-light",
+            NavbarTheme::Dark => "theme-dark",
+        }
+    }
 }
 
 pub(crate) fn default_css_links() -> Vec<String> {
@@ -76,6 +108,17 @@ impl TilePlacement {
     }
 }
 
+impl TilePlacement {
+    /// The class putting a grid cell in this column on a tablet and wider.
+    pub(crate) fn to_column_class(self) -> &'static str {
+        match self {
+            TilePlacement::Left => "is-col-start-1-tablet",
+            TilePlacement::Right => "is-col-start-2-tablet",
+            TilePlacement::Side => "",
+        }
+    }
+}
+
 /// The most rows Bulma's grid can make a cell span.
 pub(crate) const MAX_ROW_SPAN: usize = 12;
 
@@ -100,50 +143,7 @@ pub(crate) fn default_js_links() -> Vec<String> {
 }
 
 pub(crate) fn vados_js() -> &'static str {
-    r#"let burger_menu_active = false
-let side_menu_active = false
-let burger_menu = document.getElementById("burger-menu")
-let main_menu = document.getElementById("main-menu")
-let burger_side_menu = document.getElementById("burger-side-menu")
-let side_menu = document.getElementById("side-menu-mobile")
-const toggleBurgerMenu = function () {
-    if (side_menu_active) {
-        toggleSideMenu()
-    }
-    if (burger_menu_active) {
-        burger_menu.classList.remove("is-active")
-        main_menu.classList.remove("is-active")
-        burger_menu.setAttribute("aria-expanded", "false")
-    } else {
-        burger_menu.classList.add("is-active")
-        main_menu.classList.add("is-active")
-        burger_menu.setAttribute("aria-expanded", "true")
-    }
-    burger_menu_active = !burger_menu_active
-}
-const toggleSideMenu = function () {
-    if (burger_menu_active) {
-        toggleBurgerMenu()
-    }
-    if (side_menu_active) {
-        burger_side_menu.classList.remove("is-active")
-        side_menu.classList.add("is-hidden")
-        burger_side_menu.setAttribute("aria-expanded", "false")
-    } else {
-        burger_side_menu.classList.add("is-active")
-        side_menu.classList.remove("is-hidden")
-        burger_side_menu.setAttribute("aria-expanded", "true")
-    }
-    side_menu_active = !side_menu_active
-}
-burger_menu.onclick = function () {
-    toggleBurgerMenu()
-}
-if (typeof (burger_side_menu) != 'undefined' && burger_side_menu != null) {
-    burger_side_menu.onclick = function () {
-        toggleSideMenu()
-    }
-}"#
+    include_str!("../assets/js/vados.js")
 }
 
 #[derive(Debug)]

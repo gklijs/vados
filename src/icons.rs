@@ -8,6 +8,10 @@ use std::sync::OnceLock;
 /// aliases of renamed icons as `alias =name`. See `assets/mdi/README.md`.
 const PATHS: &str = include_str!("../assets/mdi/paths.txt");
 
+/// Short names people reasonably expect, on top of the set's own aliases. Kept
+/// here because `paths.txt` is regenerated from `@mdi/svg`.
+const EXTRA_ALIASES: &[(&str, &str)] = &[("list", "format-list-bulleted")];
+
 fn paths() -> &'static HashMap<&'static str, &'static str> {
     static PATHS_BY_NAME: OnceLock<HashMap<&'static str, &'static str>> = OnceLock::new();
     PATHS_BY_NAME.get_or_init(|| {
@@ -23,6 +27,7 @@ fn paths() -> &'static HashMap<&'static str, &'static str> {
                 }
             }
         }
+        aliases.extend_from_slice(EXTRA_ALIASES);
         for (alias, target) in aliases {
             if let Some(path) = by_name.get(target).copied() {
                 by_name.insert(alias, path);
@@ -53,6 +58,30 @@ pub(crate) fn icon_svg(name: &str, size: u32) -> String {
         ),
         None => String::new(),
     }
+}
+
+/// The icon in its `<span>`, or nothing at all for an unknown name, so a name
+/// `check` warns about doesn't leave an empty box in front of the text.
+pub(crate) fn icon_span(name: &str, size: u32, class: &str) -> String {
+    match icon_svg(name, size) {
+        svg if svg.is_empty() => svg,
+        svg => format!(r#"<span class="{class}">{svg}</span>"#),
+    }
+}
+
+/// Up to three known icons sharing a word with an unknown name, shortest
+/// first: `list` suggests `list-box`, `view-list`, ... `check` offers these.
+pub(crate) fn suggest_icons(name: &str) -> Vec<&'static str> {
+    let bare = bare_name(name).to_ascii_lowercase();
+    let words: Vec<&str> = bare.split('-').filter(|w| w.len() > 2).collect();
+    let mut matches: Vec<&'static str> = paths()
+        .keys()
+        .copied()
+        .filter(|known| known.split('-').any(|w| words.contains(&w)))
+        .collect();
+    matches.sort_by_key(|known| (known.len(), *known));
+    matches.truncate(3);
+    matches
 }
 
 #[cfg(test)]
@@ -92,6 +121,31 @@ mod tests {
             .expect("the icon set has aliases");
         assert!(is_known_icon(alias));
         assert_eq!(icon_svg(alias, 18), icon_svg(target, 18));
+    }
+
+    #[test]
+    fn list_is_a_short_name_for_a_bulleted_list() {
+        assert_eq!(icon_svg("list", 24), icon_svg("format-list-bulleted", 24));
+    }
+
+    #[test]
+    fn an_icon_span_wraps_a_known_icon_and_is_empty_for_an_unknown_one() {
+        assert_eq!(
+            icon_span("rss", 24, "icon m-0"),
+            format!(r#"<span class="icon m-0">{}</span>"#, icon_svg("rss", 24))
+        );
+        assert_eq!(icon_span("no-such-icon", 24, "icon"), "");
+    }
+
+    #[test]
+    fn close_names_are_suggested_for_an_unknown_icon() {
+        let suggestions = suggest_icons("list");
+        assert_eq!(suggestions.len(), 3);
+        assert!(suggestions.iter().all(|s| is_known_icon(s)));
+        assert!(suggestions
+            .iter()
+            .all(|s| s.split('-').any(|w| w == "list")));
+        assert!(suggest_icons("zzzzzz").is_empty());
     }
 
     #[test]

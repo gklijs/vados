@@ -25,7 +25,7 @@
     {% else %}
     <meta name="twitter:card" content="summary" />
     {% endif %}
-    <meta name="robots" content="max-image-preview:large" />
+    <meta name="robots" content="{{ robots }}" />
     {% if let Some(f) = fediverse_creator %}
     <meta name="fediverse:creator" content="{{ f }}" />
     {% endif %}
@@ -43,10 +43,11 @@
     {% for f in feeds %}
     <link rel="alternate" type="application/atom+xml" title="{{ f.title }}" href="{{ f.href }}">
     {% endfor %}
+    {# Before the stylesheets: a site's own rule of the same weight wins. #}
+    <style>{% include "inline_style.css" %}</style>
     {% for css_link in css_links %}
     <link href="{{ css_link }}" rel="stylesheet">
     {% endfor %}
-    <style>.skip-link{position:absolute;left:-9999px;top:0;z-index:9999;padding:0.5em 1em;background:#fff;color:#000;}.skip-link:focus{left:0.5em;top:0.5em;}#side-column.stretch-last>.notification:last-child{flex-grow:1;}#nav-bar .navbar-burger{flex-shrink:0;}@media screen and (max-width:1023px){ #nav-site-title{flex-shrink:1;min-width:0;}#nav-site-title>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}#nav-socials{display:flex;flex-wrap:wrap;}}</style>
 </head>
 <body>
 <a class="skip-link" href="#main">{{ ui.skip_link }}</a>
@@ -61,6 +62,9 @@
                 <div class="block" id="luma-events">
                     {{ l|safe }}
                 </div>
+                {% endif %}
+                {% if let Some(e) = page_extra %}
+                {{ e|safe }}
                 {% endif %}
                 {% if !child_tiles.is_empty() %}
                 <div class="fixed-grid has-2-cols is-flex-grow-1 is-flex is-flex-direction-column" id="child-tiles">
@@ -88,6 +92,9 @@
 {{ footer|safe }}
 {% for js_link in js_links %}
 <script src="{{ js_link }}"></script>
+{% endfor %}
+{% for script in page_scripts %}
+<script src="{{ script }}"></script>
 {% endfor %}
 {% if let Some(s) = luma_button_script %}
 <script id="luma-checkout" src="{{ s }}"></script>

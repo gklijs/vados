@@ -27,7 +27,9 @@ pub(crate) struct PageFacts<'a> {
 /// The page's JSON-LD, ready to sit in a `<script type="application/ld+json">`,
 /// or `None` for a page with nothing to say: neither dated nor the home page.
 pub(crate) fn structured_data(item: &Item, page: &PageFacts, site: &SiteFacts) -> Option<String> {
-    let value = if let Some(date) = item.date {
+    let value = if let Some(event) = &item.event {
+        event.to_structured_data(item, page.url, page.description, page.image_url)
+    } else if let Some(date) = item.date {
         let mut posting = Map::new();
         posting.insert("@context".into(), json!("https://schema.org"));
         posting.insert("@type".into(), json!("BlogPosting"));

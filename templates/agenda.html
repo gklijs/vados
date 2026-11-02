@@ -1,0 +1,20 @@
+<section class="box p-2" id="agenda" data-agenda>
+    <ul>
+        {% for e in events %}
+        <li class="block" data-event-end="{{ e.ends }}">
+            <h2 class="title is-5 mb-1"><a href="{{ e.url }}">{{ e.title }}</a></h2>
+            <p><time datetime="{{ e.start }}">{{ e.when }}</time>{% if let Some(s) = e.status %} · <strong>{{ s }}</strong>{% endif %}</p>
+            {% if let Some(s) = e.summary %}
+            <p>{{ s }}</p>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    <p data-agenda-none hidden>{{ ui.agenda_none_upcoming }}</p>
+    <p class="mt-4">
+        <button class="button" type="button" data-agenda-toggle hidden aria-expanded="false" data-show="{{ ui.agenda_show_past }}" data-hide="{{ ui.agenda_hide_past }}">{{ ui.agenda_show_past }}</button>
+        {% if let Some(c) = calendar_href %}
+        <a class="button" href="{{ c }}" type="text/calendar">{{ ui.agenda_subscribe }}</a>
+        {% endif %}
+    </p>
+</section>
