@@ -17,7 +17,9 @@
         {%- if let Some(s) = e.summary %}
         <summary>{{ s }}</summary>
         {%- endif %}
-        <content type="html">{{ e.content }}</content>
+        {%- if let Some(c) = e.content %}
+        <content type="html">{{ c }}</content>
+        {%- endif %}
     </entry>
 {%- endfor %}
 </feed>

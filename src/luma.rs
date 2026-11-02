@@ -6,6 +6,7 @@
 //! and already moved once from lu.ma to luma.com), so when Luma moves them
 //! again this is the one file to touch.
 
+use crate::event::{Event, EventConfig};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -68,9 +69,47 @@ pub(crate) struct LumaEvent {
     pub(crate) display: Option<LumaEventDisplay>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) button_label: Option<String>,
+    /// When it happens, for agendas and calendars. Nothing is fetched from
+    /// Luma, so an agenda only knows what page.json says. Read like an event's
+    /// `start`, `end` and `timeZone`; see `vados.allium`'s `LumaEvent`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) start: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) end: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) time_zone: Option<String>,
 }
 
 impl LumaEvent {
+    /// When it happens: `None` when page.json doesn't say, which keeps it out
+    /// of agendas, and an error when what it says isn't valid.
+    pub(crate) fn schedule(&self) -> Option<Result<Event, Vec<String>>> {
+        if self.start.is_none() && self.end.is_none() && self.time_zone.is_none() {
+            return None;
+        }
+        let Some(start) = &self.start else {
+            return Some(Err(vec![String::from(
+                "a Luma event with an end or timeZone also needs a start",
+            )]));
+        };
+        Some(
+            EventConfig {
+                start: start.clone(),
+                end: self.end.clone(),
+                time_zone: self.time_zone.clone().unwrap_or_default(),
+                attendance: None,
+                status: None,
+                organiser: None,
+                venue: None,
+                address: None,
+                cost: None,
+                registration_url: None,
+                virtual_url: None,
+                sequence: None,
+            }
+            .resolve(),
+        )
+    }
     /// The title, if it has one worth showing: a blank title names nothing,
     /// so it counts as missing the same way blank alt text does.
     pub(crate) fn effective_title(&self) -> Option<&str> {
@@ -120,7 +159,22 @@ mod tests {
             title: title.map(String::from),
             display: None,
             button_label: None,
+            start: None,
+            end: None,
+            time_zone: None,
         }
+    }
+
+    #[test]
+    fn a_schedule_is_optional_but_must_be_valid_when_given() {
+        let mut e = event("evt-a1", Some("Jam"));
+        assert!(e.schedule().is_none());
+        e.time_zone = Some(String::from("Europe/Amsterdam"));
+        assert!(e.schedule().unwrap().is_err());
+        e.start = Some(String::from("2026-11-05T14:00:00+01:00"));
+        assert!(e.schedule().unwrap().is_ok());
+        e.time_zone = None;
+        assert!(e.schedule().unwrap().is_err());
     }
 
     #[test]

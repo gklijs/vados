@@ -9,6 +9,9 @@
     {% if let Some(i) = image %}
     {{ i|safe }}
     {% endif %}
+    {% if let Some(e) = event_details %}
+    {{ e|safe }}
+    {% endif %}
     <div class="content is-medium mgb-small">
         {{ content|safe }}
     </div>

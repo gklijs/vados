@@ -1,20 +1,23 @@
 use crate::authoring::social::{fediverse_handle_of, MASTODON_ICON};
-use crate::bulma::{spanning_rows, Color, ImageType, TilePlacement};
+use crate::bulma::{spanning_rows, Color, ImageType, TilePlacement, MAX_ROW_SPAN};
 use crate::config_files::{
-    favicon_media_type, ColorScheme, MainConfig, MenuConfig, Notification, PageConfig,
+    favicon_media_type, ColorScheme, MainConfig, MenuConfig, Notification, PageConfig, SpareTile,
 };
+use crate::event::{agenda_calendar_href, event_calendar_href};
 use crate::feed::{feed_href, feed_title, page_url};
 use crate::files::write_raw;
 use crate::highlight::{self, highlight_code_blocks, HIGHLIGHTED_MARKER};
 use crate::image::ProcessedImage;
 use crate::luma::BUTTON_SCRIPT_URL;
+use crate::search::{SEARCH_INDEX_HREF, SEARCH_PATH, SEARCH_SCRIPT_HREF};
 use crate::structure::{Item, SocialItem, Structure};
 use crate::structured_data::{structured_data, PageFacts, SiteFacts};
 use crate::templates::{
-    BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate, DisplayDate,
-    ExternalNotificationTemplate, FeedLink, FooterTemplate, InternalImageTemplate,
-    InternalNotificationTemplate, LinkPreview, LinkPreviewImage, LumaEventView, LumaEventsTemplate,
-    NavigationTemplate, PageTemplate, SideMenuTemplate,
+    AgendaEntry, AgendaTemplate, BreadcrumbsTemplate, ContentNotificationTemplate, ContentTemplate,
+    DisplayDate, EventDetailsTemplate, ExternalNotificationTemplate, FeedLink, FooterTemplate,
+    InternalImageTemplate, InternalNotificationTemplate, LinkPreview, LinkPreviewImage,
+    LumaEventView, LumaEventsTemplate, NavigationTemplate, PageTemplate, SearchTemplate,
+    SideMenuTemplate, SpareTileTemplate,
 };
 use crate::ui_text::{ui_text, UiText};
 use askama::Template;
@@ -23,6 +26,9 @@ use std::fs;
 use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
+
+/// Where the agenda script is published, for the pages showing an agenda.
+pub(crate) const AGENDA_SCRIPT_HREF: &str = "/js/vados-agenda.js";
 
 pub(crate) struct ContentItems {
     pub(crate) item: Item,
@@ -57,6 +63,9 @@ pub(crate) struct GenericContent {
     highlight: bool,
     /// Whether feeds are published at all: only with a usable `siteUrl`.
     feeds_published: bool,
+    spare_tile: Option<SpareTile>,
+    /// Whether the site publishes a search.
+    search: bool,
 }
 
 /// The site icon as pages link it: where it was published, and its media
@@ -134,6 +143,11 @@ impl GenericContent {
             fediverse_creator: fediverse_creator(main_config, menu_config),
             highlight: publish_highlight_stylesheet(destination, main_config),
             feeds_published: main_config.get_site_url().is_some(),
+            spare_tile: main_config
+                .spare_tile
+                .clone()
+                .filter(|s| !s.links.is_empty()),
+            search: main_config.get_search().is_some(),
         }
     }
 }
@@ -576,7 +590,11 @@ fn get_navigation(
         ui: ui_text(main_config.get_language()),
         site_title: &main_config.site_title,
         color: main_config.get_navbar_color(),
-        main_menu: &structure.get_main_menu_items(menu_config),
+        main_menu: &structure.get_main_menu_items(
+            menu_config,
+            main_config.get_menu_dropdown_limit(),
+            main_config.get_search().is_some_and(|s| s.shows_in_menu()),
+        ),
         socials: &menu_config.socials.iter().map(SocialItem::new).collect(),
         side_menu,
     }
@@ -619,10 +637,81 @@ fn get_main_content(
             .as_ref()
             .filter(|_| generic_content.feeds_published)
             .map(|_| feed_link(item, generic_content)),
+        event_details: get_event_details(item, generic_content),
         ui,
     }
     .render()
     .unwrap()
+}
+
+fn get_event_details(item: &Item, generic_content: &GenericContent) -> Option<String> {
+    let event = item.event.as_ref()?;
+    let ui = generic_content.ui;
+    let details = EventDetailsTemplate {
+        ui,
+        status: event.status_text(ui),
+        start: event.config.start.trim(),
+        when: event.written_time(ui),
+        rows: event.detail_rows(ui),
+        registration_url: event.registration_url(),
+        virtual_url: event.virtual_url(),
+        calendar_href: generic_content
+            .site_url
+            .as_ref()
+            .map(|_| event_calendar_href(&item.path)),
+    };
+    Some(details.render().unwrap())
+}
+
+/// What vados adds to a page's main area itself: its agenda, and the search
+/// at the search page. The scripts that go with them are for this page only.
+fn get_page_extra(
+    path: &str,
+    item: &Item,
+    structure: &Structure,
+    generic_content: &GenericContent,
+) -> (Option<String>, Vec<&'static str>) {
+    let ui = generic_content.ui;
+    let mut extra = String::new();
+    let mut scripts = vec![];
+    if let Some(agenda) = &item.agenda {
+        let events = structure
+            .get_agenda_events(item, agenda)
+            .iter()
+            .map(|listed| AgendaEntry {
+                url: listed
+                    .luma_url
+                    .clone()
+                    .unwrap_or_else(|| listed.page.path.clone()),
+                title: listed.title.clone(),
+                start: listed.event.config.start.trim().to_string(),
+                ends: listed.event.last_moment().to_string(),
+                when: listed.event.written_time(ui),
+                status: listed.event.status_text(ui),
+                summary: listed.summary(),
+            })
+            .collect();
+        let template = AgendaTemplate {
+            ui,
+            events,
+            calendar_href: generic_content
+                .site_url
+                .as_ref()
+                .map(|_| agenda_calendar_href(path)),
+        };
+        extra.push_str(&template.render().unwrap());
+        scripts.push(AGENDA_SCRIPT_HREF);
+    }
+    if generic_content.search && path == SEARCH_PATH {
+        let template = SearchTemplate {
+            ui,
+            path,
+            index_href: SEARCH_INDEX_HREF,
+        };
+        extra.push_str(&template.render().unwrap());
+        scripts.push(SEARCH_SCRIPT_HREF);
+    }
+    (Some(extra).filter(|e| !e.is_empty()), scripts)
 }
 
 fn feed_link(item: &Item, generic_content: &GenericContent) -> FeedLink {
@@ -671,7 +760,8 @@ fn get_page(
     let (mut left, mut right) = latest_tiles(path, item, structure, generic_content.ui);
     left.extend(structure.get_left_sub_notifications(path).iter().cloned());
     right.extend(structure.get_right_sub_notifications(path).iter().cloned());
-    let child_tiles = in_reading_order(left, right);
+    let child_tiles = in_reading_order(left, right, generic_content.spare_tile.as_ref());
+    let (page_extra, page_scripts) = get_page_extra(path, item, structure, generic_content);
     // Only a page that shows highlighted code loads its stylesheet.
     let mut css_links = generic_content.css_links.clone();
     let shows_highlighted_code = std::iter::once(page_helper.main_content)
@@ -743,6 +833,13 @@ fn get_page(
             .iter()
             .any(|e| e.display().shows_register_button())
             .then_some(BUTTON_SCRIPT_URL),
+        robots: if item.noindex {
+            "noindex, follow"
+        } else {
+            "max-image-preview:large"
+        },
+        page_extra,
+        page_scripts,
     }
     .render()
     .unwrap()
@@ -751,19 +848,30 @@ fn get_page(
 /// The child tiles row by row, the left one of each pair first: the order
 /// the grid places them in and a phone stacks them in. Each tile carries the
 /// column it belongs in, so once one column runs out the other's tiles stay
-/// put, and the shorter column's last tile stretches down alongside them, so
-/// both columns end together. See vados.allium's `ChildTilesPairUp`.
-fn in_reading_order(mut left: Vec<String>, mut right: Vec<String>) -> Vec<String> {
+/// put. The rows the shorter column is missing hold the site's spare tile when
+/// it has one. Without one its last tile stretches down alongside the others,
+/// unless it has an image: then the stretch would be a large empty block, so
+/// the cells stay empty. See vados.allium's `ChildTilesPairUp`.
+fn in_reading_order(
+    mut left: Vec<String>,
+    mut right: Vec<String>,
+    spare_tile: Option<&SpareTile>,
+) -> Vec<String> {
     let rows = left.len().max(right.len());
-    let shorter = if left.len() < right.len() {
-        &mut left
+    let (shorter, placement) = if left.len() < right.len() {
+        (&mut left, TilePlacement::Left)
     } else {
-        &mut right
+        (&mut right, TilePlacement::Right)
     };
-    let count = shorter.len();
-    if let Some(last) = shorter.last_mut() {
-        if count < rows {
-            *last = spanning_rows(last, rows - count + 1);
+    let missing = rows - shorter.len();
+    if missing > 0 {
+        match spare_tile {
+            Some(spare_tile) => shorter.push(render_spare_tile(spare_tile, placement, missing)),
+            None => {
+                if let Some(last) = shorter.last_mut().filter(|t| !t.contains("<img")) {
+                    *last = spanning_rows(last, missing + 1);
+                }
+            }
         }
     }
     let mut tiles = Vec::with_capacity(left.len() + right.len());
@@ -774,6 +882,19 @@ fn in_reading_order(mut left: Vec<String>, mut right: Vec<String>) -> Vec<String
             (l, r) => tiles.extend(l.into_iter().chain(r)),
         }
     }
+}
+
+/// The spare tile, spanning the `rows` cells it fills. Only on a tablet and
+/// wider: on a phone tiles stack, so no cell is ever left over.
+fn render_spare_tile(spare_tile: &SpareTile, placement: TilePlacement, rows: usize) -> String {
+    SpareTileTemplate {
+        title: spare_tile.title.as_deref(),
+        links: &spare_tile.links,
+        start_class: placement.to_column_class(),
+        rows: rows.min(MAX_ROW_SPAN),
+    }
+    .render()
+    .unwrap()
 }
 
 /// The page's `latest` pages as child tiles, split over the left and right
@@ -917,7 +1038,7 @@ mod tests {
             tile("r0", TilePlacement::Right),
             tile("r1", TilePlacement::Right),
         ];
-        let ids: Vec<String> = in_reading_order(left, right)
+        let ids: Vec<String> = in_reading_order(left, right, None)
             .iter()
             .map(|t| t.rsplit("id=").next().unwrap().to_string())
             .collect();
@@ -933,7 +1054,7 @@ mod tests {
             tile("r0", TilePlacement::Right),
             tile("r1", TilePlacement::Right),
         ];
-        let tiles = in_reading_order(left, right);
+        let tiles = in_reading_order(left, right, None);
         let r1 = tiles.iter().find(|t| t.contains(r#"id="r1""#)).unwrap();
         assert!(
             r1.contains("is-col-span-2-mobile is-row-span-3-tablet\""),
@@ -948,6 +1069,7 @@ mod tests {
         let even = in_reading_order(
             vec![tile("l0", TilePlacement::Left)],
             vec![tile("r0", TilePlacement::Right)],
+            None,
         );
         let one_sided = in_reading_order(
             vec![
@@ -955,6 +1077,7 @@ mod tests {
                 tile("l1", TilePlacement::Left),
             ],
             vec![],
+            None,
         );
         assert!(even
             .iter()
@@ -967,8 +1090,72 @@ mod tests {
         let left = (0..20)
             .map(|i| tile(&format!("l{i}"), TilePlacement::Left))
             .collect();
-        let tiles = in_reading_order(left, vec![tile("r0", TilePlacement::Right)]);
+        let tiles = in_reading_order(left, vec![tile("r0", TilePlacement::Right)], None);
         assert!(tiles.iter().any(|t| t.contains("is-row-span-12-tablet")));
+    }
+
+    fn with_image(name: &str, placement: TilePlacement) -> String {
+        format!(r#"{}<img src="/x.webp">"#, tile(name, placement))
+    }
+
+    #[test]
+    fn a_tile_with_an_image_is_not_stretched_into_an_empty_block() {
+        let left = vec![
+            tile("l0", TilePlacement::Left),
+            tile("l1", TilePlacement::Left),
+        ];
+        let right = vec![with_image("r0", TilePlacement::Right)];
+        let tiles = in_reading_order(left, right, None);
+        assert!(tiles.iter().all(|t| !t.contains("is-row-span")));
+    }
+
+    fn spare() -> SpareTile {
+        serde_json::from_str(
+            r#"{"title":"More","links":[{"url":"/archive","title":"Archive & <more>"}]}"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_spare_tile_fills_the_missing_cells_and_nothing_stretches() {
+        let left = (0..4)
+            .map(|i| with_image(&format!("l{i}"), TilePlacement::Left))
+            .collect();
+        let right = vec![
+            tile("r0", TilePlacement::Right),
+            tile("r1", TilePlacement::Right),
+        ];
+        let tiles = in_reading_order(left, right, Some(&spare()));
+        assert_eq!(tiles.len(), 7);
+        assert!(!tiles[..5].iter().any(|t| t.contains("is-row-span")));
+        // Placed right after the shorter column's last tile, on its row.
+        let filler = &tiles[5];
+        assert!(filler.contains(r#"id="spare-tile""#), "{filler}");
+        assert!(filler.contains("is-col-start-2-tablet is-row-span-2-tablet is-hidden-mobile"));
+        assert!(
+            filler.contains(r#"<a href="/archive">Archive &#38; &#60;more&#62;</a>"#),
+            "{filler}"
+        );
+    }
+
+    #[test]
+    fn a_spare_tile_is_left_out_when_the_columns_are_even() {
+        let tiles = in_reading_order(
+            vec![tile("l0", TilePlacement::Left)],
+            vec![tile("r0", TilePlacement::Right)],
+            Some(&spare()),
+        );
+        assert_eq!(tiles.len(), 2);
+    }
+
+    #[test]
+    fn a_spare_tile_goes_in_the_left_column_when_that_is_shorter() {
+        let tiles = in_reading_order(
+            vec![],
+            vec![tile("r0", TilePlacement::Right)],
+            Some(&spare()),
+        );
+        assert!(tiles[0].contains("is-col-start-1-tablet"), "{}", tiles[0]);
     }
 
     #[test]
@@ -987,7 +1174,7 @@ mod tests {
             tile("latest-1", TilePlacement::Right),
             tile("sub-r-0", TilePlacement::Right),
         ];
-        let ids: Vec<String> = in_reading_order(left, right)
+        let ids: Vec<String> = in_reading_order(left, right, None)
             .iter()
             .map(|t| t.rsplit("id=").next().unwrap().to_string())
             .collect();

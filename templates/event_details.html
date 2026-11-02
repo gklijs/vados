@@ -1,0 +1,24 @@
+<div class="content is-medium mb-4" id="event-details">
+    {% if let Some(s) = status %}
+    <p><strong>{{ s }}</strong></p>
+    {% endif %}
+    <dl>
+        <dt>{{ ui.event_when }}</dt>
+        <dd><time datetime="{{ start }}">{{ when }}</time></dd>
+        {% for row in rows %}
+        <dt>{{ row.0 }}</dt>
+        <dd>{{ row.1 }}</dd>
+        {% endfor %}
+    </dl>
+    <p>
+        {% if let Some(u) = registration_url %}
+        <a class="button is-primary" href="{{ u }}">{{ ui.event_register }}</a>
+        {% endif %}
+        {% if let Some(u) = virtual_url %}
+        <a class="button" href="{{ u }}">{{ ui.event_join_online }}</a>
+        {% endif %}
+        {% if let Some(u) = calendar_href %}
+        <a class="button" href="{{ u }}" type="text/calendar">{{ ui.event_add_to_calendar }}</a>
+        {% endif %}
+    </p>
+</div>

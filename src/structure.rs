@@ -1,15 +1,19 @@
 use crate::bulma::ImageType;
 use crate::config_files::{
-    ChildOrder, FeedConfig, LatestConfig, MenuConfig, PageConfig, RawMenuItem, RawSocialItem,
+    is_below, AgendaConfig, ChildOrder, FeedConfig, LatestConfig, MenuConfig, PageConfig,
+    PageSelection, RawMenuItem, RawSocialItem, SearchConfig,
 };
 use crate::content::{items_to_side_notifications, to_internal_image};
+use crate::event::{CalendarEntry, DeclaredEvent, Event};
 use crate::image::ProcessedImage;
 use crate::luma::{is_luma_event_id, LumaEvent};
 use crate::page_date::PageDate;
+use crate::search::SEARCH_PATH;
 use crate::ui_text::UiText;
 use dashmap::mapref::entry::Entry;
 use dashmap::DashMap;
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 /// The path one level up from `path`, or `None` for the root itself. Public
@@ -26,6 +30,17 @@ pub fn parent_path(path: &str) -> Option<String> {
         Some(("", _)) => Some(String::from("/")),
         Some((first, _)) => Some(String::from(first)),
     }
+}
+
+/// Whether the page at `path` is `section` or below it, by whole path segments:
+/// `/blogging` isn't in `/blog`. Everything is below the home page, so the home
+/// page only counts as itself; otherwise its menu entry would always be active.
+pub(crate) fn is_within(path: &str, section: &str) -> bool {
+    path == section
+        || (section != "/"
+            && path
+                .strip_prefix(section)
+                .is_some_and(|rest| rest.starts_with('/')))
 }
 
 /// See `vados.allium`'s `config.max_side_notifications`.
@@ -55,11 +70,18 @@ pub(crate) struct Item {
     /// Set when this page publishes a feed of its dated children.
     pub(crate) feed: Option<FeedConfig>,
     pub(crate) latest: Option<LatestConfig>,
+    /// Whether the page stays out of search engines and the sitemap.
+    pub(crate) noindex: bool,
+    /// `None` when page.json gives no event, or one that isn't valid.
+    pub(crate) event: Option<Event>,
+    pub(crate) agenda: Option<AgendaConfig>,
 }
 
 impl Item {
     pub(crate) fn new(path: String, page_config: PageConfig) -> Item {
         let feed = page_config.get_feed();
+        let agenda = page_config.get_agenda();
+        let event = published_event(&path, page_config.event.as_ref());
         let luma_events = published_luma_events(&path, page_config.luma_events);
         let date = published_date(&path, page_config.date.as_deref());
         let updated = published_date(&path, page_config.updated.as_deref());
@@ -79,6 +101,9 @@ impl Item {
             child_order: page_config.child_order.unwrap_or_default(),
             feed,
             latest: page_config.latest,
+            noindex: page_config.noindex.unwrap_or(false),
+            event,
+            agenda,
         }
     }
     /// When the page last changed: its `updated` date, or else its `date`.
@@ -97,6 +122,22 @@ fn published_date(path: &str, declared: Option<&str>) -> Option<PageDate> {
             println!(
                 "Page {} has an unreadable date: {}; treating it as undated.",
                 path, e
+            );
+            None
+        }
+    }
+}
+
+/// The page's event, if it gives a valid one. An invalid one is reported and
+/// left off the page, and `check` reports it as an error.
+fn published_event(path: &str, declared: Option<&DeclaredEvent>) -> Option<Event> {
+    match declared?.resolve() {
+        Ok(event) => Some(event),
+        Err(problems) => {
+            println!(
+                "Page {} has an event that isn't valid, so it is left off: {}.",
+                path,
+                problems.join("; ")
             );
             None
         }
@@ -142,6 +183,14 @@ fn published_luma_events(path: &str, declared: Option<Vec<LumaEvent>>) -> Vec<Lu
                 );
                 false
             } else {
+                if let Some(Err(problems)) = e.schedule() {
+                    println!(
+                        "Luma event {} on page {} says when it is in a way that isn't valid, so agendas leave it out: {}.",
+                        e.event_id,
+                        path,
+                        problems.join("; ")
+                    );
+                }
                 true
             }
         })
@@ -167,6 +216,42 @@ impl PartialOrd for Item {
 impl PartialEq for Item {
     fn eq(&self, other: &Self) -> bool {
         self.path == other.path
+    }
+}
+
+/// One line of an agenda: a page's event, or a Luma event a page links.
+pub(crate) struct ListedEvent {
+    pub(crate) event: Event,
+    pub(crate) title: String,
+    /// Set for a Luma event, whose identity and address are Luma's.
+    pub(crate) luma_url: Option<String>,
+    pub(crate) page: Arc<Item>,
+}
+
+impl ListedEvent {
+    pub(crate) fn summary(&self) -> Option<String> {
+        if self.luma_url.is_some() {
+            return None;
+        }
+        self.page
+            .summary
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(String::from)
+    }
+    pub(crate) fn to_calendar_entry(&self, site_url: &str) -> CalendarEntry<'_> {
+        match &self.luma_url {
+            None => CalendarEntry::of_page(&self.event, &self.page, site_url),
+            Some(url) => CalendarEntry {
+                event: &self.event,
+                title: self.title.clone(),
+                summary: None,
+                url: url.clone(),
+                uid: url.clone(),
+                modified: self.page.modified(),
+            },
+        }
     }
 }
 
@@ -196,6 +281,7 @@ impl Item {
             title: title.unwrap_or_else(|| self.title.clone()),
             icon,
             children,
+            more: false,
         }
     }
     fn to_side_menu_item(&self, children: Option<Vec<MenuItem>>) -> MenuItem {
@@ -205,6 +291,7 @@ impl Item {
             title: self.title.clone(),
             icon: self.icon.clone(),
             children,
+            more: false,
         }
     }
 }
@@ -221,6 +308,7 @@ impl RawMenuItem {
                 .clone(),
             icon: self.icon.clone(),
             children: None,
+            more: false,
         }
     }
 }
@@ -277,7 +365,12 @@ impl Structure {
             .map(|p| p.child_order)
             .unwrap_or_default()
     }
-    pub(crate) fn get_main_menu_items(&self, menu_config: &MenuConfig) -> Vec<MenuItem> {
+    pub(crate) fn get_main_menu_items(
+        &self,
+        menu_config: &MenuConfig,
+        dropdown_limit: usize,
+        search_entry: bool,
+    ) -> Vec<MenuItem> {
         let mut result = vec![];
         for item in &menu_config.main_menu {
             if item.url.starts_with("https://") {
@@ -289,20 +382,34 @@ impl Structure {
                         item.url
                     ),
                     Some(i) => {
-                        let children = self.by_parent.get(&*item.url).map(|entry| {
+                        let children = self.by_parent.get(&*item.url);
+                        let more = children
+                            .as_ref()
+                            .is_some_and(|c| c.value().len() > dropdown_limit);
+                        let children = children.map(|entry| {
                             entry
                                 .value()
                                 .iter()
+                                .take(dropdown_limit)
                                 .map(|i| i.to_side_menu_item(None))
                                 .collect()
                         });
-                        result.push(i.to_main_menu_item(
+                        let mut menu_item = i.to_main_menu_item(
                             item.title.clone(),
                             item.icon.clone(),
                             children,
-                        ))
+                        );
+                        menu_item.more = more;
+                        result.push(menu_item)
                     }
                 }
+            }
+        }
+        // Unless the menu already names the search, in its own place.
+        if search_entry && !menu_config.main_menu.iter().any(|i| i.url == SEARCH_PATH) {
+            if let Some(search) = self.by_path.get(SEARCH_PATH) {
+                let icon = search.icon.clone().or(Some(String::from("magnify")));
+                result.push(search.to_main_menu_item(None, icon, None));
             }
         }
         result
@@ -451,22 +558,11 @@ impl Structure {
         depth: Option<u32>,
         limit: u32,
     ) -> Vec<Arc<Item>> {
-        let below = |item: &Item, source: &str| {
-            let rest = if source == "/" {
-                item.path.strip_prefix('/')
-            } else {
-                item.path
-                    .strip_prefix(source)
-                    .and_then(|r| r.strip_prefix('/'))
-            };
-            rest.filter(|r| !r.is_empty())
-                .is_some_and(|r| depth.is_none_or(|d| r.split('/').count() as u32 <= d))
-        };
         let mut latest: Vec<Arc<Item>> = self
             .by_path
             .iter()
             .filter(|i| i.listed && i.date.is_some() && i.path != path)
-            .filter(|i| sources.iter().any(|s| below(i, s)))
+            .filter(|i| sources.iter().any(|s| is_below(&i.path, s, depth)))
             .map(|i| i.value().clone())
             .collect();
         // Newest first; the path settles ties, so the result is the same on
@@ -479,9 +575,99 @@ impl Structure {
     pub(crate) fn get_listed_items(&self) -> Vec<Arc<Item>> {
         self.by_path
             .iter()
-            .filter(|i| i.listed)
+            .filter(|i| i.listed && !i.noindex)
             .map(|i| i.value().clone())
             .collect()
+    }
+    /// The page at `path`, if there is one.
+    pub(crate) fn find_item(&self, path: &str) -> Option<Arc<Item>> {
+        self.by_path.get(path).map(|i| i.value().clone())
+    }
+    /// Every page, in no particular order.
+    pub(crate) fn get_all_items(&self) -> Vec<Arc<Item>> {
+        self.by_path.iter().map(|i| i.value().clone()).collect()
+    }
+    /// Whether any page shows an agenda.
+    pub(crate) fn has_agenda(&self) -> bool {
+        self.by_path.iter().any(|i| i.agenda.is_some())
+    }
+    fn select(&self, selection: &PageSelection, own_path: Option<&str>) -> Vec<Arc<Item>> {
+        self.by_path
+            .iter()
+            .filter(|i| Some(i.path.as_str()) != own_path)
+            .filter(|i| selection.selects(&i.path, i.listed))
+            .map(|i| i.value().clone())
+            .collect()
+    }
+    /// The pages a feed lists: selected, dated, newest first, at most its
+    /// limit. Pages with the same date go in display order. See
+    /// vados.allium's `Page.feed_entries`.
+    pub(crate) fn get_feed_entries(&self, item: &Item, feed: &FeedConfig) -> Vec<Arc<Item>> {
+        let mut entries = self.select(&feed.selection(&item.path), Some(&item.path));
+        entries.retain(|i| i.date.is_some());
+        entries.sort_by(|a, b| {
+            b.date
+                .cmp(&a.date)
+                .then_with(|| a.as_ref().cmp(b.as_ref()))
+                .then_with(|| a.path.cmp(&b.path))
+        });
+        entries.truncate(feed.get_limit() as usize);
+        entries
+    }
+    /// The events an agenda lists, soonest first: the selected pages' events,
+    /// and the Luma events on them, including the agenda's own, that say when
+    /// they are. See vados.allium's `Page.agenda_events`.
+    pub(crate) fn get_agenda_events(&self, item: &Item, agenda: &AgendaConfig) -> Vec<ListedEvent> {
+        let mut pages = self.select(&agenda.selection(&item.path), Some(&item.path));
+        if !item.luma_events.is_empty() {
+            pages.extend(self.find_item(&item.path));
+        }
+        let mut listed = vec![];
+        for page in pages {
+            if page.path != item.path {
+                if let Some(event) = &page.event {
+                    listed.push(ListedEvent {
+                        event: event.clone(),
+                        title: page.title.clone(),
+                        luma_url: None,
+                        page: page.clone(),
+                    });
+                }
+            }
+            for luma in &page.luma_events {
+                if let Some(Ok(event)) = luma.schedule() {
+                    listed.push(ListedEvent {
+                        event,
+                        title: luma.effective_title().unwrap_or_default().to_string(),
+                        luma_url: Some(luma.event_url()),
+                        page: page.clone(),
+                    });
+                }
+            }
+        }
+        listed.sort_by(|a, b| {
+            a.event
+                .start
+                .cmp(&b.event.start)
+                .then_with(|| a.page.path.cmp(&b.page.path))
+                .then_with(|| a.title.cmp(&b.title))
+        });
+        // The same Luma event linked from two pages is still one event, and a
+        // calendar can't hold one identity twice.
+        let mut seen = HashSet::new();
+        listed.retain(|l| l.luma_url.as_ref().is_none_or(|u| seen.insert(u.clone())));
+        listed
+    }
+    /// The pages a search covers. See vados.allium's `SiteSearch`.
+    pub(crate) fn get_searchable_items(&self, config: &SearchConfig) -> Vec<Arc<Item>> {
+        let selection = PageSelection {
+            sources: config.from.as_ref().map(|f| f.paths()),
+            depth: config.depth,
+            include_unlisted: config.include_unlisted.unwrap_or(false),
+        };
+        let mut items = self.select(&selection, Some(SEARCH_PATH));
+        items.retain(|i| !i.noindex);
+        items
     }
     /// Every page that publishes a feed.
     pub(crate) fn get_feed_items(&self) -> Vec<Arc<Item>> {
@@ -490,13 +676,6 @@ impl Structure {
             .filter(|i| i.feed.is_some())
             .map(|i| i.value().clone())
             .collect()
-    }
-    /// A page's direct children, in display order.
-    pub(crate) fn get_children(&self, path: &str) -> Vec<Arc<Item>> {
-        self.by_parent
-            .get(path)
-            .map(|c| c.value().clone())
-            .unwrap_or_default()
     }
     /// The page at `path` and its ancestors, nearest first -- the pages
     /// whose feeds `path` sits inside.
@@ -799,6 +978,9 @@ pub(crate) struct MenuItem {
     pub(crate) title: String,
     pub(crate) icon: Option<String>,
     pub(crate) children: Option<Vec<MenuItem>>,
+    /// Whether `children` was cut short, so the list ends in a link to this
+    /// item's own page. See `vados.allium`'s `DropdownsStayShort`.
+    pub(crate) more: bool,
 }
 
 #[cfg(test)]
@@ -813,6 +995,17 @@ mod tests {
             color: color.map(String::from),
             label: Some("Label".to_string()),
         }
+    }
+
+    #[test]
+    fn a_page_is_within_a_section_by_whole_segments() {
+        assert!(is_within("/blog", "/blog"));
+        assert!(is_within("/blog/post", "/blog"));
+        assert!(!is_within("/blogging", "/blog"));
+        assert!(!is_within("/about", "/a"));
+        assert!(is_within("/", "/"));
+        assert!(!is_within("/blog", "/"));
+        assert!(!is_within("/blog", "https://example.com"));
     }
 
     #[test]

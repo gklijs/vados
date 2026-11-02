@@ -1,8 +1,11 @@
 pub mod authoring;
 mod bulma;
+#[cfg(test)]
+mod bulma_modules;
 pub mod check;
 mod config_files;
 mod content;
+mod event;
 pub mod feed;
 mod files;
 pub mod generator;
@@ -11,8 +14,10 @@ mod icons;
 mod image;
 pub mod init;
 mod json_files;
+pub mod link_check;
 pub mod luma;
 pub mod page_date;
+pub mod search;
 mod sitemap;
 mod structure;
 mod structured_data;

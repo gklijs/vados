@@ -3,18 +3,14 @@
         {% for crumb in crumbs %}
         <li>
             <a href="{{ crumb.url }}">
-                {% if let Some(icon) = crumb.icon %}
-                <span class="icon m-0">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
-                {% endif %}
+                {% if let Some(icon) = crumb.icon %}{{ crate::icons::icon_span(icon, 24, "icon m-0")|safe }}{% endif %}
                 {{ crumb.title }}
             </a>
         </li>
         {% endfor %}
         <li class="is-active">
             <a aria-current="page" href="#">
-                {% if let Some(icon) = last.icon %}
-                <span class="icon m-0">{{ crate::icons::icon_svg(icon, 24)|safe }}</span>
-                {% endif %}
+                {% if let Some(icon) = last.icon %}{{ crate::icons::icon_span(icon, 24, "icon m-0")|safe }}{% endif %}
                 {{ last.title }}
             </a>
         </li>

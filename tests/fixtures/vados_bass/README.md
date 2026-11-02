@@ -15,7 +15,8 @@ GitHub is unreachable.
 - Source commit: `6f500051e1ec3d60a337b79113eb760525163f01` (2022-08-07)
 - `root/` is `vados_bass`'s source tree (`--source` for `vados generate`).
 - `imgroot/` is its image tree (`--img-source`).
-- Nothing here is modified from the source repo.
+- One change from the source repo: the link in `root/home.md` to `/log/2021/2`, a
+  page this snapshot doesn't have, now goes to `/log`. Reapply it after refreshing.
 
 ## Refreshing
 

@@ -1,8 +1,6 @@
 <aside class="menu" id="side-menu">
     <a class="menu-label" href="{{ menu_item.url }}" target="_self">
-        {% if let Some(icon) = menu_item.icon %}
-        <span class="icon">{{ crate::icons::icon_svg(icon, 18)|safe }}</span>
-        {% endif %}
+        {% if let Some(icon) = menu_item.icon %}{{ crate::icons::icon_span(icon, 18, "icon")|safe }}{% endif %}
         {{ menu_item.title }}
     </a>
     {% if let Some(children) = menu_item.children %}
@@ -10,7 +8,7 @@
         {% for child in children %}
         <li>
             <a class="{% if child.url == path %}is-active{% endif %}" href="{{ child.url }}" target="_self">
-                {% if let Some(icon) = child.icon %}<span class="icon">{{ crate::icons::icon_svg(icon, 18)|safe }}</span>{% endif %}{{ child.title|safe }}</a>
+                {% if let Some(icon) = child.icon %}{{ crate::icons::icon_span(icon, 18, "icon")|safe }}{% endif %}{{ child.title|safe }}</a>
         </li>
         {% endfor %}
     </ul>

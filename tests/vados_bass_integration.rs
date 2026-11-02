@@ -56,18 +56,19 @@ fn generated_site() -> &'static Path {
 fn check_reports_no_findings_on_the_real_site() {
     let report = check(&fixture_root(), &fixture_img_root());
 
-    // What the real content gets wrong: a log entry opens with a `#`
-    // heading of its own, a second `<h1>` now that the page title is one,
-    // and the site has no siteUrl for link previews to show its images.
-    // Both are warnings, so the check still passes.
+    // What the real content gets wrong: a log entry opens with a `#` heading of
+    // its own, a second `<h1>` now that the page title is one, and the site has
+    // no siteUrl for link previews to show its images. Both are warnings, so the
+    // check still passes. Sorted by location, since pages come in no set order.
+    let mut findings: Vec<(FindingKind, &str)> = report
+        .findings
+        .iter()
+        .map(|f| (f.kind, f.location.as_str()))
+        .collect();
+    findings.sort_by_key(|(_, location)| *location);
     assert_eq!(
-        report
-            .findings
-            .iter()
-            .map(|f| (f.kind, f.location.as_str()))
-            .collect::<Vec<_>>(),
+        findings,
         [
-            (FindingKind::TopLevelHeadingInContent, "/log/2022/3/7"),
             (
                 FindingKind::PreviewImageWithoutSiteUrl,
                 concat!(
@@ -75,6 +76,7 @@ fn check_reports_no_findings_on_the_real_site() {
                     "/tests/fixtures/vados_bass/root/main.json"
                 )
             ),
+            (FindingKind::TopLevelHeadingInContent, "/log/2022/3/7"),
         ],
         "a real, currently-deployed site should check clean; got {:?}",
         report.findings

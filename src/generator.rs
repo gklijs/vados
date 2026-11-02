@@ -1,14 +1,17 @@
 extern crate core;
 
-use crate::content::{to_content_items, ContentHelper, GenericContent};
+use crate::content::{to_content_items, ContentHelper, GenericContent, AGENDA_SCRIPT_HREF};
+use crate::event::write_calendars;
 use crate::feed::write_feeds;
 use crate::files::{
     copy_static_files, get_all_directory_paths, get_hero_image_references, get_image_list,
-    get_main_config, get_menu_config, get_page_directory_paths, write_html,
+    get_main_config, get_menu_config, get_page_directory_paths, write_html, write_raw,
 };
 use crate::image::{prune_orphaned_variants, ImageProcessor};
+use crate::search::{generated_search_page, write_search, SEARCH_PATH};
 use crate::sitemap::{write_robots, write_sitemap};
 use crate::structure::Structure;
+use crate::ui_text::ui_text;
 
 /// The core function to call, if the files at the source are valid, the static site will be
 /// generated at the destination location. Please make sure the files and/or directories have the proper ownership.
@@ -58,6 +61,13 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
         structure.add_item(content_items.item);
         all_paths.push(path)
     }
+    // The search needs a page; a site's own at the same path keeps its say.
+    let search = main_config.get_search();
+    let ui = ui_text(main_config.get_language());
+    if search.is_some() && structure.find_item(SEARCH_PATH).is_none() {
+        structure.add_item(generated_search_page(ui));
+        all_paths.push(String::from(SEARCH_PATH));
+    }
     structure.sort();
 
     let generic_content = GenericContent::new(source, destination, &main_config, &menu_config);
@@ -71,6 +81,17 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
         write_html(destination, path, &page);
     }
     write_feeds(source, destination, &main_config, &structure);
+    write_calendars(destination, &main_config, &structure);
+    if let Some(search) = &search {
+        write_search(source, destination, search, &structure, ui);
+    }
+    if structure.has_agenda() {
+        write_raw(
+            destination,
+            AGENDA_SCRIPT_HREF,
+            include_str!("../assets/js/agenda.js"),
+        );
+    }
     if let Some(site_url) = main_config.get_site_url() {
         write_sitemap(destination, site_url, &structure);
     }

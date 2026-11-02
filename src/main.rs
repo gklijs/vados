@@ -6,6 +6,9 @@ use vados::authoring::feed as feed_authoring;
 use vados::authoring::luma::{self as luma_authoring, LumaEventDisplay};
 use vados::authoring::menu::{self as menu_authoring, MenuLinkKind};
 use vados::authoring::page::{self, ChildOrder, NotificationSide, PageImageRole};
+use vados::authoring::site_features::{
+    self, GivenAttendance, GivenEvent, GivenFeedSelection, GivenStatus,
+};
 use vados::authoring::{image_registry, social};
 use vados::check::check;
 use vados::feed::is_site_url;
@@ -34,6 +37,13 @@ enum Command {
         img_source: String,
         #[arg(long)]
         destination: String,
+        /// Check the links of the published site, and fail if any are broken.
+        #[arg(long = "check-links")]
+        check_links: bool,
+        /// With --check-links, also ask other sites whether the pages linked
+        /// to exist. Only ever warnings.
+        #[arg(long, requires = "check_links")]
+        external: bool,
     },
     /// Read the source and image trees and report every problem found,
     /// without writing anything. Exits non-zero iff at least one error was
@@ -43,6 +53,14 @@ enum Command {
         source: String,
         #[arg(long = "img-source")]
         img_source: String,
+        /// Also check the links of a site already published at this directory.
+        /// Other sites are never contacted.
+        #[arg(long)]
+        output: Option<String>,
+        /// With --output, also ask other sites whether the pages linked to
+        /// exist. Only ever warnings.
+        #[arg(long, requires = "output")]
+        external: bool,
     },
     /// Scaffold a fresh vados project in the current directory: gathers a
     /// few basics interactively and creates a starting source tree, image
@@ -74,6 +92,100 @@ enum Command {
         #[command(subcommand)]
         command: MenuCommand,
     },
+    /// Turn on the site search of an existing project.
+    Search {
+        #[command(subcommand)]
+        command: SearchCommand,
+    },
+    /// Set the block of links that fills spare cells next to child tiles.
+    SpareTile {
+        #[command(subcommand)]
+        command: SpareTileCommand,
+    },
+    /// Change how the navbar behaves in an existing project.
+    Navbar {
+        #[command(subcommand)]
+        command: NavbarCommand,
+    },
+}
+
+#[derive(Subcommand)]
+enum SearchCommand {
+    /// Publishes a site search at `/search`, with an entry in the main menu.
+    Enable {
+        #[arg(long)]
+        source: String,
+        /// Only search below this page; give it more than once for several.
+        /// Every page when not given.
+        #[arg(long)]
+        from: Vec<String>,
+        /// How many levels below `--from` to look. Any depth when not given.
+        #[arg(long)]
+        depth: Option<u32>,
+        /// Also search pages with `"listed": false`.
+        #[arg(long = "include-unlisted")]
+        include_unlisted: bool,
+        /// Leave the search out of the main menu.
+        #[arg(long = "no-menu")]
+        no_menu: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum SpareTileCommand {
+    /// Replaces the spare tile. Shown on a tablet and wider, in the cells the
+    /// shorter column of child tiles leaves over.
+    Set {
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        title: Option<String>,
+        /// A link as `/url=Title`; give it once per link.
+        #[arg(long = "link", required = true)]
+        links: Vec<String>,
+    },
+    /// Removes the spare tile.
+    Remove {
+        #[arg(long)]
+        source: String,
+    },
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum NavbarThemeArg {
+    Light,
+    Dark,
+}
+
+#[derive(Subcommand)]
+enum NavbarCommand {
+    /// Changes the given settings; anything else stays as it is.
+    Set {
+        #[arg(long)]
+        source: String,
+        /// What sits on the navbar, for a colour your stylesheet recolours to
+        /// the opposite brightness.
+        #[arg(long)]
+        theme: Option<NavbarThemeArg>,
+        /// How many children a dropdown lists before a "more" link.
+        #[arg(long = "dropdown-limit", value_parser = clap::value_parser!(u32).range(1..))]
+        dropdown_limit: Option<u32>,
+    },
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum AttendanceArg {
+    Online,
+    InPerson,
+    Mixed,
+}
+
+#[derive(Copy, Clone, ValueEnum)]
+enum EventStatusArg {
+    Scheduled,
+    Cancelled,
+    Postponed,
+    Rescheduled,
 }
 
 #[derive(Subcommand)]
@@ -172,6 +284,15 @@ enum PageCommand {
         /// The register button's text. Defaults to "Register".
         #[arg(long = "button-label")]
         button_label: Option<String>,
+        /// When it starts, with a UTC offset. Lists it in agendas and their
+        /// calendars; Luma is never asked. Needs --time-zone.
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
+        /// The IANA zone it happens in, e.g. `Europe/Amsterdam`.
+        #[arg(long = "time-zone")]
+        time_zone: Option<String>,
     },
     /// Publishes an Atom feed of a page's dated children, e.g. a blog's
     /// posts, newest first.
@@ -191,6 +312,81 @@ enum PageCommand {
         /// main.json. Asked for when main.json has none yet.
         #[arg(long = "site-url")]
         site_url: Option<String>,
+        /// List pages below this one instead of the page's own children; give
+        /// it more than once for several.
+        #[arg(long)]
+        from: Vec<String>,
+        /// How many levels below `--from` to look. Without `--from` the feed
+        /// looks below its own page, one level deep unless this says more.
+        #[arg(long)]
+        depth: Option<u32>,
+        /// Also list pages with `"listed": false`.
+        #[arg(long = "include-unlisted")]
+        include_unlisted: bool,
+        /// Entries carry their summary instead of their full content.
+        #[arg(long = "summaries-only")]
+        summaries_only: bool,
+    },
+    /// Makes a page an event, replacing any event it has. Details left out are
+    /// shown as "not confirmed". Changing an event raises its sequence.
+    SetEvent {
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        path: String,
+        /// With a UTC offset, e.g. `2026-11-05T14:00:00-05:00`.
+        #[arg(long)]
+        start: Option<String>,
+        #[arg(long)]
+        end: Option<String>,
+        /// The IANA zone the event happens in, e.g. `America/New_York`.
+        #[arg(long = "time-zone")]
+        time_zone: Option<String>,
+        #[arg(long)]
+        attendance: Option<AttendanceArg>,
+        #[arg(long)]
+        status: Option<EventStatusArg>,
+        #[arg(long)]
+        organiser: Option<String>,
+        #[arg(long)]
+        venue: Option<String>,
+        #[arg(long)]
+        address: Option<String>,
+        #[arg(long)]
+        cost: Option<String>,
+        #[arg(long = "registration-url")]
+        registration_url: Option<String>,
+        #[arg(long = "virtual-url")]
+        virtual_url: Option<String>,
+        /// Overrides the sequence calendars use to spot a changed event.
+        #[arg(long)]
+        sequence: Option<u32>,
+    },
+    /// Lists events on a page, soonest first, with those that ended hidden.
+    EnableAgenda {
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        path: String,
+        /// List events below this page instead of the page itself; give it
+        /// more than once for several.
+        #[arg(long)]
+        from: Vec<String>,
+        #[arg(long)]
+        depth: Option<u32>,
+        /// Also list events on pages with `"listed": false`.
+        #[arg(long = "include-unlisted")]
+        include_unlisted: bool,
+    },
+    /// Keeps a page out of search results and the sitemap.
+    SetNoindex {
+        #[arg(long)]
+        source: String,
+        #[arg(long)]
+        path: String,
+        /// Lets search engines index the page again.
+        #[arg(long)]
+        off: bool,
     },
 }
 
@@ -399,18 +595,97 @@ impl From<NotificationSideArg> for NotificationSide {
     }
 }
 
+/// The link check of a published site, as the source's `main.json` describes
+/// that site. A main.json that can't be read leaves it without a site URL;
+/// `check` reports that problem itself.
+fn check_output_of(source: &str, output: &str, external: bool) -> Vec<vados::check::Finding> {
+    let site_url = vados::check::usable_site_url(source);
+    let findings = vados::link_check::check_output(output, site_url.as_deref());
+    #[cfg(feature = "external-links")]
+    if external {
+        let mut findings = findings;
+        findings.extend(vados::link_check::check_external(
+            output,
+            site_url.as_deref(),
+        ));
+        return findings;
+    }
+    #[cfg(not(feature = "external-links"))]
+    let _ = external;
+    findings
+}
+
+/// Refuses `--external` up front when this build can't do it, rather than
+/// generating a site and then quietly checking less than was asked for.
+fn external_is_available(external: bool) -> bool {
+    let available = cfg!(feature = "external-links");
+    if external && !available {
+        eprintln!("--external needs vados built with the `external-links` feature, which is on by default.");
+    }
+    available || !external
+}
+
+/// Prints what a change did, or why it couldn't be made.
+fn report_change(result: Result<String, String>) -> ExitCode {
+    match result {
+        Ok(message) => {
+            println!("{message}");
+            ExitCode::SUCCESS
+        }
+        Err(problem) => {
+            eprintln!("{problem}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     match Cli::parse().command {
         Command::Generate {
             source,
             img_source,
             destination,
+            check_links,
+            external,
         } => {
+            if !external_is_available(external) {
+                return ExitCode::FAILURE;
+            }
             generate(&source, &img_source, &destination);
-            ExitCode::SUCCESS
+            if !check_links {
+                return ExitCode::SUCCESS;
+            }
+            let findings = check_output_of(&source, &destination, external);
+            for finding in &findings {
+                println!("{}", finding);
+            }
+            let errors = findings
+                .iter()
+                .filter(|f| f.severity() == vados::check::Severity::Error)
+                .count();
+            if errors == 0 {
+                println!("link check passed");
+                ExitCode::SUCCESS
+            } else {
+                println!("link check failed: {errors} problem(s)");
+                ExitCode::FAILURE
+            }
         }
-        Command::Check { source, img_source } => {
-            let report = check(&source, &img_source);
+        Command::Check {
+            source,
+            img_source,
+            output,
+            external,
+        } => {
+            if !external_is_available(external) {
+                return ExitCode::FAILURE;
+            }
+            let mut report = check(&source, &img_source);
+            if let Some(output) = output {
+                report
+                    .findings
+                    .extend(check_output_of(&source, &output, external));
+            }
             for finding in &report.findings {
                 println!("{}", finding);
             }
@@ -487,6 +762,9 @@ fn main() -> ExitCode {
                 title,
                 display,
                 button_label,
+                start,
+                end,
+                time_zone,
             } => run_page_add_luma_event(
                 source,
                 path,
@@ -494,6 +772,7 @@ fn main() -> ExitCode {
                 title,
                 display.map(Into::into),
                 button_label,
+                (start, end, time_zone),
             ),
             PageCommand::EnableFeed {
                 source,
@@ -501,7 +780,139 @@ fn main() -> ExitCode {
                 title,
                 limit,
                 site_url,
-            } => run_page_enable_feed(source, path, title, limit, site_url),
+                from,
+                depth,
+                include_unlisted,
+                summaries_only,
+            } => run_page_enable_feed(
+                source,
+                path,
+                title,
+                limit,
+                site_url,
+                GivenFeedSelection {
+                    from,
+                    depth,
+                    include_unlisted,
+                    summaries_only,
+                },
+            ),
+            PageCommand::SetEvent {
+                source,
+                path,
+                start,
+                end,
+                time_zone,
+                attendance,
+                status,
+                organiser,
+                venue,
+                address,
+                cost,
+                registration_url,
+                virtual_url,
+                sequence,
+            } => {
+                let Some(start) = require_flag(
+                    start,
+                    "start",
+                    "Start, with a UTC offset (2026-11-05T14:00:00-05:00)",
+                ) else {
+                    return ExitCode::FAILURE;
+                };
+                let Some(time_zone) =
+                    require_flag(time_zone, "time-zone", "IANA time zone (Europe/Amsterdam)")
+                else {
+                    return ExitCode::FAILURE;
+                };
+                let given = GivenEvent {
+                    start,
+                    end,
+                    time_zone,
+                    attendance: attendance.map(|a| match a {
+                        AttendanceArg::Online => GivenAttendance::Online,
+                        AttendanceArg::InPerson => GivenAttendance::InPerson,
+                        AttendanceArg::Mixed => GivenAttendance::Mixed,
+                    }),
+                    status: status.map(|s| match s {
+                        EventStatusArg::Scheduled => GivenStatus::Scheduled,
+                        EventStatusArg::Cancelled => GivenStatus::Cancelled,
+                        EventStatusArg::Postponed => GivenStatus::Postponed,
+                        EventStatusArg::Rescheduled => GivenStatus::Rescheduled,
+                    }),
+                    organiser,
+                    venue,
+                    address,
+                    cost,
+                    registration_url,
+                    virtual_url,
+                    sequence,
+                };
+                report_change(
+                    site_features::set_event(&source, &path, &given).map(|sequence| {
+                        format!("{path} is now an event (calendar sequence {sequence}).")
+                    }),
+                )
+            }
+            PageCommand::EnableAgenda {
+                source,
+                path,
+                from,
+                depth,
+                include_unlisted,
+            } => report_change(
+                site_features::enable_agenda(&source, &path, from, depth, include_unlisted)
+                    .map(|_| format!("{path} now shows an agenda.")),
+            ),
+            PageCommand::SetNoindex { source, path, off } => {
+                report_change(site_features::set_noindex(&source, &path, !off).map(|_| {
+                    if off {
+                        format!("{path} can be indexed again.")
+                    } else {
+                        format!("{path} is kept out of search results and the sitemap.")
+                    }
+                }))
+            }
+        },
+        Command::Search { command } => match command {
+            SearchCommand::Enable {
+                source,
+                from,
+                depth,
+                include_unlisted,
+                no_menu,
+            } => report_change(
+                site_features::enable_search(&source, from, depth, include_unlisted, !no_menu)
+                    .map(|_| String::from("The site now publishes a search at /search.")),
+            ),
+        },
+        Command::SpareTile { command } => match command {
+            SpareTileCommand::Set {
+                source,
+                title,
+                links,
+            } => report_change(
+                site_features::set_spare_tile(&source, title, &links)
+                    .map(|_| String::from("The spare tile is set.")),
+            ),
+            SpareTileCommand::Remove { source } => report_change(
+                site_features::remove_spare_tile(&source)
+                    .map(|_| String::from("The spare tile is removed.")),
+            ),
+        },
+        Command::Navbar { command } => match command {
+            NavbarCommand::Set {
+                source,
+                theme,
+                dropdown_limit,
+            } => report_change(
+                site_features::set_navbar(
+                    &source,
+                    theme.map(|t| matches!(t, NavbarThemeArg::Dark)),
+                    dropdown_limit,
+                )
+                .map(|_| String::from("The navbar settings are updated.")),
+            ),
         },
         Command::Image { command } => match command {
             ImageCommand::Add {
@@ -1238,7 +1649,13 @@ fn run_page_add_luma_event(
     title: Option<String>,
     display: Option<LumaEventDisplay>,
     button_label: Option<String>,
+    (start, end, time_zone): (Option<String>, Option<String>, Option<String>),
 ) -> ExitCode {
+    let problems = luma_authoring::schedule_problems(start.clone(), end.clone(), time_zone.clone());
+    if !problems.is_empty() {
+        eprintln!("{}", problems.join("; "));
+        return ExitCode::FAILURE;
+    }
     let event_id = match require_flag(event_id, "event-id", "Luma event ID (evt-...)") {
         Some(id) => id.trim().to_string(),
         None => return ExitCode::FAILURE,
@@ -1268,6 +1685,9 @@ fn run_page_add_luma_event(
             title,
             display,
             button_label,
+            start,
+            end,
+            time_zone,
         },
     ) {
         Ok(outcome) => {
@@ -1292,6 +1712,7 @@ fn run_page_enable_feed(
     title: Option<String>,
     limit: Option<u32>,
     site_url: Option<String>,
+    selection: GivenFeedSelection,
 ) -> ExitCode {
     // Every blocker is checked in one pass before anything is asked; see
     // vados.allium's `DetectFeedEnablementBlockers`.
@@ -1329,6 +1750,7 @@ fn run_page_enable_feed(
             title,
             limit,
             site_url,
+            selection,
         },
     ) {
         Ok(outcome) => {

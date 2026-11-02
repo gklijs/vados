@@ -2,7 +2,7 @@
 //! next to itself, listing its dated children newest first. See
 //! `vados.allium`'s `Feed`.
 
-use crate::config_files::MainConfig;
+use crate::config_files::{FeedContent, MainConfig};
 use crate::content::get_content;
 use crate::files::write_raw;
 use crate::page_date::PageDate;
@@ -31,7 +31,7 @@ struct FeedEntry {
     published: String,
     updated: String,
     summary: Option<String>,
-    content: String,
+    content: Option<String>,
 }
 
 /// Where a page's feed is published, relative to the site root.
@@ -107,47 +107,50 @@ fn render_feed(
     structure: &Structure,
     item: &Item,
 ) -> String {
-    let limit = item
-        .feed
-        .as_ref()
-        .map(|f| f.get_limit())
-        .unwrap_or_default();
-    let mut dated: Vec<(PageDate, Arc<Item>)> = structure
-        .get_children(&item.path)
+    let config = item.feed.clone().unwrap_or_default();
+    let summaries_only = config.content == Some(FeedContent::Summary);
+    // Newest first, whatever order the section lists its pages in.
+    let dated: Vec<(PageDate, Arc<Item>)> = structure
+        .get_feed_entries(item, &config)
         .into_iter()
         .filter_map(|c| c.date.map(|d| (d, c)))
         .collect();
-    // Newest first whatever order the section lists its pages in; the sort
-    // is stable, so pages with the same date keep their display order.
-    dated.sort_by(|(a, _), (b, _)| b.cmp(a));
-    dated.truncate(limit as usize);
 
-    // A feed with no entries yet still needs an `updated`; today's date is
-    // the honest answer.
+    // A feed with no entries yet still needs an `updated`. The page's own date
+    // or a fixed one: today's would change the file on every build.
     let updated = dated
         .iter()
         .filter_map(|(_, c)| c.modified())
         .max()
-        .unwrap_or_else(PageDate::today);
+        .or_else(|| item.modified())
+        .unwrap_or_else(|| "1970-01-01".parse().expect("a valid date"));
     let entries = dated
         .iter()
-        .map(|(date, child)| FeedEntry {
-            title: xml_safe(&child.title),
-            url: page_url(site_url, &child.path),
-            published: date.to_rfc3339(),
-            updated: child.modified().unwrap_or(*date).to_rfc3339(),
-            summary: child
+        .map(|(date, child)| {
+            let summary = child
                 .summary
                 .as_deref()
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
-                .map(xml_safe),
-            content: xml_safe(&get_content(
-                source,
-                &child.path,
-                &child.content,
-                main_config.highlights_code(),
-            )),
+                .map(xml_safe);
+            // An entry needs one or the other, so a page without a summary
+            // keeps its content either way.
+            let content = (!summaries_only || summary.is_none()).then(|| {
+                xml_safe(&get_content(
+                    source,
+                    &child.path,
+                    &child.content,
+                    main_config.highlights_code(),
+                ))
+            });
+            FeedEntry {
+                title: xml_safe(&child.title),
+                url: page_url(site_url, &child.path),
+                published: date.to_rfc3339(),
+                updated: child.modified().unwrap_or(*date).to_rfc3339(),
+                summary,
+                content,
+            }
         })
         .collect();
 

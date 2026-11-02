@@ -1,4 +1,5 @@
-use crate::bulma::{default_css_links, default_js_links, vados_js, Color};
+use crate::bulma::{default_css_links, default_js_links, vados_js, Color, NavbarTheme};
+use crate::event::DeclaredEvent;
 use crate::files::write_raw;
 use crate::luma::LumaEvent;
 use serde::{Deserialize, Serialize};
@@ -73,7 +74,104 @@ pub(crate) struct MainConfig {
     /// `SiteConfig.stretch_side_notification`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) stretch_side_notification: Option<bool>,
+    /// Which theme sits on the navbar, for a colour a site's stylesheet
+    /// recolours to the opposite brightness. See `vados.allium`'s
+    /// `SiteConfig.navbar_theme`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) navbar_theme: Option<NavbarTheme>,
+    /// How many children a main menu dropdown lists before ending in a link
+    /// to the section. See `vados.allium`'s `SiteConfig.menu_dropdown_limit`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) menu_dropdown_limit: Option<u32>,
+    /// What fills the cells the shorter column of child tiles leaves over.
+    /// See `vados.allium`'s `SiteConfig.spare_tile`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) spare_tile: Option<SpareTile>,
+    /// Publishes a site search. See `vados.allium`'s `SiteSearch`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) search: Option<SearchSetting>,
     pub(crate) footer_content: String,
+}
+
+/// main.json's `spareTile`: a block of links for the cells child tiles leave.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpareTile {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) title: Option<String>,
+    pub(crate) links: Vec<SpareTileLink>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SpareTileLink {
+    pub(crate) url: String,
+    pub(crate) title: String,
+}
+
+/// main.json's `search`: `true`/`false`, or which pages to search.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[serde(untagged)]
+pub(crate) enum SearchSetting {
+    Enabled(bool),
+    Configured(SearchConfig),
+}
+
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct SearchConfig {
+    /// Every page when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) from: Option<OneOrMany>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) depth: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) include_unlisted: Option<bool>,
+    /// Whether the main menu gets an entry for it; on when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) menu: Option<bool>,
+}
+
+impl SearchConfig {
+    pub(crate) fn shows_in_menu(&self) -> bool {
+        self.menu.unwrap_or(true)
+    }
+}
+
+/// Which pages a feed, agenda or search draws from; the same idea as
+/// `latest`. See `vados.allium`'s `PageSelection`.
+pub(crate) struct PageSelection<'a> {
+    /// `None` selects every page.
+    pub(crate) sources: Option<Vec<&'a str>>,
+    pub(crate) depth: Option<u32>,
+    pub(crate) include_unlisted: bool,
+}
+
+impl PageSelection<'_> {
+    /// Whether the selection takes the page at `path`.
+    pub(crate) fn selects(&self, path: &str, listed: bool) -> bool {
+        (listed || self.include_unlisted)
+            && match &self.sources {
+                Some(sources) => sources
+                    .iter()
+                    .any(|source| is_below(path, source, self.depth)),
+                // Every page, or those within `depth` levels of the home page.
+                None => self
+                    .depth
+                    .is_none_or(|d| path.split('/').filter(|s| !s.is_empty()).count() as u32 <= d),
+            }
+    }
+}
+
+/// Whether `path` is below `source`, at most `depth` levels down when given.
+pub(crate) fn is_below(path: &str, source: &str, depth: Option<u32>) -> bool {
+    let rest = if source == "/" {
+        path.strip_prefix('/')
+    } else {
+        path.strip_prefix(source).and_then(|r| r.strip_prefix('/'))
+    };
+    rest.filter(|r| !r.is_empty())
+        .is_some_and(|r| depth.is_none_or(|d| r.split('/').count() as u32 <= d))
 }
 
 /// A colour scheme a site can be pinned to; Bulma's `data-theme` values.
@@ -103,17 +201,35 @@ pub(crate) struct AuthorConfig {
 }
 
 impl MainConfig {
+    /// See `vados.allium`'s `config.default_menu_dropdown_limit`.
+    pub(crate) const DEFAULT_MENU_DROPDOWN_LIMIT: u32 = 12;
+
+    /// The search settings, when the site publishes a search.
+    pub(crate) fn get_search(&self) -> Option<SearchConfig> {
+        match &self.search {
+            None | Some(SearchSetting::Enabled(false)) => None,
+            Some(SearchSetting::Enabled(true)) => Some(SearchConfig::default()),
+            Some(SearchSetting::Configured(c)) => Some(c.clone()),
+        }
+    }
     pub(crate) fn get_background_class(&self) -> String {
         match self.background_class.as_ref() {
             None => String::from("has-background-light-soft"),
             Some(s) => s.clone(),
         }
     }
-    pub(crate) fn get_navbar_color(&self) -> &'static str {
-        match self.navbar_color.as_ref() {
-            None => Color::Warning.to_css_class(),
-            Some(s) => s.to_css_class(),
-        }
+    pub(crate) fn get_navbar_color(&self) -> String {
+        self.navbar_color
+            .as_ref()
+            .unwrap_or(&Color::Warning)
+            .to_navbar_class(self.navbar_theme)
+    }
+    /// How many children a main menu dropdown lists; at least one, since a
+    /// dropdown of nothing but its "more" link would say nothing.
+    pub(crate) fn get_menu_dropdown_limit(&self) -> usize {
+        self.menu_dropdown_limit
+            .unwrap_or(Self::DEFAULT_MENU_DROPDOWN_LIMIT)
+            .max(1) as usize
     }
     /// The site's content language, as an IETF BCP 47 tag, driving every
     /// published page's `<html lang>`. See `vados.allium`'s
@@ -246,6 +362,47 @@ pub(crate) struct PageConfig {
     /// tiles. See `vados.allium`'s `Page.latest_sources`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) latest: Option<LatestConfig>,
+    /// Keeps the page out of search results and the sitemap, which `listed`
+    /// doesn't. See `vados.allium`'s `Page.noindex`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) noindex: Option<bool>,
+    /// Makes the page an event. See `vados.allium`'s `Event`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) event: Option<DeclaredEvent>,
+    /// Lists events from elsewhere on this page, soonest first. See
+    /// `vados.allium`'s `Page.agenda`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) agenda: Option<AgendaSetting>,
+}
+
+/// page.json's `agenda`: `true`/`false`, or which pages to list.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[serde(untagged)]
+pub(crate) enum AgendaSetting {
+    Enabled(bool),
+    Configured(AgendaConfig),
+}
+
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgendaConfig {
+    /// The page's own descendants when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) from: Option<OneOrMany>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) depth: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) include_unlisted: Option<bool>,
+}
+
+impl AgendaConfig {
+    pub(crate) fn selection<'a>(&'a self, page_path: &'a str) -> PageSelection<'a> {
+        PageSelection {
+            sources: Some(self.from.as_ref().map_or(vec![page_path], OneOrMany::paths)),
+            depth: self.depth,
+            include_unlisted: self.include_unlisted.unwrap_or(false),
+        }
+    }
 }
 
 /// page.json's `latest`: which sections to take the newest dated pages
@@ -269,10 +426,7 @@ impl LatestConfig {
         self.limit.unwrap_or(Self::DEFAULT_LIMIT)
     }
     pub(crate) fn sources(&self) -> Vec<&str> {
-        match &self.from {
-            OneOrMany::One(s) => vec![s.as_str()],
-            OneOrMany::Many(v) => v.iter().map(String::as_str).collect(),
-        }
+        self.from.paths()
     }
 }
 
@@ -283,6 +437,15 @@ pub(crate) enum OneOrMany {
     Many(Vec<String>),
 }
 
+impl OneOrMany {
+    pub(crate) fn paths(&self) -> Vec<&str> {
+        match self {
+            OneOrMany::One(s) => vec![s.as_str()],
+            OneOrMany::Many(v) => v.iter().map(String::as_str).collect(),
+        }
+    }
+}
+
 impl PageConfig {
     /// The page's feed settings, if it publishes a feed at all.
     pub(crate) fn get_feed(&self) -> Option<FeedConfig> {
@@ -290,6 +453,14 @@ impl PageConfig {
             None | Some(FeedSetting::Enabled(false)) => None,
             Some(FeedSetting::Enabled(true)) => Some(FeedConfig::default()),
             Some(FeedSetting::Configured(c)) => Some(c.clone()),
+        }
+    }
+    /// The page's agenda settings, if it shows an agenda at all.
+    pub(crate) fn get_agenda(&self) -> Option<AgendaConfig> {
+        match &self.agenda {
+            None | Some(AgendaSetting::Enabled(false)) => None,
+            Some(AgendaSetting::Enabled(true)) => Some(AgendaConfig::default()),
+            Some(AgendaSetting::Configured(c)) => Some(c.clone()),
         }
     }
 }
@@ -310,6 +481,27 @@ pub(crate) struct FeedConfig {
     pub(crate) title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) limit: Option<u32>,
+    /// Sections to take entries from; the page's own direct children when
+    /// absent. See `vados.allium`'s `Page.feed_entries`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) from: Option<OneOrMany>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) depth: Option<u32>,
+    /// Takes unlisted pages too: "listed nowhere" otherwise includes feeds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) include_unlisted: Option<bool>,
+    /// What an entry carries; the page's full content when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) content: Option<FeedContent>,
+}
+
+/// What a feed entry carries as its content.
+#[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy)]
+#[serde(rename_all = "camelCase")]
+pub(crate) enum FeedContent {
+    Full,
+    /// Only the `summary`, for a page that has one.
+    Summary,
 }
 
 impl FeedConfig {
@@ -318,6 +510,15 @@ impl FeedConfig {
 
     pub(crate) fn get_limit(&self) -> u32 {
         self.limit.unwrap_or(Self::DEFAULT_LIMIT)
+    }
+    /// Which pages this feed may list, before leaving out undated ones.
+    pub(crate) fn selection<'a>(&'a self, page_path: &'a str) -> PageSelection<'a> {
+        PageSelection {
+            sources: Some(self.from.as_ref().map_or(vec![page_path], OneOrMany::paths)),
+            // Without `from` it stays the direct children it always was.
+            depth: self.depth.or(self.from.is_none().then_some(1)),
+            include_unlisted: self.include_unlisted.unwrap_or(false),
+        }
     }
 }
 
@@ -355,6 +556,9 @@ impl PageConfig {
             child_order: None,
             feed: None,
             latest: None,
+            noindex: None,
+            event: None,
+            agenda: None,
         }
     }
 }

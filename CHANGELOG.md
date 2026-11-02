@@ -1,5 +1,61 @@
 # Changelog
 
+## 0.5.0 - Unreleased
+
+### Added
+
+- Main menu dropdowns get a real button (#34), following the WAI disclosure pattern: keyboard, touch and screen readers
+  can open and close them, and `Escape` closes them or the burger menu. The button's name is translated. Without
+  JavaScript hovering still opens them. No `.button` styling, so it needs no CSS of a site's own.
+- `check` suggests close icon names for an unknown one (#36).
+- `main.json`'s `navbarTheme` (`light` or `dark`) for a colour a site's stylesheet recolours, and the custom properties
+  `--vados-nav-bg`, `-ink`, `-accent`, `-hover`, `-dropdown-bg` and `-dropdown-ink` (#37).
+- `main.json`'s `menuDropdownLimit`: dropdowns stop at 12 children by default, and end in a link to the section (#35).
+- `main.json`'s `spareTile`: a block of links in the cells child tiles leave over (#38).
+- A README list of the Bulma modules the templates need, with a test that it stays complete (#39).
+- Feeds select entries with `from`, `depth` and `includeUnlisted`, and `content: "summary"` leaves out full content.
+  `check` warns about a feed with no entries, and about a `from` matching no page (#40).
+- `page.json`'s `noindex` (#43), with a `check` warning for a noindexed page that is still listed.
+- `main.json`'s `search`: a translated site search without outside requests, loaded only when used (#44).
+- `page.json`'s `event` with strict time validation, `Event` structured data and `.ics` files, and `agenda` to list
+  events (#45). Adds the `jiff` dependency, which bundles the time zone database.
+- `vados check --output <dir>` and `vados generate --check-links` check the generated site's links, fragments and
+  assets, without any network access (#47).
+- `--external` on `check --output` and `generate --check-links` also asks other sites, as warnings only. Adds the
+  `ureq` dependency, behind the default `external-links` feature.
+- Plain `check` warns about links in content to pages that don't exist, without a build.
+- Luma events can say when they are (`start`, `end`, `timeZone`), which lists them in agendas and calendars.
+  `page add-luma-event` takes `--start`, `--end` and `--time-zone`.
+- `check` warns about comment lines and over-long values in a `_headers` file, which Cloudflare Pages can reject. The
+  README has a hosting section covering Cloudflare Pages and Netlify, and so does what `vados init` scaffolds.
+- `list` is a short name for the `format-list-bulleted` icon.
+- Menu items carry `aria-current="page"` on the current page.
+- Browser tests in `tests/browser`, run in CI.
+- Commands: `page set-event`, `page enable-agenda`, `page set-noindex`, `search enable`, `spare-tile set`/`remove`,
+  `navbar set`, and `page enable-feed --from/--depth/--include-unlisted/--summaries-only`.
+
+### Fixed
+
+- A menu item is active by whole path segments: `/blog` no longer lights up on `/blogging`, and a menu entry for the
+  home page is no longer active on every page.
+- An empty feed no longer changes on every build: its `updated` is the page's own date, or a fixed one.
+
+### Changed
+
+- The inline `<style>` changed and now comes before the stylesheets, so a rule of a site's own with the same weight
+  wins. Sites that hash it for a Content-Security-Policy get a new hash.
+- A main menu too wide for its bar wraps instead of running off the screen, and the page stays clear of the taller bar
+  (#35). The hard-coded 1023px rule is gone, so a raised `$navbar-breakpoint` just works.
+- The current page in the navbar takes the bar's text colour instead of Bulma's link colour, plus heavier text and a
+  line. Every `navbarColor` now reaches at least 4.5:1 with Bulma's defaults; so do its burger, which used the link
+  colour too, and dropdown text (#37).
+- An icon name vados doesn't know no longer leaves an empty box (#36).
+- `vados init`'s Netlify build and README use `--check-links`, so a broken internal link fails a new site's deploy.
+- `rust-version` is now 1.88.0, which is what the dependencies have needed for a while, and CI keeps it true.
+- Without a spare tile, a child tile with an image no longer stretches into an empty block; the cell stays empty (#38).
+- Sites with a navigation script of their own that adds buttons to `.has-dropdown` now get two: remove it, or guard it
+  against `[data-nav-disclosure]`.
+
 ## 0.4.0 - 2026-10-24
 
 ### Added

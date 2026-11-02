@@ -462,7 +462,7 @@ fn write_netlify_config(dir: &Path) -> io::Result<()> {
     let contents = format!(
         "[build]\n\
          \x20\x20publish = \"{DESTINATION_DIR}\"\n\
-         \x20\x20command = \"curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable && source \\\"$HOME/.cargo/env\\\" && cargo install vados && npm install && npm run build && vados generate --source {SOURCE_DIR} --img-source {IMAGE_DIR} --destination {DESTINATION_DIR}\"\n"
+         \x20\x20command = \"curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable && source \\\"$HOME/.cargo/env\\\" && cargo install vados && npm install && npm run build && vados generate --source {SOURCE_DIR} --img-source {IMAGE_DIR} --destination {DESTINATION_DIR} --check-links\"\n"
     );
     fs::write(dir.join("netlify.toml"), contents)
 }
@@ -487,12 +487,24 @@ fn write_readme(dir: &Path, site_title: &str) -> io::Result<()> {
          npm install\n\
          npm run build\n\
          vados check --source {SOURCE_DIR} --img-source {IMAGE_DIR}\n\
-         vados generate --source {SOURCE_DIR} --img-source {IMAGE_DIR} --destination {DESTINATION_DIR}\n\
+         vados generate --source {SOURCE_DIR} --img-source {IMAGE_DIR} --destination {DESTINATION_DIR} --check-links\n\
          ```\n\
+         \n\
+         `--check-links` fails the build when a page links to something that wasn't generated, naming the page and the target. Leave it out if you'd rather deploy anyway.\n\
          \n\
          ## Deployment\n\
          \n\
-         This project deploys to [Netlify](https://www.netlify.com/) with no further setup: connect the repository and `netlify.toml` takes care of installing Rust, `vados`, and the Sass build.\n"
+         The generated site in `{DESTINATION_DIR}/` is plain files, so any static host can serve it.\n\
+         \n\
+         **Netlify:** connect the repository, and `netlify.toml` takes care of installing Rust, `vados`, and the Sass build.\n\
+         \n\
+         **Cloudflare Pages:** build locally or in CI, then upload the result. Delete `netlify.toml` if you don't need it.\n\
+         \n\
+         ```\n\
+         npx wrangler login\n\
+         npx wrangler pages project create <project-name> --production-branch main\n\
+         npx wrangler pages deploy {DESTINATION_DIR} --project-name <project-name>\n\
+         ```\n"
     );
     fs::write(dir.join("README.md"), contents)
 }
@@ -533,7 +545,7 @@ fn initialize_repository(dir: &Path) -> bool {
 }
 
 fn default_gitignore_contents() -> String {
-    format!("node_modules/\n{DESTINATION_DIR}/\n.netlify/\n")
+    format!("node_modules/\n{DESTINATION_DIR}/\n.netlify/\n.wrangler/\n")
 }
 
 /// Creates `.gitignore` fresh if absent, or merges in whichever of our
