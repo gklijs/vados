@@ -541,6 +541,20 @@ entity SiteConfig {
     -- Whether the site publishes a search; see SiteSearch.
     search: SiteSearch?
 
+    -- main.json's markdown: true publishes static Markdown alternates.
+    -- Every HTML page (including unlisted/noindex pages) has an alternate:
+    -- /index.md for /, otherwise the page path plus .md. Alternate links
+    -- use text/markdown. Generated output takes precedence over static files;
+    -- check reports a shadowed static Markdown file just as it does HTML.
+    -- Markdown includes the canonical HTML URL, title, subtitle, dates,
+    -- authored content and generated main-area listings/event details.
+    -- It excludes navigation, footer, forms, scripts and decorative layout.
+    -- Authored Markdown is preserved apart from URL resolution; HTML becomes
+    -- readable Markdown. Relative URLs resolve against the HTML page URL,
+    -- including fragments, so they keep their original destination.
+    markdown: Boolean?
+    publishes_markdown: markdown ?? false
+
     -- The site's content language, as an IETF BCP 47 tag (`"en"`, `"nl"`,
     -- `"fr-CA"`, ...). See SiteLanguageIsDeclared: every published page
     -- declares this on its root element, so assistive technology and

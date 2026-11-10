@@ -16,6 +16,7 @@ pub mod init;
 mod json_files;
 pub mod link_check;
 pub mod luma;
+mod markdown;
 pub mod page_date;
 pub mod search;
 mod sitemap;

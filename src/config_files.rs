@@ -15,6 +15,9 @@ use std::path::Path;
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MainConfig {
+    /// Publish a Markdown alternate for each page; off when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) markdown: Option<bool>,
     pub(crate) site_title: String,
     pub(crate) js_files: Vec<String>,
     pub(crate) include_default_js: Option<bool>,

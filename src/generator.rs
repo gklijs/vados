@@ -79,6 +79,10 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
 
         //generating the end html and writing it to file
         write_html(destination, path, &page);
+        if main_config.markdown == Some(true) {
+            let markdown = content_helper.get_markdown(source, &generic_content);
+            write_raw(destination, &crate::markdown::href(path), markdown);
+        }
     }
     write_feeds(source, destination, &main_config, &structure);
     write_calendars(destination, &main_config, &structure);

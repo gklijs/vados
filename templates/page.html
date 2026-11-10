@@ -4,6 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{{ document_title }}</title>
+    {% if let Some(href) = markdown_href %}
+    <link rel="alternate" type="text/markdown" href="{{ href }}">
+    {% endif %}
     <meta property="og:title" content="{{ title }}" />
     <meta property="og:site_name" content="{{ site_title }}" />
     <meta property="og:type" content="{{ preview.og_type }}" />

@@ -37,6 +37,7 @@ pub(crate) struct ContentItems {
 }
 
 pub(crate) struct GenericContent {
+    markdown: bool,
     background_class: String,
     /// Bulma's `data-theme` for `<html>`, when the site is pinned to one.
     data_theme: Option<&'static str>,
@@ -123,6 +124,7 @@ impl GenericContent {
             .as_deref()
             .and_then(|f| publish_favicon(source, destination, f));
         GenericContent {
+            markdown: main_config.markdown == Some(true),
             background_class,
             data_theme: main_config.color_scheme.map(ColorScheme::to_data_theme),
             stretch_side_notification: main_config.stretch_side_notification.unwrap_or(false),
@@ -213,6 +215,7 @@ impl ContentHelper<'_> {
             &self.item,
             self.structure,
             generic_content,
+            generic_content.highlight,
         )
     }
     pub(crate) fn get_page(
@@ -234,6 +237,44 @@ impl ContentHelper<'_> {
             page_helper,
             self.structure,
             generic_content,
+        )
+    }
+
+    pub(crate) fn get_markdown(&self, source: &str, generic: &GenericContent) -> String {
+        let mut main = get_main_content(
+            source,
+            self.path,
+            &self.item,
+            self.structure,
+            generic,
+            false,
+        );
+        // Keep the authored Markdown intact rather than round-tripping it
+        // through HTML. The surrounding generated content uses the same
+        // rendering and selection rules as the HTML page.
+        let authored =
+            if classify_content_reference(&self.item.content) == ContentKind::MarkdownFile {
+                fs::read_to_string(get_file_path(source, self.path, &self.item.content)).ok()
+            } else {
+                None
+            };
+        let mut marker = String::from("VADOSMARKDOWNBODYPLACEHOLDER");
+        while main.contains(&marker) {
+            marker.push('X');
+        }
+        if authored.is_some() {
+            let rendered = get_content(source, self.path, &self.item.content, false);
+            if !rendered.is_empty() {
+                main = main.replacen(&rendered, &marker, 1);
+            }
+        }
+        let page = self.get_page("", &main, generic);
+        crate::markdown::render(
+            &page,
+            self.path,
+            generic.site_url.as_deref(),
+            authored.as_deref().map(|text| (marker.as_str(), text)),
+            self.item.updated.map(|d| d.to_string()).as_deref(),
         )
     }
 }
@@ -620,6 +661,7 @@ fn get_main_content(
     item: &Item,
     structure: &Structure,
     generic_content: &GenericContent,
+    highlight: bool,
 ) -> String {
     let ui = generic_content.ui;
     let image = match &item.image {
@@ -631,7 +673,7 @@ fn get_main_content(
         sub_title: &item.sub_title,
         date: item.date.map(|d| DisplayDate::new(&d, ui)),
         image,
-        content: get_content(source, path, &item.content, generic_content.highlight),
+        content: get_content(source, path, &item.content, highlight),
         feed: item
             .feed
             .as_ref()
@@ -796,6 +838,9 @@ fn get_page(
         },
     );
     PageTemplate {
+        markdown_href: generic_content
+            .markdown
+            .then(|| crate::markdown::href(path)),
         title: &item.title,
         document_title: document_title(
             path,
