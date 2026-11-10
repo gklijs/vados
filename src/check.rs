@@ -583,10 +583,15 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                 .filter_map(|(published, from)| {
                     let page = match published.as_str() {
                         "/index.html" => "/",
-                        p => p.strip_suffix(".html")?,
+                        "/index.md" if main_config.markdown == Some(true) => "/",
+                        p => p.strip_suffix(".html").or_else(|| {
+                            (main_config.markdown == Some(true))
+                                .then(|| p.strip_suffix(".md"))
+                                .flatten()
+                        })?,
                     };
-                    pages
-                        .contains_key(page)
+                    page_paths
+                        .contains(page)
                         .then(|| (from.display().to_string(), String::from(page)))
                 })
                 .collect();

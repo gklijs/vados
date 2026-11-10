@@ -514,6 +514,37 @@ and those on the agenda's own page, whatever `from` says. To keep one of its own
 `timeZone`. Every event is in the page, and a small script hides those that have ended, with a button to show them
 again, so a page cached for days stays right. Without JavaScript all of them stay visible.
 
+## Markdown versions
+
+Set `"markdown": true` in `main.json` to publish a Markdown alternate alongside
+every HTML page. The homepage gets `/index.md`; `/blog/post` gets `/blog/post.md`.
+Each HTML page links its alternate with `rel="alternate"` and `type="text/markdown"`.
+This is off by default and needs no `siteUrl`; with one, the Markdown includes
+the full canonical HTML URL, otherwise the site-root path.
+
+Markdown versions contain the title, subtitle, dates, hero image, page content,
+child listings, notifications, latest posts, event details, agendas and Luma links.
+Navigation, footer, forms, scripts and embedded frames are omitted. Authored
+Markdown keeps its formatting; HTML content becomes readable Markdown. Relative
+links and image URLs resolve against the original HTML page URL, including
+fragment links, so their targets remain the same. Page links continue to use HTML.
+
+Unlisted and `noindex` pages also get alternates: these settings control discovery,
+not access. A Markdown alternate does not carry HTML's robots meta tag; apply an
+`X-Robots-Tag: noindex` hosting header to its `.md` URL if it must stay out of
+search results. Markdown alternates are not added to the XML sitemap.
+
+Generated Markdown replaces static files at the same path, which `vados check`
+reports. Configure your host to serve `.md` as `text/markdown; charset=utf-8`.
+For example, in a Netlify or Cloudflare Pages `_headers` file:
+
+```
+/*.md
+  Content-Type: text/markdown; charset=utf-8
+```
+
+`/llms.txt` is not generated.
+
 ## Checking links
 
 `vados check --output public` or `vados generate --check-links` check the generated site itself, which catches what

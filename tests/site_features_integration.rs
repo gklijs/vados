@@ -770,3 +770,144 @@ fn an_agendas_own_dated_luma_events_join_whatever_from_says() {
     let ics = site.published("agenda/calendar.ics");
     assert_eq!(ics.matches("BEGIN:VEVENT").count(), 2, "{ics}");
 }
+
+#[test]
+fn markdown_is_opt_in_and_preserves_authored_content_with_resolved_urls() {
+    let disabled = Site::new("");
+    disabled.generate();
+    assert!(!disabled.exists("index.md"));
+    assert!(!disabled.published("index.html").contains("text/markdown"));
+
+    let site = Site::new(r#", "markdown":true"#);
+    site.write("blog/post/page.json", r##"{"title":"Post","subTitle":"Notes","date":"2026-11-01","updated":"2026-11-02","content":"post.md"}"##);
+    site.write("blog/post/post.md", "## Authored heading\n\nA **bold** word.\n\n[Other](../other?x=1#part)\n\n![Alt](photo.png)\n\n[Ref][r]\n\n[r]: /about \"About\"\n\n<a href=\"relative\">HTML link</a>\n\n```rust\nlet url = \"[unchanged](relative)\";\n```\n");
+    site.generate();
+    let markdown = site.published("blog/post.md");
+    for expected in [
+        "Canonical: https://example.com/blog/post",
+        "# Post",
+        "Notes",
+        "2026-11-01",
+        "Updated: 2026-11-02",
+        "## Authored heading",
+        "A **bold** word.",
+        "[Other](/other?x=1#part)",
+        "![Alt](/blog/photo.png)",
+        "[Ref][r]",
+        "[r]: /about \"About\"",
+        "<a href=\"/blog/relative\">HTML link</a>",
+        "```rust\nlet url = \"[unchanged](relative)\";\n```",
+    ] {
+        assert!(
+            markdown.contains(expected),
+            "missing {expected:?}: {markdown}"
+        );
+    }
+    assert!(!markdown.contains("PLACEHOLDER"));
+    assert!(site.published("blog/post.html").contains("text/markdown"));
+    assert!(site.published("blog/post.html").contains("/blog/post.md"));
+    assert!(site.exists("index.md"));
+}
+
+#[test]
+fn markdown_converts_html_and_keeps_generated_sections_without_controls() {
+    let site = Site::new(r#", "markdown":true,"search":true"#);
+    site.write("page.json", r#"{"title":"Home","content":"<h2>HTML section</h2><p>Read <a href='next'>next</a>.</p><ul><li>One</li><li>Two</li></ul><pre><code class='language-rust'>let x = 1;</code></pre><script>secret_script()</script>","agenda":true,"lumaEvents":[{"eventId":"evt-AbC123","title":"External jam"}]}"#);
+    site.write("next/page.json", &page("Next", ""));
+    let mut home: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(site.root.join("root/page.json")).unwrap())
+            .unwrap();
+    home["leftNotifications"] = serde_json::json!([{
+        "title": "Notice", "content": "<p>A useful notice.</p>"
+    }]);
+    home["latest"] = serde_json::json!({"from":"/news","limit":1});
+    site.write("page.json", &home.to_string());
+    site.write(
+        "news/post/page.json",
+        &page(
+            "Latest post",
+            r#", "date":"2026-11-01","summary":"Newest news""#,
+        ),
+    );
+    site.write("jam/page.json", &page("Jam", r#", "event":{"start":"2026-11-15T14:00:00+01:00","timeZone":"Europe/Amsterdam","venue":"Club"}"#));
+    site.generate();
+    let markdown = site.published("index.md");
+    for expected in [
+        "## HTML section",
+        "[next](</next>)",
+        "- One",
+        "- Two",
+        "```rust\nlet x = 1;\n```",
+        "[Next](</next>)",
+        "## Notice",
+        "A useful notice.",
+        "[Latest post](</news/post>)",
+        "Newest news",
+        "[Jam](</jam>)",
+        "External jam",
+        "https://luma.com/event/evt-AbC123",
+    ] {
+        assert!(
+            markdown.contains(expected),
+            "missing {expected:?}: {markdown}"
+        );
+    }
+    for excluded in [
+        "<iframe",
+        "secret_script",
+        "<script",
+        "<svg",
+        "<form",
+        "PLACEHOLDER",
+        "hoofdinhoud",
+        "Geen komende",
+    ] {
+        assert!(
+            !markdown.contains(excluded),
+            "unexpected {excluded:?}: {markdown}"
+        );
+    }
+    assert!(site.published("jam.md").contains("Club"));
+    assert!(site.exists("search.md"));
+    site.assert_links_are_fine();
+}
+
+#[test]
+fn markdown_static_collisions_are_reported_and_generated_content_wins() {
+    let site = Site::new(r#", "markdown":true,"staticDir":"static""#);
+    site.write("static/index.md", "old static content");
+    assert!(kinds(&site.check()).contains(&FindingKind::StaticFileShadowedByPage));
+    site.generate();
+    assert!(!site.published("index.md").contains("old static content"));
+}
+
+#[test]
+fn markdown_without_site_url_converts_html_files_and_keeps_unlisted_pages() {
+    let site = Site::new(r#", "markdown":true,"staticDir":"static","search":true"#);
+    let mut config: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(site.root.join("root/main.json")).unwrap())
+            .unwrap();
+    config.as_object_mut().unwrap().remove("siteUrl");
+    site.write("main.json", &config.to_string());
+    site.write(
+        "private/page.json",
+        r#"{"title":"Private","content":"body.html","listed":false,"noindex":true}"#,
+    );
+    site.write("private/body.html", "<p>A <strong>strong</strong> word and <a href='#part'>fragment</a>.</p><h2 id='part'>Part</h2><iframe src='https://example.com/video' title='Video'></iframe>");
+    site.write("static/search.md", "shadowed");
+    assert!(kinds(&site.check()).contains(&FindingKind::StaticFileShadowedByPage));
+    site.generate();
+    let markdown = site.published("private.md");
+    assert!(markdown.contains("Canonical: /private"), "{markdown}");
+    assert!(markdown.contains("**strong**"), "{markdown}");
+    assert!(
+        markdown.contains("[fragment](</private#part>)"),
+        "{markdown}"
+    );
+    assert!(
+        markdown.contains("[Video](<https://example.com/video>)"),
+        "{markdown}"
+    );
+    assert!(!site.published("index.md").contains("Private"));
+    assert!(site.published("private.html").contains("/private.md"));
+}
