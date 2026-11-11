@@ -102,5 +102,8 @@
 {% if let Some(s) = luma_button_script %}
 <script id="luma-checkout" src="{{ s }}"></script>
 {% endif %}
+{% if let Some(s) = mermaid_script %}
+<script src="/js/vados-mermaid.js" data-mermaid-script="{{ s }}"></script>
+{% endif %}
 </body>
 </html>

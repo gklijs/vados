@@ -619,6 +619,55 @@ theme, each adjusted where needed to stay readable on Bulma's code background in
 load. `"codeHighlight": false` in `main.json` turns it off. Building vados with `--no-default-features` leaves the
 highlighter out, about 1 MB of the binary.
 
+## Diagrams
+
+A fenced `mermaid` block in Markdown becomes a diagram in the reader's browser:
+
+````markdown
+```mermaid
+flowchart LR
+    accTitle: Publishing a site
+    accDescr: Markdown passes through vados to become a website.
+    Markdown --> vados --> Site
+```
+````
+
+Give each diagram an `accTitle` or `accDescr` (preferably both) so Mermaid can
+label its SVG for assistive technology. See [Mermaid's accessibility syntax](https://mermaid.js.org/config/accessibility.html).
+`vados check` warns about missing alternatives and empty diagrams. It doesn't
+validate diagram syntax; an invalid diagram stays visible as source code.
+
+Diagrams work in page content, Markdown notifications and the footer. Only pages
+showing one load the loader and Mermaid. Without JavaScript, or if loading or
+rendering fails, the source remains readable. Wide diagrams scroll within their
+column. Mermaid follows the reader's light/dark preference, `colorScheme`, and a
+notification's `.theme-light` or `.theme-dark`, and updates on preference changes.
+Diagram colours use Mermaid's default and dark themes; authored colours and all
+Mermaid diagram types are not covered by the code highlighter's 4.5:1 contrast
+guarantee. Check the colours of your diagrams before publishing.
+
+`"mermaid": false` in `main.json` leaves the blocks as ordinary code and makes
+`check` warn that diagram rendering is disabled. This is independent of
+`codeHighlight`. HTML content is left alone. Atom feeds keep ordinary Mermaid
+code blocks, and Markdown alternates keep the diagram source.
+
+By default, diagram pages import Mermaid **12.3.0** from jsDelivr. Visitors to those
+pages make requests to that CDN, which receives their IP address. To self-host,
+copy the Mermaid npm package's complete `dist` directory (including its chunks)
+into `staticDir`, for example `root/static/vendor/mermaid`, then set:
+
+```json
+"mermaidScript": "/vendor/mermaid/mermaid.esm.min.mjs"
+```
+
+The override must be an absolute HTTP(S) module URL or a root-relative file path
+that exists in `staticDir`; `check` reports invalid or missing paths as errors.
+The module must export the Mermaid API as its default export. A strict
+Content-Security-Policy needs `script-src` to allow the module and its chunks
+(`'self'` when self-hosted, `https://cdn.jsdelivr.net` for the default), plus the
+styles used by Mermaid's SVGs. The local loader is `/js/vados-mermaid.js`.
+No Node.js or browser is needed to generate a site.
+
 ## Icons
 
 Icons -- on menu entries (`icon` in `menu.json` and `page.json`), social links, breadcrumbs and the side menu -- are

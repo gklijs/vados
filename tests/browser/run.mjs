@@ -138,7 +138,7 @@ function colourSite(color) {
 function serve(root, { failFirstIndex = false } = {}) {
   const requests = [];
   let failIndex = failFirstIndex;
-  const types = { ".css": "text/css", ".js": "text/javascript", ".html": "text/html", ".json": "application/json" };
+  const types = { ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".html": "text/html", ".json": "application/json" };
   const server = http.createServer((request, response) => {
     const address = new URL(request.url, "http://x").pathname;
     requests.push(address);
@@ -455,6 +455,90 @@ async function checkAllPastAgenda(browser) {
   server.close();
 }
 
+// Exercise the actual pinned Mermaid release, served locally under the same
+// strict policy as the rest of the suite. No CDN request is needed in CI.
+function mermaidSite(extra = {}) {
+  const diagram = "```mermaid\nflowchart LR\n    accTitle: Publishing\n    accDescr: Markdown becomes a website\n    Markdown --> vados --> Site\n```\n";
+  const root = generate(`mermaid-${Object.values(extra).join('-')}`, {
+    "main.json": mainJson({ mermaidScript: "/vendor/mermaid/mermaid.esm.min.mjs", ...extra }),
+    "menu.json": { mainMenu: [], socials: [] },
+    "page.json": { title: "Home", content: "diagram.md", leftNotifications: [
+      { title: "Light", color: "Light", content: "diagram.md" },
+      { title: "Dark", color: "Dark", content: "diagram.md" },
+    ] },
+    "diagram.md": diagram + "\n```mermaid\nthis is not a diagram\n```\n",
+    "plain/page.json": { title: "Plain", content: "<p>Plain</p>", leftNotifications: [] },
+    // check needs the entry point to exist before generation.
+    "static/vendor/mermaid/mermaid.esm.min.mjs": "export default {};",
+  });
+  fs.cpSync(path.join(here, "node_modules/mermaid/dist"), path.join(root, "vendor/mermaid"), { recursive: true });
+  return root;
+}
+
+async function checkMermaid(browser) {
+  const server = await serve(mermaidSite());
+  const context = await browser.newContext({ viewport: { width: 375, height: 800 }, colorScheme: "light" });
+  const page = await context.newPage();
+  await page.goto(server.url);
+  await page.waitForFunction(() => document.querySelectorAll('.vados-mermaid-rendered > svg').length === 3);
+  check("Mermaid renders page and notification diagrams", await page.locator('.vados-mermaid-rendered > svg').count() === 3);
+  check("Mermaid gives SVGs their accessible title", await page.locator('svg title').first().textContent() === "Publishing");
+  check("invalid Mermaid stays as source without an error SVG", await page.locator('pre.mermaid:visible').count() === 3);
+  check("Mermaid does not overflow a phone viewport", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  const fills = () => page.locator('.vados-mermaid-rendered > svg').evaluateAll((svgs) => svgs.map((svg) => getComputedStyle(svg.querySelector('.node rect')).fill));
+  const light = await fills();
+  check("notification theme controls Mermaid colour", light[0] === light[1] && light[0] !== light[2], light.join(', '));
+  async function checkDiagramContrast(scheme) {
+    const pairs = await page.locator('.vados-mermaid-rendered > svg').evaluateAll((svgs) => svgs.map((svg) => {
+      const rgb = (value) => {
+        const parts = value.match(/[\d.]+/g).map(Number);
+        return value.startsWith('color(') ? parts.slice(0, 3).map((v) => v * 255) : parts.slice(0, 3);
+      };
+      return [rgb(getComputedStyle(svg.querySelector('.nodeLabel')).color), rgb(getComputedStyle(svg.querySelector('.node rect')).fill)];
+    }));
+    pairs.forEach(([ink, background], i) => check(`Mermaid flowchart ${i} in ${scheme} reaches 4.5:1`, contrast(ink, background) >= 4.5, contrast(ink, background).toFixed(2)));
+  }
+  await checkDiagramContrast('light');
+  const firstIds = await page.locator('.vados-mermaid-rendered > svg').evaluateAll((svgs) => svgs.map((svg) => svg.id));
+  await page.emulateMedia({ colorScheme: "dark" });
+  await page.waitForFunction((old) => {
+    const svgs = [...document.querySelectorAll('.vados-mermaid-rendered > svg')];
+    return svgs.length === 3 && svgs.every((svg) => !old.includes(svg.id));
+  }, firstIds);
+  const dark = await fills();
+  check("Mermaid follows preference changes and preserves notification themes", dark[0] === dark[2] && dark[0] !== dark[1], dark.join(', '));
+  await checkDiagramContrast('dark');
+  await page.goto(`${server.url}/plain`);
+  check("pages without diagrams request no Mermaid scripts", !server.requests.slice(server.requests.lastIndexOf('/plain')).some((r) => r.includes('mermaid')));
+  await context.close();
+
+  const noJs = await browser.newContext({ javaScriptEnabled: false });
+  const source = await noJs.newPage();
+  await source.goto(server.url);
+  check("Mermaid source stays visible without JavaScript", await source.locator('pre.mermaid:visible').count() === 6);
+  await noJs.close();
+
+  const failed = await browser.newContext();
+  const fallback = await failed.newPage();
+  await fallback.route('**/vendor/mermaid/**', (route) => route.abort());
+  await fallback.goto(server.url);
+  check("a failed Mermaid download keeps source visible", await fallback.locator('pre.mermaid:visible').count() === 6);
+  await failed.close();
+  server.close();
+
+  for (const scheme of ['light', 'dark']) {
+    const pinned = await serve(mermaidSite({ colorScheme: scheme }));
+    const ctx = await browser.newContext({ colorScheme: scheme === 'light' ? 'dark' : 'light' });
+    const pg = await ctx.newPage();
+    await pg.goto(pinned.url);
+    await pg.waitForFunction(() => document.querySelectorAll('.vados-mermaid-rendered > svg').length === 3);
+    const colors = await pg.locator('.vados-mermaid-rendered > svg').evaluateAll((svgs) => svgs.map((svg) => getComputedStyle(svg.querySelector('.node rect')).fill));
+    check(`Mermaid respects pinned ${scheme} scheme`, colors[0] === colors[scheme === 'light' ? 1 : 2], colors.join(', '));
+    await ctx.close();
+    pinned.close();
+  }
+}
+
 // --- Run ---
 
 const stylesheet = compiledStylesheet();
@@ -467,6 +551,7 @@ try {
   await checkContrast(browser);
   await checkFeatures(browser, featureSite());
   await checkAllPastAgenda(browser);
+  await checkMermaid(browser);
   await checkSearchScriptFailing(browser, featureSite());
   await checkSideMenuEscape(browser, sectionMenuSite());
 } finally {

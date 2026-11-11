@@ -4,6 +4,7 @@
 
 use crate::config_files::{FeedContent, MainConfig};
 use crate::content::get_content;
+use crate::content::MarkdownOptions;
 use crate::files::write_raw;
 use crate::page_date::PageDate;
 use crate::structure::{Item, Structure};
@@ -140,7 +141,10 @@ fn render_feed(
                     source,
                     &child.path,
                     &child.content,
-                    main_config.highlights_code(),
+                    MarkdownOptions {
+                        highlight: main_config.highlights_code(),
+                        mermaid: false,
+                    },
                 ))
             });
             FeedEntry {

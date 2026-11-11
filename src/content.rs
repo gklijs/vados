@@ -30,6 +30,23 @@ use std::sync::Arc;
 /// Where the agenda script is published, for the pages showing an agenda.
 pub(crate) const AGENDA_SCRIPT_HREF: &str = "/js/vados-agenda.js";
 
+/// Options shared by every Markdown-to-HTML entry point. Feeds, search and
+/// Markdown alternates deliberately disable browser-only diagrams.
+#[derive(Clone, Copy, Default)]
+pub(crate) struct MarkdownOptions {
+    pub(crate) highlight: bool,
+    pub(crate) mermaid: bool,
+}
+
+impl MarkdownOptions {
+    pub(crate) fn for_site(config: &MainConfig) -> Self {
+        Self {
+            highlight: config.highlights_code(),
+            mermaid: config.renders_mermaid(),
+        }
+    }
+}
+
 pub(crate) struct ContentItems {
     pub(crate) item: Item,
     pub(crate) left_sub_notifications: Option<Vec<String>>,
@@ -61,7 +78,8 @@ pub(crate) struct GenericContent {
     /// The social links' URLs: the site owner's own profiles elsewhere.
     social_urls: Vec<String>,
     fediverse_creator: Option<String>,
-    highlight: bool,
+    options: MarkdownOptions,
+    mermaid_script: String,
     /// Whether feeds are published at all: only with a usable `siteUrl`.
     feeds_published: bool,
     spare_tile: Option<SpareTile>,
@@ -143,7 +161,11 @@ impl GenericContent {
             author_url: main_config.author.as_ref().and_then(|a| a.url.clone()),
             social_urls: menu_config.socials.iter().map(|s| s.url.clone()).collect(),
             fediverse_creator: fediverse_creator(main_config, menu_config),
-            highlight: publish_highlight_stylesheet(destination, main_config),
+            options: MarkdownOptions {
+                highlight: publish_highlight_stylesheet(destination, main_config),
+                mermaid: main_config.renders_mermaid(),
+            },
+            mermaid_script: main_config.get_mermaid_script().to_string(),
             feeds_published: main_config.get_site_url().is_some(),
             spare_tile: main_config
                 .spare_tile
@@ -215,7 +237,7 @@ impl ContentHelper<'_> {
             &self.item,
             self.structure,
             generic_content,
-            generic_content.highlight,
+            generic_content.options,
         )
     }
     pub(crate) fn get_page(
@@ -247,7 +269,7 @@ impl ContentHelper<'_> {
             &self.item,
             self.structure,
             generic,
-            false,
+            MarkdownOptions::default(),
         );
         // Keep the authored Markdown intact rather than round-tripping it
         // through HTML. The surrounding generated content uses the same
@@ -263,7 +285,12 @@ impl ContentHelper<'_> {
             marker.push('X');
         }
         if authored.is_some() {
-            let rendered = get_content(source, self.path, &self.item.content, false);
+            let rendered = get_content(
+                source,
+                self.path,
+                &self.item.content,
+                MarkdownOptions::default(),
+            );
             if !rendered.is_empty() {
                 main = main.replacen(&rendered, &marker, 1);
             }
@@ -290,7 +317,7 @@ pub(crate) fn to_content_items(
     source: &str,
     dir_path: String,
     structure: &Structure,
-    highlight: bool,
+    options: MarkdownOptions,
 ) -> ContentItems {
     let page_file_string = format!("{}/page.json", dir_path);
     let page_file_path = Path::new(&page_file_string);
@@ -302,12 +329,14 @@ pub(crate) fn to_content_items(
         root if root == source => String::from("/"),
         mut d => d.split_off(source.len()),
     };
-    let left_sub_notifications = page_config.left_notifications.as_ref().map(|n| {
-        resolve_notifications(source, &path, n, TilePlacement::Left, structure, highlight)
-    });
-    let right_sub_notifications = page_config.right_notifications.as_ref().map(|n| {
-        resolve_notifications(source, &path, n, TilePlacement::Right, structure, highlight)
-    });
+    let left_sub_notifications = page_config
+        .left_notifications
+        .as_ref()
+        .map(|n| resolve_notifications(source, &path, n, TilePlacement::Left, structure, options));
+    let right_sub_notifications = page_config
+        .right_notifications
+        .as_ref()
+        .map(|n| resolve_notifications(source, &path, n, TilePlacement::Right, structure, options));
     let item = Item::new(path, page_config);
     ContentItems {
         item,
@@ -322,7 +351,7 @@ fn resolve_notifications(
     notifications: &[Notification],
     placement: TilePlacement,
     structure: &Structure,
-    highlight: bool,
+    options: MarkdownOptions,
 ) -> Vec<String> {
     notifications
         .iter()
@@ -334,7 +363,7 @@ fn resolve_notifications(
                 notification.clone(),
                 (placement, i),
                 structure,
-                highlight,
+                options,
             )
         })
         .collect()
@@ -347,7 +376,7 @@ fn resolve_notification(
     notification: Notification,
     (placement, index): (TilePlacement, usize),
     structure: &Structure,
-    highlight: bool,
+    options: MarkdownOptions,
 ) -> String {
     let id = match placement {
         TilePlacement::Left => format!("sub-l-{}", index),
@@ -358,7 +387,7 @@ fn resolve_notification(
     };
     // The first row of child tiles is above the fold.
     let eager = index == 0;
-    let content = get_content(source, path, &notification.content, highlight);
+    let content = get_content(source, path, &notification.content, options);
     let image = notification
         .image
         .and_then(|i| structure.process_image(&i, ImageType::Sub { eager }));
@@ -495,12 +524,12 @@ pub(crate) fn get_file_path(source: &str, path: &str, reference: &str) -> String
     }
 }
 
-fn md_to_content(file_path: &str, highlight: bool) -> String {
+fn md_to_content(file_path: &str, options: MarkdownOptions) -> String {
     match fs::read_to_string(file_path) {
         Ok(text) => {
             let mut html_output: String = String::with_capacity(text.len() * 3 / 2);
-            let parser = Parser::new(&text);
-            if highlight {
+            let parser = crate::mermaid::diagram_blocks(Parser::new(&text), options.mermaid);
+            if options.highlight {
                 html::push_html(&mut html_output, highlight_code_blocks(parser));
             } else {
                 html::push_html(&mut html_output, parser);
@@ -559,12 +588,16 @@ fn html_to_content(file_path: &str) -> String {
     }
 }
 
-/// The content a reference names, as HTML. `highlight` colours fenced
-/// Markdown code blocks; see `highlight.rs`.
-pub(crate) fn get_content(source: &str, path: &str, reference: &str, highlight: bool) -> String {
+/// The content a reference names, as HTML, with the requested Markdown transforms.
+pub(crate) fn get_content(
+    source: &str,
+    path: &str,
+    reference: &str,
+    options: MarkdownOptions,
+) -> String {
     let file_path = get_file_path(source, path, reference);
     match classify_content_reference(reference) {
-        ContentKind::MarkdownFile => md_to_content(&file_path, highlight),
+        ContentKind::MarkdownFile => md_to_content(&file_path, options),
         ContentKind::HtmlFile => html_to_content(&file_path),
         ContentKind::InlineHtml => String::from(reference),
         ContentKind::Unrecognised => panic!(
@@ -579,7 +612,7 @@ fn get_footer(source: &str, main_config: &MainConfig) -> String {
         source,
         "/",
         &main_config.footer_content,
-        main_config.highlights_code(),
+        MarkdownOptions::for_site(main_config),
     );
     FooterTemplate {
         content: &footer_content,
@@ -661,7 +694,7 @@ fn get_main_content(
     item: &Item,
     structure: &Structure,
     generic_content: &GenericContent,
-    highlight: bool,
+    options: MarkdownOptions,
 ) -> String {
     let ui = generic_content.ui;
     let image = match &item.image {
@@ -673,7 +706,7 @@ fn get_main_content(
         sub_title: &item.sub_title,
         date: item.date.map(|d| DisplayDate::new(&d, ui)),
         image,
-        content: get_content(source, path, &item.content, highlight),
+        content: get_content(source, path, &item.content, options),
         feed: item
             .feed
             .as_ref()
@@ -813,6 +846,11 @@ fn get_page(
     if shows_highlighted_code {
         css_links.push(String::from(highlight::STYLESHEET_PATH));
     }
+    let shows_mermaid = generic_content.options.mermaid
+        && std::iter::once(page_helper.main_content)
+            .chain(child_tiles.iter().map(String::as_str))
+            .chain(std::iter::once(generic_content.footer.as_str()))
+            .any(|html| html.contains(crate::mermaid::MARKER));
     let structured_data = structured_data(
         item,
         &PageFacts {
@@ -838,6 +876,7 @@ fn get_page(
         },
     );
     PageTemplate {
+        mermaid_script: shows_mermaid.then_some(generic_content.mermaid_script.as_str()),
         markdown_href: generic_content
             .markdown
             .then(|| crate::markdown::href(path)),

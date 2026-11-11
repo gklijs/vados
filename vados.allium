@@ -238,6 +238,10 @@ enum FindingKind {
     unrecognised_content_reference
     missing_content_file
     top_level_heading_in_content
+    invalid_mermaid_script
+    empty_mermaid_diagram
+    mermaid_without_alternative_text
+    mermaid_disabled
 
     -- Menus and social links.
     external_menu_link_without_title
@@ -612,6 +616,13 @@ entity SiteConfig {
     -- CodeIsHighlighted.
     code_highlight: Boolean?
     highlights_code: code_highlight ?? true
+
+    -- Fenced Mermaid diagrams render in the visitor's browser. The optional
+    -- script is an absolute HTTP(S) module URL or an existing root-relative
+    -- file in static_dir; absent means the pinned jsDelivr release, 12.3.0.
+    mermaid: Boolean?
+    mermaid_script: String?
+    renders_mermaid: mermaid ?? true
 
     -- Pins every page to Bulma's light or dark theme (`data-theme` on the
     -- document element) instead of following the reader's colour-scheme
@@ -1633,6 +1644,7 @@ config {
     -- is a condition a real generate run cannot get past. Every other kind is a
     -- warning, because generation tolerates it by skipping or degrading.
     error_finding_kinds: Set<FindingKind> = {
+        invalid_mermaid_script,
         site_config_unreadable,
         menu_unreadable,
         page_config_unreadable,
@@ -4079,6 +4091,25 @@ surface PublishedPage {
         -- page showing highlighted code
         -- loads the stylesheet for it. Content given as HTML is never
         -- changed.
+
+    @guarantee DiagramsAreRendered
+        -- When renders_mermaid, fenced Markdown blocks whose language token
+        -- is mermaid become browser-rendered diagrams wherever Markdown is
+        -- shown: page content, notifications, child tiles and footer. Other
+        -- code and HTML content are unchanged. Only a page showing a diagram
+        -- loads the local loader and the configured Mermaid module. Source
+        -- stays readable until rendering succeeds, including without scripts,
+        -- on a failed download or invalid diagram syntax. Wide diagrams scroll
+        -- within their column. Mermaid uses strict security mode.
+        -- Diagrams follow the nearest explicit Bulma theme, or the reader's
+        -- preference, and update when that preference changes. Diagram colours
+        -- use Mermaid's default/dark themes, without CodeIsHighlighted's
+        -- contrast guarantee for every diagram type or authored colour.
+        -- Atom feeds retain ordinary Mermaid code blocks; Markdown alternates
+        -- retain source. Check warns for empty blocks, missing accTitle/accDescr
+        -- alternatives, and diagrams with rendering disabled. An invalid or
+        -- missing mermaid_script is an error. Check never fetches the module
+        -- or validates Mermaid syntax.
 
     @guarantee IconsAreInlined
         -- Every icon vados shows -- on menu entries, breadcrumbs, the side

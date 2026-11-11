@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Mermaid diagrams in fenced Markdown blocks (#33), with per-page script loading,
+  theme switching, readable source fallback, a self-hosting override and source checks.
+
 ## 0.5.0 - 2026-11-02
 
 ### Added

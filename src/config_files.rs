@@ -67,6 +67,12 @@ pub(crate) struct MainConfig {
     /// See `vados.allium`'s `SiteConfig.code_highlight`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) code_highlight: Option<bool>,
+    /// Render fenced Mermaid diagrams in the browser; on when absent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) mermaid: Option<bool>,
+    /// Mermaid ESM entry point: an HTTP(S) URL or a path under staticDir.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) mermaid_script: Option<String>,
     /// Pins the site to Bulma's light or dark theme instead of following the
     /// reader's colour-scheme preference. See `vados.allium`'s
     /// `SiteConfig.color_scheme` and `FollowsTheReadersColourScheme`.
@@ -269,6 +275,16 @@ impl MainConfig {
             .filter(|n| !n.is_empty())
             .unwrap_or(&self.site_title)
     }
+    pub(crate) fn renders_mermaid(&self) -> bool {
+        self.mermaid.unwrap_or(true)
+    }
+
+    pub(crate) fn get_mermaid_script(&self) -> &str {
+        self.mermaid_script
+            .as_deref()
+            .unwrap_or(crate::mermaid::DEFAULT_SCRIPT)
+    }
+
     pub(crate) fn highlights_code(&self) -> bool {
         self.code_highlight.unwrap_or(true)
     }

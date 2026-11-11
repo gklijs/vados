@@ -11,6 +11,7 @@ use crate::config_files::{
     is_site_url, ChildOrder, ImageList, MainConfig, MenuConfig, Notification, PageConfig,
     PageSelection,
 };
+use crate::content::MarkdownOptions;
 use crate::content::{
     classify_content_reference, get_content, get_file_path, has_top_level_heading, ContentKind,
 };
@@ -55,6 +56,10 @@ impl fmt::Display for Severity {
 /// maintainer can act on; see `vados.allium`'s `FindingKind` enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FindingKind {
+    InvalidMermaidScript,
+    EmptyMermaidDiagram,
+    MermaidWithoutAlternativeText,
+    MermaidDisabled,
     SiteConfigUnreadable,
     MenuUnreadable,
     PageConfigUnreadable,
@@ -112,7 +117,8 @@ impl FindingKind {
     pub fn severity(self) -> Severity {
         use FindingKind::*;
         match self {
-            SiteConfigUnreadable
+            InvalidMermaidScript
+            | SiteConfigUnreadable
             | MenuUnreadable
             | PageConfigUnreadable
             | UnrecognisedContentReference
@@ -132,7 +138,10 @@ impl FindingKind {
             | MissingLinkFragment
             | MissingAsset
             | OutputUnreadable => Severity::Error,
-            ImagesManifestUnreadable
+            EmptyMermaidDiagram
+            | MermaidWithoutAlternativeText
+            | MermaidDisabled
+            | ImagesManifestUnreadable
             | MissingContentFile
             | TopLevelHeadingInContent
             | UnresolvedMenuLink
@@ -171,6 +180,10 @@ impl fmt::Display for FindingKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use FindingKind::*;
         f.write_str(match self {
+            InvalidMermaidScript => "mermaidScript must name an HTTP(S) module or an existing root-relative file in staticDir",
+            EmptyMermaidDiagram => "Mermaid diagram is empty",
+            MermaidWithoutAlternativeText => "Mermaid diagram has no accTitle or accDescr text alternative",
+            MermaidDisabled => "Mermaid rendering is disabled; this diagram will show as source code",
             SiteConfigUnreadable => "main.json could not be read",
             MenuUnreadable => "menu.json could not be read",
             PageConfigUnreadable => "page.json could not be read",
@@ -446,6 +459,7 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                 .map(|n| &n.content),
         );
         for reference in references {
+            check_mermaid_reference(source, path, reference, main_config.as_ref(), &mut findings);
             check_content_links(source, path, path, reference, &link_targets, &mut findings);
         }
         if let Some(icon) = page_config.icon.as_ref().filter(|i| !is_known_icon(i)) {
@@ -515,6 +529,31 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
     }
 
     if let Some(main_config) = &main_config {
+        check_mermaid_reference(
+            source,
+            "/",
+            &main_config.footer_content,
+            Some(main_config),
+            &mut findings,
+        );
+        if let Some(script) = &main_config.mermaid_script {
+            let valid = match crate::mermaid::script_location(script) {
+                Some(None) => true,
+                Some(Some(path)) => main_config.static_dir.as_deref().is_some_and(|dir| {
+                    Path::new(&static_dir_path(source, dir))
+                        .join(path)
+                        .is_file()
+                }),
+                None => false,
+            };
+            if !valid {
+                findings.push(Finding {
+                    kind: FindingKind::InvalidMermaidScript,
+                    location: format!("{source}/main.json"),
+                    detail: Some(script.clone()),
+                });
+            }
+        }
         check_content_reference(source, "/", &main_config.footer_content, &mut findings);
         check_content_links(
             source,
@@ -823,6 +862,65 @@ fn collect_pages(
     pages
 }
 
+/// Inspect the same fenced blocks as the renderer, without loading Mermaid.
+fn check_mermaid_reference(
+    source: &str,
+    path: &str,
+    reference: &str,
+    config: Option<&MainConfig>,
+    findings: &mut Vec<Finding>,
+) {
+    use pulldown_cmark::{CodeBlockKind, Event, Parser, Tag, TagEnd};
+    if classify_content_reference(reference) != ContentKind::MarkdownFile {
+        return;
+    }
+    let file = get_file_path(source, path, reference);
+    let Ok(text) = std::fs::read_to_string(&file) else {
+        return;
+    };
+    let mut body: Option<String> = None;
+    let mut index = 0;
+    for event in Parser::new(&text) {
+        match event {
+            Event::Start(Tag::CodeBlock(CodeBlockKind::Fenced(info)))
+                if crate::mermaid::is_mermaid(&info) =>
+            {
+                body = Some(String::new())
+            }
+            Event::Text(text) if body.is_some() => body.as_mut().unwrap().push_str(&text),
+            Event::End(TagEnd::CodeBlock) if body.is_some() => {
+                index += 1;
+                let body = body.take().unwrap();
+                let mut push = |kind| {
+                    findings.push(Finding {
+                        kind,
+                        location: file.clone(),
+                        detail: Some(format!("diagram {index}")),
+                    })
+                };
+                if body.trim().is_empty() {
+                    push(FindingKind::EmptyMermaidDiagram);
+                }
+                let has_alternative = body.lines().map(str::trim).any(|line| {
+                    ["accTitle:", "accDescr:"].iter().any(|key| {
+                        line.strip_prefix(key)
+                            .is_some_and(|text| !text.trim().is_empty())
+                    }) || line.strip_prefix("accDescr").is_some_and(|rest| {
+                        rest.trim_start().starts_with('{') && !rest.trim_start().starts_with("{}")
+                    })
+                });
+                if !has_alternative {
+                    push(FindingKind::MermaidWithoutAlternativeText);
+                }
+                if config.is_some_and(|c| !c.renders_mermaid()) {
+                    push(FindingKind::MermaidDisabled);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
 fn check_content_reference(
     source: &str,
     location: &str,
@@ -965,7 +1063,12 @@ fn check_content_links(
     if !readable {
         return;
     }
-    for target in page_links_in(&get_content(source, path, reference, false)) {
+    for target in page_links_in(&get_content(
+        source,
+        path,
+        reference,
+        MarkdownOptions::default(),
+    )) {
         let page = target.trim_end_matches('/');
         let page = if page.is_empty() { "/" } else { page };
         if !link_targets.contains(page) {

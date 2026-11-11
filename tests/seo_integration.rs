@@ -567,3 +567,146 @@ fn code_blocks_are_highlighted_and_only_their_pages_load_the_stylesheet() {
     assert!(!post.contains("vados-highlight.css"));
     assert!(!site.destination.join("css/vados-highlight.css").exists());
 }
+
+const DIAGRAM: &str = "```mermaid title\nflowchart LR\n    accTitle: Publishing\n    accDescr: Markdown becomes a site\n    Markdown --> vados --> Site\n```\n";
+
+#[test]
+fn mermaid_is_loaded_only_where_displayed_and_feeds_keep_source() {
+    let site = blog(
+        "mermaid",
+        r#", "siteUrl":"https://example.com", "markdown":true"#,
+    );
+    site.write_source(
+        "blog/page.json",
+        r#"{"title":"Blog","content":"<p>posts</p>","feed":true}"#,
+    );
+    site.write_source(
+        "blog/post/page.json",
+        r#"{"title":"Diagram","content":"diagram.md","date":"2026-10-22"}"#,
+    );
+    site.write_source("blog/post/diagram.md", DIAGRAM);
+    site.generate();
+    let post = site.published("blog/post.html");
+    assert!(
+        post.contains("<div class=\"vados-mermaid\"><pre class=\"mermaid\">"),
+        "{post}"
+    );
+    // The production HTML minifier must preserve line-based diagram syntax.
+    assert!(post.contains("flowchart LR\n    accTitle: Publishing\n    accDescr: Markdown becomes a site\n    Markdown --&gt; vados --&gt; Site\n"), "{post}");
+    assert!(post.contains("data-mermaid-script=\"https://cdn.jsdelivr.net/npm/mermaid@12.3.0/"));
+    assert!(post.contains("src=\"/js/vados-mermaid.js\""));
+    assert!(!site.published("index.html").contains("data-mermaid-script"));
+    assert!(!site.published("blog.html").contains("data-mermaid-script"));
+    assert!(site
+        .published("js/vados-mermaid.js")
+        .contains("securityLevel: 'strict'"));
+    let feed = site.published("blog/feed.xml");
+    assert!(feed.contains("language-mermaid"), "{feed}");
+    assert!(!feed.contains("vados-mermaid"));
+    assert!(site.published("blog/post.md").contains(DIAGRAM));
+}
+
+#[test]
+fn mermaid_and_highlighting_can_be_switched_independently() {
+    for mermaid in [true, false] {
+        for highlight in [true, false] {
+            let site = blog(
+                "mermaid_flags",
+                &format!(r#", "mermaid":{mermaid}, "codeHighlight":{highlight}"#),
+            );
+            site.write_source("page.json", r#"{"title":"Home","content":"body.md"}"#);
+            site.write_source(
+                "body.md",
+                &format!("{DIAGRAM}\n```rust\nfn main() {{}}\n```\n"),
+            );
+            site.generate();
+            let page = site.published("index.html");
+            assert_eq!(page.contains("data-mermaid-script"), mermaid);
+            assert_eq!(
+                site.destination.join("js/vados-mermaid.js").exists(),
+                mermaid
+            );
+            assert_eq!(
+                page.contains("<pre class=\"highlight\">"),
+                highlight && cfg!(feature = "highlight")
+            );
+            assert_eq!(page.contains("language-mermaid"), !mermaid);
+        }
+    }
+}
+
+#[test]
+fn mermaid_in_footer_and_notification_loads_the_loader_and_html_is_untouched() {
+    for footer in [true, false] {
+        let site = blog("mermaid_nested", "");
+        if footer {
+            let mut config: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(site.source.join("main.json")).unwrap())
+                    .unwrap();
+            config["footerContent"] = "diagram.md".into();
+            site.write_source("main.json", &config.to_string());
+        }
+        site.write_source("diagram.md", DIAGRAM);
+        if !footer {
+            site.write_source("page.json", r#"{"title":"Home","content":"<p>x</p>","leftNotifications":[{"content":"diagram.md"}]}"#);
+        }
+        site.generate();
+        assert!(site.published("index.html").contains("data-mermaid-script"));
+    }
+    let site = blog("mermaid_html", "");
+    site.write_source(
+        "page.json",
+        r#"{"title":"Home","content":"<pre class=\"mermaid\">flowchart LR; A-->B</pre>"}"#,
+    );
+    site.generate();
+    assert!(!site.published("index.html").contains("data-mermaid-script"));
+    assert!(!site.destination.join("js/vados-mermaid.js").exists());
+}
+
+#[test]
+fn mermaid_checks_diagrams_and_module_paths_without_network_access() {
+    use vados::check::{FindingKind::*, Severity};
+    let site = blog(
+        "mermaid_checks",
+        r#", "mermaid":false, "mermaidScript":"javascript:alert(1)""#,
+    );
+    site.write_source(
+        "page.json",
+        r#"{"title":"Home","content":"body.md","rightNotifications":[{"content":"nested.md"}]}"#,
+    );
+    site.write_source("body.md", "```mermaid\n```\n");
+    site.write_source("nested.md", "```mermaid\nflowchart LR; A-->B\n```\n");
+    let report = site.check();
+    for kind in [
+        InvalidMermaidScript,
+        EmptyMermaidDiagram,
+        MermaidWithoutAlternativeText,
+        MermaidDisabled,
+    ] {
+        assert!(
+            report.findings.iter().any(|f| f.kind == kind),
+            "missing {kind:?}"
+        );
+    }
+    assert_eq!(InvalidMermaidScript.severity(), Severity::Error);
+    for script in ["/js/mermaid.mjs", "https://example.com/mermaid.mjs"] {
+        site.write_source("main.json", &format!(r#"{{"siteTitle":"s","jsFiles":[],"cssFiles":[],"footerContent":"<p>f</p>","staticDir":"static","mermaidScript":"{script}"}}"#));
+        if script.starts_with('/') {
+            assert!(site
+                .check()
+                .findings
+                .iter()
+                .any(|f| f.kind == InvalidMermaidScript));
+            site.write_source("static/js/mermaid.mjs", "export default {};");
+        }
+        assert!(!site
+            .check()
+            .findings
+            .iter()
+            .any(|f| f.kind == InvalidMermaidScript));
+        site.generate();
+        assert!(site
+            .published("index.html")
+            .contains(&format!("data-mermaid-script=\"{script}\"")));
+    }
+}

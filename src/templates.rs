@@ -9,6 +9,7 @@ use askama::Template;
 #[derive(Template)]
 #[template(path = "page.html")]
 pub(crate) struct PageTemplate<'a> {
+    pub(crate) mermaid_script: Option<&'a str>,
     pub(crate) markdown_href: Option<String>,
     /// The page's own title, as link previews show it next to the site name.
     pub(crate) title: &'a str,

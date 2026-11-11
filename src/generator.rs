@@ -1,6 +1,8 @@
 extern crate core;
 
-use crate::content::{to_content_items, ContentHelper, GenericContent, AGENDA_SCRIPT_HREF};
+use crate::content::{
+    to_content_items, ContentHelper, GenericContent, MarkdownOptions, AGENDA_SCRIPT_HREF,
+};
 use crate::event::write_calendars;
 use crate::feed::write_feeds;
 use crate::files::{
@@ -49,7 +51,7 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
             source,
             directory_path,
             &structure,
-            main_config.highlights_code(),
+            MarkdownOptions::for_site(&main_config),
         );
         let path = content_items.item.path.clone();
         if let Some(notifications) = content_items.left_sub_notifications {
@@ -71,11 +73,14 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
     structure.sort();
 
     let generic_content = GenericContent::new(source, destination, &main_config, &menu_config);
+    let mut uses_mermaid = false;
     for path in &all_paths {
         let content_helper = ContentHelper::new(path, &structure);
         let navigation = content_helper.get_navigation(&main_config, &menu_config);
         let main_content = content_helper.get_main_content(source, &generic_content);
         let page = content_helper.get_page(&navigation, &main_content, &generic_content);
+
+        uses_mermaid |= page.contains("data-mermaid-script=");
 
         //generating the end html and writing it to file
         write_html(destination, path, &page);
@@ -83,6 +88,13 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
             let markdown = content_helper.get_markdown(source, &generic_content);
             write_raw(destination, &crate::markdown::href(path), markdown);
         }
+    }
+    if uses_mermaid {
+        write_raw(
+            destination,
+            crate::mermaid::LOADER_PATH,
+            include_str!("../assets/js/mermaid.js"),
+        );
     }
     write_feeds(source, destination, &main_config, &structure);
     write_calendars(destination, &main_config, &structure);

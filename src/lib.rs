@@ -17,6 +17,7 @@ mod json_files;
 pub mod link_check;
 pub mod luma;
 mod markdown;
+mod mermaid;
 pub mod page_date;
 pub mod search;
 mod sitemap;

@@ -41,6 +41,10 @@ enum ContentSpec {
 fn content_spec() -> impl Strategy<Value = ContentSpec> {
     prop_oneof![
         Just(ContentSpec::InlineHtml),
+        short_text().prop_map(|body| ContentSpec::RealFile {
+            markdown: true,
+            body: format!("```mermaid\n{body}\n```\n")
+        }),
         (any::<bool>(), short_text())
             .prop_map(|(markdown, body)| ContentSpec::RealFile { markdown, body }),
         any::<bool>().prop_map(|markdown| ContentSpec::MissingFile { markdown }),

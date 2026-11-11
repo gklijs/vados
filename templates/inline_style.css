@@ -28,3 +28,9 @@
 .nav-disclosure[aria-expanded=true] .nav-chevron{transform:translateY(0.1em) rotate(-135deg);}
 @media (prefers-reduced-motion:no-preference){.nav-chevron{transition:transform 0.15s ease;}}
 @media (pointer:coarse){.nav-disclosure{min-width:2.75rem;min-height:2.75rem;}}
+
+/* Source remains readable until Mermaid succeeds; wide diagrams scroll. */
+.vados-mermaid { max-width: 100%; min-width: 0; overflow-x: auto; margin-block: 1em; }
+.vados-mermaid > pre { white-space: pre; overflow-x: auto; }
+.vados-mermaid > .vados-mermaid-rendered { text-align: center; }
+.vados-mermaid-rendered > svg { max-width: none !important; }

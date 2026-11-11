@@ -4,6 +4,7 @@
 
 use crate::config_files::{PageConfig, SearchConfig};
 use crate::content::get_content;
+use crate::content::MarkdownOptions;
 use crate::files::write_raw;
 use crate::structure::{Item, Structure};
 use crate::ui_text::UiText;
@@ -101,7 +102,7 @@ fn record(source: &str, item: &Item, structure: &Structure, ui: &UiText) -> Sear
             source,
             &item.path,
             &item.content,
-            false,
+            MarkdownOptions::default(),
         )))
     });
     let section = item
