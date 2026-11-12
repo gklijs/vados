@@ -145,7 +145,12 @@ A vados project is two plain-text trees plus generated output:
   A page's hero image is fetched first (`fetchpriority="high"`), and the first row of its tile images eagerly; the
   rest load lazily.
 - **Destination** (`--destination`, `generate` only): the published site. Variants already there are reused rather
-  than regenerated across runs, and anything belonging to an image no longer declared is pruned.
+  than regenerated across runs. Each completed run records its output (including reused images) in
+  `.vados-manifest.json` inside the destination. The next run removes previously recorded files it no longer needs
+  and directories left empty, including removed pages, static files and disabled features. Files from other build
+  steps, such as compiled CSS, are preserved. With no previous manifest, nothing is deleted; output left by older
+  vados versions needs a one-time manual cleanup. Keep the manifest between builds; it contains only relative output
+  paths, and can be excluded from deployment if your host serves dotfiles.
 
 ## Luma events
 

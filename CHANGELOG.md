@@ -7,6 +7,12 @@
 - Mermaid diagrams in fenced Markdown blocks (#33), with per-page script loading,
   theme switching, readable source fallback, a self-hosting override and source checks.
 
+### Fixed
+
+- `generate` removes files recorded by an earlier run that are no longer needed (#53), including removed or renamed
+  pages, disabled features, static files and image variants. A destination manifest preserves cached images and
+  leaves unrelated build output alone. Without a previous manifest, no files are deleted.
+
 ## 0.5.0 - 2026-11-02
 
 ### Added

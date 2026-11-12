@@ -493,9 +493,8 @@ entity GenerationRun {
     -- Every Luma event linked to any page beneath the source root.
     luma_events: LumaEvent with page.run = this
 
-    -- The images this run declares. This is the set the destination is
-    -- brought into line with: variants left at the destination by earlier
-    -- runs, for images that are not in this set, are no longer owned.
+    -- The images this run declares. Their written or reused variants are
+    -- recorded alongside every other generated file in the output manifest.
     images: SiteImage with run = this
 
     -- Only entries that resolve reach the published site. An internal entry
@@ -1971,14 +1970,14 @@ rule PublishSite {
         site.status = published
 }
 
--- Variants already at the destination are reused rather than regenerated, so
--- the destination accumulates output across runs. Once the run knows the full
--- set of images the maintainer declared, anything at the destination belonging
--- to an image that is no longer declared is removed, so the published site
--- carries exactly the images it claims to and nothing more.
-rule PruneOrphanedImageVariants {
+-- Only paths recorded by an earlier completed run are eligible for removal.
+-- Images reused from the destination count as current output too. Cleanup is
+-- delayed until publication finishes; a first run with no manifest deletes
+-- nothing, including image variants from versions that predate the manifest.
+rule PruneStaleOutput {
     when: site: GenerationRun.status transitions_to published
-    ensures: OrphanedVariantsPruned(run: site, declared_images: site.images)
+    requires: site.mode = generate
+    ensures: StaleOutputPruned(run: site)
 }
 
 -- A page is assembled from its own title, subtitle, summary, content and hero
@@ -3956,6 +3955,19 @@ surface PublishedPage {
             neighbour.main_image
         page.side_notification_image_placement
         page.side_notification_color
+
+    @guarantee RemovedOutputDoesNotStayPublished
+        -- Every completed generate records its written and reused files in
+        -- .vados-manifest.json inside the destination. On the next successful
+        -- run, previously recorded files absent from current output are
+        -- removed, followed by their now-empty parent directories. Pages,
+        -- feeds, calendars, search, Markdown versions, scripts, stylesheets,
+        -- favicons, static files and image variants all follow this rule.
+        -- A path still produced by another source, such as a page replaced
+        -- by a static file, stays published with its current content.
+        -- Files never recorded are preserved. Without a prior manifest,
+        -- nothing is removed. Manifest paths cannot escape the destination
+        -- through parent components or symlinks.
 
     @guarantee ImagePlacementDrivesLoading
         -- A page's hero image is placed as `main`, fetched eagerly and ahead

@@ -97,7 +97,11 @@ struct Favicon {
 /// Publishes main.json's `favicon` at the site root under its own file name.
 /// A missing file is skipped with a message, the same way a missing image is:
 /// the site is still worth publishing without an icon, and `check` reports it.
-fn publish_favicon(source: &str, destination: &str, favicon: &str) -> Option<Favicon> {
+fn publish_favicon(
+    source: &str,
+    destination: &crate::files::Output,
+    favicon: &str,
+) -> Option<Favicon> {
     let file_name = Path::new(favicon).file_name()?.to_str()?;
     let contents = match fs::read(format!("{}/{}", source, favicon)) {
         Ok(c) => c,
@@ -114,7 +118,10 @@ fn publish_favicon(source: &str, destination: &str, favicon: &str) -> Option<Fav
 
 /// Writes the stylesheet for highlighted code when code is highlighted at
 /// all, so pages with highlighted code can link it.
-fn publish_highlight_stylesheet(destination: &str, main_config: &MainConfig) -> bool {
+fn publish_highlight_stylesheet(
+    destination: &crate::files::Output,
+    main_config: &MainConfig,
+) -> bool {
     let css = highlight::stylesheet();
     let highlight = main_config.highlights_code() && !css.is_empty();
     if highlight {
@@ -126,7 +133,7 @@ fn publish_highlight_stylesheet(destination: &str, main_config: &MainConfig) -> 
 impl GenericContent {
     pub(crate) fn new(
         source: &str,
-        destination: &str,
+        destination: &crate::files::Output,
         main_config: &MainConfig,
         menu_config: &MenuConfig,
     ) -> GenericContent {

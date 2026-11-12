@@ -1,28 +1,125 @@
 use crate::config_files::{ImageList, MainConfig, MenuConfig, PageConfig};
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::fs;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use walkdir::WalkDir;
 
-fn get_html_destination(destination: &str, path: &str) -> (String, String) {
-    if path == "/" {
-        (String::from(destination), String::from("index.html"))
-    } else {
-        match String::from(path).rsplit_once('/') {
-            None => panic!("path didn't contain a separator"),
-            Some((first, second)) => (
-                format!("{}{}", destination, first),
-                format!("{}.html", second),
-            ),
-        }
-    }
+/// Relative paths owned by the last completed run. Keep this alongside the
+/// output so moving or deleting the destination also moves or clears its state.
+const MANIFEST: &str = ".vados-manifest.json";
+
+pub(crate) struct Output {
+    root: PathBuf,
+    previous: BTreeSet<String>,
+    current: Mutex<BTreeSet<String>>,
 }
 
-fn get_destination(destination: &str, path: &str) -> (String, String) {
-    match String::from(path).rsplit_once('/') {
-        None => panic!("path didn't contain a separator"),
-        Some((first, second)) => (format!("{}{}", destination, first), String::from(second)),
+impl Output {
+    pub(crate) fn new(destination: &str) -> Self {
+        let root = PathBuf::from(destination);
+        fs::create_dir_all(&root).expect("Unable to create destination");
+        let root = root.canonicalize().expect("Unable to resolve destination");
+        let manifest = root.join(MANIFEST);
+        assert!(
+            !manifest.is_symlink(),
+            "Output manifest must not be a symlink"
+        );
+        let previous = match fs::read(&manifest) {
+            Ok(bytes) => serde_json::from_slice::<BTreeSet<String>>(&bytes)
+                .expect("Unable to parse output manifest"),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeSet::new(),
+            Err(e) => panic!("Unable to read output manifest: {e}"),
+        };
+        let output = Self {
+            root,
+            previous,
+            current: Mutex::new(BTreeSet::new()),
+        };
+        // Validate before writing anything, including paths no longer in use.
+        for path in &output.previous {
+            output.path(path);
+        }
+        output
+    }
+
+    fn path(&self, relative: &str) -> PathBuf {
+        assert!(
+            !relative.is_empty()
+                && !relative.contains('\\')
+                && relative
+                    .split('/')
+                    .all(|c| !c.is_empty() && c != "." && c != "..")
+                && relative.split('/').next() != Some(MANIFEST),
+            "Invalid output path: {relative}"
+        );
+        let mut full = self.root.clone();
+        for component in relative.split('/') {
+            full.push(component);
+            assert!(
+                !full.is_symlink(),
+                "Output path must not traverse a symlink: {}",
+                full.display()
+            );
+        }
+        full
+    }
+
+    /// Cached image variants belong to this run even when no write is needed.
+    pub(crate) fn record(&self, path: &str) {
+        let relative = path
+            .strip_prefix('/')
+            .expect("output path must start with /");
+        self.path(relative);
+        self.current.lock().unwrap().insert(relative.to_owned());
+    }
+
+    pub(crate) fn finish(&self) {
+        let current = self.current.lock().unwrap();
+        for relative in self.previous.difference(&current) {
+            let path = self.path(relative);
+            match fs::remove_file(&path) {
+                Ok(()) => {}
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                Err(e) => panic!("Unable to remove stale output {}: {e}", path.display()),
+            }
+            // Only remove now-empty ancestors of a tracked file. Other build
+            // steps can keep files in the same directories.
+            let mut parent = path.parent();
+            while let Some(dir) = parent.filter(|dir| *dir != self.root) {
+                match fs::remove_dir(dir) {
+                    Ok(()) => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                    Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => break,
+                    Err(e) => panic!(
+                        "Unable to remove empty output directory {}: {e}",
+                        dir.display()
+                    ),
+                }
+                parent = dir.parent();
+            }
+        }
+        // Replace atomically so an interrupted write cannot truncate the last
+        // completed manifest. create_new leaves any existing file untouched.
+        for attempt in 0.. {
+            let temporary = self
+                .root
+                .join(format!("{MANIFEST}.{}.{attempt}.tmp", std::process::id()));
+            let file = match fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temporary)
+            {
+                Ok(file) => file,
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => panic!("Unable to create output manifest: {e}"),
+            };
+            serde_json::to_writer_pretty(file, &*current).expect("Unable to write output manifest");
+            fs::rename(temporary, self.root.join(MANIFEST))
+                .expect("Unable to replace output manifest");
+            break;
+        }
     }
 }
 
@@ -68,22 +165,27 @@ pub(crate) fn get_hero_image_references(source: &str, static_dir: Option<&str>) 
         .collect()
 }
 
-pub(crate) fn write_html(destination: &str, path: &str, html: &str) {
-    let (path, file) = get_html_destination(destination, path);
-    let contents = minifier::html::minify(html);
-    fs::create_dir_all(&path).unwrap();
-    fs::write(format!("{}/{}", path, file), contents).expect("Unable to write file");
+pub(crate) fn write_html(destination: &Output, path: &str, html: &str) {
+    let path = if path == "/" {
+        String::from("/index.html")
+    } else {
+        format!("{}.html", path)
+    };
+    write_raw(destination, &path, minifier::html::minify(html));
 }
 
-pub(crate) fn write_raw<C: AsRef<[u8]>>(destination: &str, path: &str, contents: C) {
-    let (path, file) = get_destination(destination, path);
-    fs::create_dir_all(&path).unwrap();
-    fs::write(format!("{}/{}", path, file), contents).expect("Unable to write file");
+pub(crate) fn write_raw<C: AsRef<[u8]>>(destination: &Output, path: &str, contents: C) {
+    let relative = path
+        .strip_prefix('/')
+        .expect("output path must start with /");
+    let full_path = destination.path(relative);
+    fs::create_dir_all(full_path.parent().unwrap()).expect("Unable to create output directory");
+    fs::write(full_path, contents).expect("Unable to write file");
+    destination.record(path);
 }
 
-pub(crate) fn empty(destination: &str, path: &str) -> bool {
-    let full_path = format!("{}/{}", destination, path);
-    !Path::new(&full_path).exists()
+pub(crate) fn empty(destination: &Output, path: &str) -> bool {
+    !destination.path(path.trim_start_matches('/')).exists()
 }
 
 /// The placeholder that keeps an empty directory in git; never published.
@@ -131,7 +233,11 @@ pub(crate) fn get_static_files(source: &str, static_dir: &str) -> Vec<(String, P
 
 /// Copies the static directory into the destination as it is. Returns the
 /// site-root paths it published.
-pub(crate) fn copy_static_files(source: &str, static_dir: &str, destination: &str) -> Vec<String> {
+pub(crate) fn copy_static_files(
+    source: &str,
+    static_dir: &str,
+    destination: &Output,
+) -> Vec<String> {
     let files = get_static_files(source, static_dir);
     if files.is_empty() && !static_dir_path(source, static_dir).is_dir() {
         println!(

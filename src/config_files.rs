@@ -301,7 +301,7 @@ impl MainConfig {
             }
         }
     }
-    pub(crate) fn get_js_links(&self, destination: &str) -> Vec<String> {
+    pub(crate) fn get_js_links(&self, destination: &crate::files::Output) -> Vec<String> {
         match self.include_default_js {
             Some(b) if !b => self.js_files.clone(),
             _ => {

@@ -144,7 +144,7 @@ pub(crate) fn search_index(
 /// Writes the index and the script.
 pub(crate) fn write_search(
     source: &str,
-    destination: &str,
+    destination: &crate::files::Output,
     config: &SearchConfig,
     structure: &Structure,
     ui: &UiText,

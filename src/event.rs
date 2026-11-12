@@ -523,7 +523,11 @@ pub(crate) fn calendar_file(name: &str, entries: &[CalendarEntry]) -> String {
 /// Writes every event's calendar file, and every agenda's. Calendar entries
 /// need a full address as their identity, so without a usable `siteUrl` there
 /// are none; `check` warns about that.
-pub(crate) fn write_calendars(destination: &str, main_config: &MainConfig, structure: &Structure) {
+pub(crate) fn write_calendars(
+    destination: &crate::files::Output,
+    main_config: &MainConfig,
+    structure: &Structure,
+) {
     let Some(site_url) = main_config.get_site_url() else {
         return;
     };

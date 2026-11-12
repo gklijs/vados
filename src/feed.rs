@@ -81,7 +81,7 @@ fn xml_safe(text: &str) -> String {
 /// usable `siteUrl` none are written; `check` reports that as an error.
 pub(crate) fn write_feeds(
     source: &str,
-    destination: &str,
+    destination: &crate::files::Output,
     main_config: &MainConfig,
     structure: &Structure,
 ) {

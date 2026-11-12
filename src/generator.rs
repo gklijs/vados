@@ -9,7 +9,7 @@ use crate::files::{
     copy_static_files, get_all_directory_paths, get_hero_image_references, get_image_list,
     get_main_config, get_menu_config, get_page_directory_paths, write_html, write_raw,
 };
-use crate::image::{prune_orphaned_variants, ImageProcessor};
+use crate::image::ImageProcessor;
 use crate::search::{generated_search_page, write_search, SEARCH_PATH};
 use crate::sitemap::{write_robots, write_sitemap};
 use crate::structure::Structure;
@@ -18,6 +18,8 @@ use crate::ui_text::ui_text;
 /// The core function to call, if the files at the source are valid, the static site will be
 /// generated at the destination location. Please make sure the files and/or directories have the proper ownership.
 pub fn generate(source: &str, img_source: &str, destination: &str) {
+    let output = crate::files::Output::new(destination);
+    let destination = &output;
     let main_config = get_main_config(source);
     let menu_config = get_menu_config(source);
 
@@ -36,7 +38,6 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
             image_processor.process_list(&directory_path, l.list)
         }
     }
-    prune_orphaned_variants(destination, &image_processor.meta_cache);
 
     let structure = Structure::new(image_processor.meta_cache);
     let mut all_paths = vec![];
@@ -112,4 +113,5 @@ pub fn generate(source: &str, img_source: &str, destination: &str) {
         write_sitemap(destination, site_url, &structure);
     }
     write_robots(destination, main_config.get_site_url(), &static_files);
+    output.finish();
 }

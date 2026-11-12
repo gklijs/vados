@@ -12,16 +12,13 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
 use std::fmt::{Display, Formatter};
-use std::fs;
-use std::path::Path;
 use std::sync::Arc;
-use walkdir::WalkDir;
 use webp::Encoder;
 
 pub(crate) struct ImageProcessor<'a> {
     resizer: Resizer,
     img_source: &'a str,
-    destination: &'a str,
+    destination: &'a crate::files::Output,
     /// The reference keys of the images that also get a link-preview crop:
     /// every page's hero image and the site's default one.
     preview_keys: HashSet<String>,
@@ -73,7 +70,7 @@ impl Error for ImageProcessingError {}
 impl<'a> ImageProcessor<'a> {
     pub(crate) fn new(
         img_source: &'a str,
-        destination: &'a str,
+        destination: &'a crate::files::Output,
         preview_keys: HashSet<String>,
     ) -> ImageProcessor<'a> {
         let resizer = Resizer::new();
@@ -194,6 +191,7 @@ impl<'a> ImageProcessor<'a> {
                 let mut result = enc.encode(quality);
                 write_raw(self.destination, &path, result.iter_mut());
             }
+            self.destination.record(&path);
             srcset_part.push(format!("{} {}w", path, width));
             // A bare URL: the width descriptor only belongs in srcset.
             if width == src_width {
@@ -269,6 +267,7 @@ impl<'a> ImageProcessor<'a> {
             )?;
             write_raw(self.destination, &path, jpeg);
         }
+        self.destination.record(&path);
         Ok(PreviewImage {
             path,
             width,
@@ -302,67 +301,6 @@ const ALL_VARIANTS: [(u32, f32); 7] = [
     (318, 75_f32),
     (159, 40_f32),
 ];
-
-/// Removes previously generated image variants at the destination whose
-/// source image is no longer declared in this run's `images.json` files.
-/// Keeps the destination's `img` directory in sync with the current set of
-/// declared images instead of accumulating stale output indefinitely.
-pub(crate) fn prune_orphaned_variants(
-    destination: &str,
-    meta_cache: &DashMap<String, Arc<ProcessedImage>>,
-) {
-    let img_root = format!("{}/img", destination);
-    if !Path::new(&img_root).exists() {
-        return;
-    }
-    for entry in WalkDir::new(&img_root)
-        .into_iter()
-        .filter_map(|e| e.ok())
-        .filter(|e| e.file_type().is_file())
-    {
-        let file_name = entry.file_name().to_string_lossy();
-        let file_base = match file_name
-            .strip_suffix(".webp")
-            .and_then(|s| s.rsplit_once("-w"))
-        {
-            Some((base, width))
-                if !width.is_empty() && width.chars().all(|c| c.is_ascii_digit()) =>
-            {
-                base
-            }
-            _ => match file_name.strip_suffix("-og.jpg") {
-                Some(base) => base,
-                None => continue,
-            },
-        };
-        let is_preview = file_name.ends_with("-og.jpg");
-        let path_start = entry
-            .path()
-            .parent()
-            .and_then(|p| p.strip_prefix(&img_root).ok())
-            .map(|p| p.to_string_lossy().replace('\\', "/"))
-            .unwrap_or_default();
-        let key = if path_start.is_empty() {
-            format!("/{}", file_base)
-        } else {
-            format!("/{}/{}", path_start, file_base)
-        };
-        // A preview crop also goes once its image is no longer used as one.
-        let still_used = meta_cache
-            .get(&key)
-            .is_some_and(|i| !is_preview || i.preview.is_some());
-        if !still_used {
-            match fs::remove_file(entry.path()) {
-                Ok(_) => println!("Pruned orphaned image variant {}", entry.path().display()),
-                Err(e) => println!(
-                    "Failed to prune orphaned image variant {}: {}",
-                    entry.path().display(),
-                    e
-                ),
-            }
-        }
-    }
-}
 
 fn all_widths(width: u32) -> Vec<(u32, f32)> {
     match width {

@@ -9,13 +9,21 @@ use crate::files::write_raw;
 use crate::structure::Structure;
 
 /// Writes the sitemap, listing every listed page in full.
-pub(crate) fn write_sitemap(destination: &str, site_url: &str, structure: &Structure) {
+pub(crate) fn write_sitemap(
+    destination: &crate::files::Output,
+    site_url: &str,
+    structure: &Structure,
+) {
     write_raw(destination, "/sitemap.xml", sitemap(site_url, structure));
 }
 
 /// Writes a robots.txt allowing every crawler, pointing at the sitemap when
 /// there is a site URL -- unless the static files already gave one.
-pub(crate) fn write_robots(destination: &str, site_url: Option<&str>, static_files: &[String]) {
+pub(crate) fn write_robots(
+    destination: &crate::files::Output,
+    site_url: Option<&str>,
+    static_files: &[String],
+) {
     if !static_files.iter().any(|f| f == "/robots.txt") {
         write_raw(destination, "/robots.txt", robots(site_url));
     }

@@ -710,3 +710,34 @@ fn mermaid_checks_diagrams_and_module_paths_without_network_access() {
             .contains(&format!("data-mermaid-script=\"{script}\"")));
     }
 }
+
+#[test]
+fn cached_images_remain_tracked_and_are_pruned_when_no_longer_used() {
+    let site = blog(
+        "image_manifest",
+        r#", "siteUrl":"https://example.com", "defaultImage":"/logo""#,
+    );
+    site.generate();
+    let variant = site.destination.join("img/batman-w986.webp");
+    let modified = fs::metadata(&variant).unwrap().modified().unwrap();
+    let manifest = site.published(".vados-manifest.json");
+    site.generate();
+    assert_eq!(
+        modified,
+        fs::metadata(&variant).unwrap().modified().unwrap()
+    );
+    assert_eq!(manifest, site.published(".vados-manifest.json"));
+    // Removing the site URL drops previews while retaining responsive variants.
+    let config = fs::read_to_string(site.source.join("main.json")).unwrap();
+    let mut config: serde_json::Value = serde_json::from_str(&config).unwrap();
+    config.as_object_mut().unwrap().remove("siteUrl");
+    site.write_source("main.json", &config.to_string());
+    site.generate();
+    assert!(variant.exists());
+    assert!(!site.destination.join("img/batman-og.jpg").exists());
+    assert!(!site.destination.join("img/logo-og.jpg").exists());
+    // No declarations: every previously tracked image variant goes away.
+    fs::remove_file(site.img_source.join("images.json")).unwrap();
+    site.generate();
+    assert!(!site.destination.join("img").exists());
+}

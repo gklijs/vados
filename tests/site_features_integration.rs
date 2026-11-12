@@ -911,3 +911,167 @@ fn markdown_without_site_url_converts_html_files_and_keeps_unlisted_pages() {
     assert!(!site.published("index.md").contains("Private"));
     assert!(site.published("private.html").contains("/private.md"));
 }
+
+#[test]
+fn removed_and_renamed_pages_are_pruned_with_empty_directories() {
+    let site = Site::new("");
+    site.write("gone/child/page.json", &page("Gone", ""));
+    site.write("old/page.json", &page("Renamed", ""));
+    site.generate();
+    fs::remove_dir_all(site.root.join("root/gone")).unwrap();
+    fs::rename(site.root.join("root/old"), site.root.join("root/new")).unwrap();
+    site.generate();
+    for path in ["gone.html", "gone", "old.html"] {
+        assert!(!site.exists(path), "stale output: {path}");
+    }
+    assert!(site.published("new.html").contains("Renamed"));
+    site.assert_links_are_fine();
+}
+
+#[test]
+fn disabling_features_removes_their_files_and_preserves_other_build_output() {
+    let site =
+        Site::new(r#", "search":true,"markdown":true,"staticDir":"static","favicon":"icon.svg""#);
+    site.write(
+        "icon.svg",
+        "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>",
+    );
+    site.write("static/nested/file.txt", "static content");
+    site.write("page.json", &page("Home", r#", "feed":true,"agenda":true"#));
+    site.write(
+        "post/page.json",
+        &page("Post", &format!(r#"{EVENT},"date":"2026-10-01""#)),
+    );
+    site.generate();
+    let generated = [
+        "feed.xml",
+        "calendar.ics",
+        "post.ics",
+        "search.html",
+        "search-index.json",
+        "js/vados-search.js",
+        "js/vados-agenda.js",
+        "index.md",
+        "post.md",
+        "nested/file.txt",
+    ];
+    // All the enabled features really published something on the first run.
+    for path in &generated {
+        assert!(site.exists(path), "missing first-run output: {path}");
+    }
+    let manifest: Vec<String> =
+        serde_json::from_str(&site.published(".vados-manifest.json")).unwrap();
+    let favicon = manifest
+        .iter()
+        .find(|p| p.ends_with(".svg"))
+        .unwrap()
+        .clone();
+    for path in ["css/custom.css", "nested/other.txt", "img/manual-w159.webp"] {
+        let file = site.root.join("public").join(path);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(file, "another build step").unwrap();
+    }
+    site.write(
+        "main.json",
+        r#"{"siteTitle":"T","jsFiles":[],"cssFiles":[],"footerContent":"<p>f</p>"}"#,
+    );
+    site.write("page.json", &page("Home", ""));
+    site.write("post/page.json", &page("Post", ""));
+    site.generate();
+    assert!(!site.exists(&favicon));
+    for path in generated {
+        assert!(!site.exists(path), "stale feature output: {path}");
+    }
+    assert!(!site.exists("sitemap.xml"));
+    for path in ["css/custom.css", "nested/other.txt", "img/manual-w159.webp"] {
+        assert_eq!(site.published(path), "another build step");
+    }
+    // The next identical build neither forgets files nor tries to delete them again.
+    let manifest = site.published(".vados-manifest.json");
+    site.generate();
+    assert_eq!(manifest, site.published(".vados-manifest.json"));
+}
+
+#[test]
+fn without_a_previous_manifest_existing_files_are_preserved() {
+    let site = Site::new("");
+    for path in ["old.html", "img/old-w159.webp", "css/custom.css"] {
+        let file = site.root.join("public").join(path);
+        fs::create_dir_all(file.parent().unwrap()).unwrap();
+        fs::write(file, "untracked").unwrap();
+    }
+    site.generate();
+    for path in ["old.html", "img/old-w159.webp", "css/custom.css"] {
+        assert_eq!(site.published(path), "untracked");
+    }
+    assert!(site.exists(".vados-manifest.json"));
+}
+
+#[test]
+fn a_path_can_change_between_a_page_and_a_static_file() {
+    let site = Site::new(r#", "staticDir":"static""#);
+    site.write("same/page.json", &page("Generated", ""));
+    site.generate();
+    fs::remove_dir_all(site.root.join("root/same")).unwrap();
+    site.write("static/same.html", "static replacement");
+    site.generate();
+    assert_eq!(site.published("same.html"), "static replacement");
+    fs::remove_file(site.root.join("root/static/same.html")).unwrap();
+    site.write("same/page.json", &page("Generated again", ""));
+    site.generate();
+    assert!(site.published("same.html").contains("Generated again"));
+}
+
+#[test]
+fn invalid_manifest_paths_do_not_delete_files_outside_the_destination() {
+    let site = Site::new("");
+    fs::create_dir_all(site.root.join("public")).unwrap();
+    fs::write(site.root.join("keep.txt"), "keep").unwrap();
+    fs::write(
+        site.root.join("public/.vados-manifest.json"),
+        r#"["../keep.txt"]"#,
+    )
+    .unwrap();
+    assert!(std::panic::catch_unwind(|| site.generate()).is_err());
+    assert_eq!(
+        fs::read_to_string(site.root.join("keep.txt")).unwrap(),
+        "keep"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn a_manifest_path_cannot_delete_through_a_symlink() {
+    let site = Site::new("");
+    fs::create_dir_all(site.root.join("public")).unwrap();
+    fs::create_dir_all(site.root.join("other")).unwrap();
+    fs::write(site.root.join("other/keep.txt"), "keep").unwrap();
+    std::os::unix::fs::symlink(site.root.join("other"), site.root.join("public/link")).unwrap();
+    fs::write(
+        site.root.join("public/.vados-manifest.json"),
+        r#"["link/keep.txt"]"#,
+    )
+    .unwrap();
+    assert!(std::panic::catch_unwind(|| site.generate()).is_err());
+    assert_eq!(
+        fs::read_to_string(site.root.join("other/keep.txt")).unwrap(),
+        "keep"
+    );
+}
+
+#[test]
+fn a_failed_generation_keeps_the_previous_manifest_and_stale_files() {
+    let site = Site::new("");
+    site.write("gone/page.json", &page("Gone", ""));
+    site.generate();
+    let manifest = site.published(".vados-manifest.json");
+    fs::remove_dir_all(site.root.join("root/gone")).unwrap();
+    // A failure before publication completes must not advance cleanup state.
+    site.write("page.json", "invalid json");
+    assert!(std::panic::catch_unwind(|| site.generate()).is_err());
+    assert_eq!(manifest, site.published(".vados-manifest.json"));
+    assert!(site.exists("gone.html"));
+    site.write("page.json", &page("Home", ""));
+    site.generate();
+    assert!(!site.exists("gone.html"));
+}
