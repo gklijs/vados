@@ -157,8 +157,11 @@ A vados project is two plain-text trees plus generated output:
   centre-cropped to the closest standard aspect ratio and published as a set of responsively sized WebP variants.
   A page's hero image is fetched first (`fetchpriority="high"`), and the first row of its tile images eagerly; the
   rest load lazily.
-- **Destination** (`--destination`, `generate` only): the published site. Variants already there are reused rather
-  than regenerated across runs. Each completed run records its output (including reused images) in
+- **Destination** (`--destination`, `generate` only): the published site. Image variants are reused only when the
+  source bytes and processing settings match and every variant is present. Replacing an image under the same name
+  regenerates its WebP variants and link-preview crop. Unchanged images skip decoding; keep `.vados-images/`
+  between builds for this cache (deleting it safely forces regeneration). Image URLs stay the same, so browser
+  caching still depends on your host. Each completed run records its output (including reused images) in
   `.vados-manifest.json` inside the destination. The next run removes previously recorded files it no longer needs
   and directories left empty, including removed pages, static files and disabled features. Files from other build
   steps, such as compiled CSS, are preserved. With no previous manifest, nothing is deleted; output left by older

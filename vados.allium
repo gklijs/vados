@@ -1929,9 +1929,21 @@ rule RenderImageVariants {
         )
 
     @guidance
-        -- Variants are content-addressed by image and width, so a variant that
-        -- is already present at the destination is reused rather than
-        -- regenerated. This makes repeat runs cheap.
+        -- Variant URLs identify the image and width, not the source bytes.
+        -- Reuse requires a matching hash of the source bytes, a matching
+        -- processing-settings version, the same preview requirement, and all
+        -- recorded variants present. Otherwise regenerate the entire image's
+        -- responsive variants and preview crop. Never rely on source mtimes.
+        -- A cache hit restores layout metadata without decoding the source;
+        -- titles and alternative text always come from the current declaration.
+        -- Bump the settings version when crop rules, widths, quality, or the
+        -- encoder change. Invalidate the record before rewriting any variant;
+        -- write its replacement only after all variants succeed, so a failed
+        -- rebuild cannot certify mixed old/new output.
+        -- Per-image records live in .vados-images/ inside the destination and
+        -- are tracked by the output manifest, so undeclared images lose their
+        -- records too. Missing or malformed records force regeneration.
+        -- Public image URLs remain unchanged; browser caching is up to the host.
 }
 
 -- An image that cannot be read is skipped: the run continues and pages that
@@ -3993,6 +4005,16 @@ surface PublishedPage {
         -- Files never recorded are preserved. Without a prior manifest,
         -- nothing is removed. Manifest paths cannot escape the destination
         -- through parent components or symlinks.
+
+    @guarantee ReplacedImagesRefreshAllVariants
+        -- Replacing source bytes under the same filename regenerates all of
+        -- that image's responsive variants and its required link-preview crop.
+        -- Reuse requires the same source fingerprint and processing version,
+        -- the same preview requirement, and every recorded output file present.
+        -- An unchanged image restores its dimensions and layout metadata from
+        -- the cache without decoding. Current titles and alt text still apply.
+        -- Missing records or variants, changed settings and interrupted image
+        -- rebuilds cannot silently reuse stale image output.
 
     @guarantee ImagePlacementDrivesLoading
         -- A page's hero image is placed as `main`, fetched eagerly and ahead

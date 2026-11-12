@@ -14,6 +14,10 @@
 
 ### Fixed
 
+- Replacing an image under the same filename regenerates its responsive variants and link-preview crop (#56).
+  A versioned source fingerprint cache skips decoding unchanged images and rebuilds when variants are missing
+  or processing settings change.
+
 - `generate` reports invalid source files, image-processing failures and output I/O failures with their paths and
   exits non-zero, instead of panicking or silently succeeding (#54). Configuration validation happens before any
   output is written; invalid events are still omitted and returned as counted warnings.

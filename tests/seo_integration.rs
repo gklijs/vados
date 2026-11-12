@@ -741,4 +741,5 @@ fn cached_images_remain_tracked_and_are_pruned_when_no_longer_used() {
     fs::remove_file(site.img_source.join("images.json")).unwrap();
     site.generate();
     assert!(!site.destination.join("img").exists());
+    assert!(!site.destination.join(".vados-images").exists());
 }

@@ -146,7 +146,7 @@ pub(crate) fn vados_js() -> &'static str {
     include_str!("../assets/js/vados.js")
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub(crate) enum ImageRatio {
     Is1By1,
     Is5By4,

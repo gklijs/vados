@@ -81,6 +81,38 @@ impl Output {
         Ok(())
     }
 
+    /// Cache contents are disposable; missing or malformed records are misses.
+    /// Filesystem errors and unsafe paths still fail publication.
+    pub(crate) fn read_cache<T: serde::de::DeserializeOwned>(
+        &self,
+        path: &str,
+    ) -> Result<Option<T>, GenerateError> {
+        let full = self.path(path.trim_start_matches('/'))?;
+        match fs::read(&full) {
+            Ok(bytes) => Ok(serde_json::from_slice(&bytes).ok()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(GenerateError::at(full, e)),
+        }
+    }
+
+    pub(crate) fn remove_cache(&self, path: &str) -> Result<(), GenerateError> {
+        let full = self.path(path.trim_start_matches('/'))?;
+        match fs::remove_file(&full) {
+            Ok(()) => Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(e) => Err(GenerateError::at(full, e)),
+        }
+    }
+
+    pub(crate) fn is_file(&self, path: &str) -> Result<bool, GenerateError> {
+        let full = self.path(path.trim_start_matches('/'))?;
+        match fs::metadata(&full) {
+            Ok(metadata) => Ok(metadata.is_file()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(e) => Err(GenerateError::at(full, e)),
+        }
+    }
+
     pub(crate) fn finish(&self) -> Result<(), GenerateError> {
         let current = self.current.lock().unwrap();
         for relative in self.previous.difference(&current) {
@@ -169,10 +201,6 @@ pub(crate) fn write_raw<C: AsRef<[u8]>>(
         .map_err(|e| GenerateError::at(full_path.parent().unwrap(), e))?;
     fs::write(&full_path, contents).map_err(|e| GenerateError::at(&full_path, e))?;
     destination.record(path)
-}
-
-pub(crate) fn empty(destination: &Output, path: &str) -> Result<bool, GenerateError> {
-    Ok(!destination.path(path.trim_start_matches('/'))?.exists())
 }
 
 /// The placeholder that keeps an empty directory in git; never published.
