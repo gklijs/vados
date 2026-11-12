@@ -23,7 +23,6 @@ use crate::ui_text::{ui_text, UiText};
 use askama::Template;
 use pulldown_cmark::{html, Event, HeadingLevel, Parser, Tag};
 use std::fs;
-use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 
@@ -101,19 +100,21 @@ fn publish_favicon(
     source: &str,
     destination: &crate::files::Output,
     favicon: &str,
-) -> Option<Favicon> {
-    let file_name = Path::new(favicon).file_name()?.to_str()?;
+) -> Result<Option<Favicon>, crate::generator::GenerateError> {
+    let Some(file_name) = Path::new(favicon).file_name().and_then(|f| f.to_str()) else {
+        return Ok(None);
+    };
     let contents = match fs::read(format!("{}/{}", source, favicon)) {
         Ok(c) => c,
         Err(e) => {
             println!("favicon {} could not be read, skipping it: {}", favicon, e);
-            return None;
+            return Ok(None);
         }
     };
     let href = format!("/{}", file_name);
-    write_raw(destination, &href, contents);
+    write_raw(destination, &href, contents)?;
     let media_type = favicon_media_type(file_name);
-    Some(Favicon { href, media_type })
+    Ok(Some(Favicon { href, media_type }))
 }
 
 /// Writes the stylesheet for highlighted code when code is highlighted at
@@ -121,13 +122,13 @@ fn publish_favicon(
 fn publish_highlight_stylesheet(
     destination: &crate::files::Output,
     main_config: &MainConfig,
-) -> bool {
+) -> Result<bool, crate::generator::GenerateError> {
     let css = highlight::stylesheet();
     let highlight = main_config.highlights_code() && !css.is_empty();
     if highlight {
-        write_raw(destination, highlight::STYLESHEET_PATH, css);
+        write_raw(destination, highlight::STYLESHEET_PATH, css)?;
     }
-    highlight
+    Ok(highlight)
 }
 
 impl GenericContent {
@@ -136,10 +137,10 @@ impl GenericContent {
         destination: &crate::files::Output,
         main_config: &MainConfig,
         menu_config: &MenuConfig,
-    ) -> GenericContent {
+    ) -> Result<GenericContent, crate::generator::GenerateError> {
         let background_class = main_config.get_background_class();
         let css_links = main_config.get_css_links();
-        let js_links = main_config.get_js_links(destination);
+        let js_links = main_config.get_js_links(destination)?;
         let footer = get_footer(source, main_config);
         let language = main_config.get_language().to_string();
         let ui = ui_text(&language);
@@ -147,8 +148,10 @@ impl GenericContent {
         let favicon = main_config
             .favicon
             .as_deref()
-            .and_then(|f| publish_favicon(source, destination, f));
-        GenericContent {
+            .map(|f| publish_favicon(source, destination, f))
+            .transpose()?
+            .flatten();
+        Ok(GenericContent {
             markdown: main_config.markdown == Some(true),
             background_class,
             data_theme: main_config.color_scheme.map(ColorScheme::to_data_theme),
@@ -169,7 +172,7 @@ impl GenericContent {
             social_urls: menu_config.socials.iter().map(|s| s.url.clone()).collect(),
             fediverse_creator: fediverse_creator(main_config, menu_config),
             options: MarkdownOptions {
-                highlight: publish_highlight_stylesheet(destination, main_config),
+                highlight: publish_highlight_stylesheet(destination, main_config)?,
                 mermaid: main_config.renders_mermaid(),
             },
             mermaid_script: main_config.get_mermaid_script().to_string(),
@@ -179,7 +182,7 @@ impl GenericContent {
                 .clone()
                 .filter(|s| !s.links.is_empty()),
             search: main_config.get_search().is_some(),
-        }
+        })
     }
 }
 
@@ -224,7 +227,7 @@ impl ContentHelper<'_> {
         &self,
         main_config: &MainConfig,
         menu_config: &MenuConfig,
-    ) -> String {
+    ) -> Result<String, String> {
         get_navigation(
             self.path,
             main_config,
@@ -323,15 +326,10 @@ struct PageHelper<'a> {
 pub(crate) fn to_content_items(
     source: &str,
     dir_path: String,
+    page_config: PageConfig,
     structure: &Structure,
     options: MarkdownOptions,
 ) -> ContentItems {
-    let page_file_string = format!("{}/page.json", dir_path);
-    let page_file_path = Path::new(&page_file_string);
-    let page_config = match File::open(page_file_path) {
-        Ok(f) => serde_json::from_reader(f).expect("JSON was not well-formatted"),
-        Err(_) => PageConfig::new(&dir_path),
-    };
     let path = match dir_path {
         root if root == source => String::from("/"),
         mut d => d.split_off(source.len()),
@@ -607,10 +605,9 @@ pub(crate) fn get_content(
         ContentKind::MarkdownFile => md_to_content(&file_path, options),
         ContentKind::HtmlFile => html_to_content(&file_path),
         ContentKind::InlineHtml => String::from(reference),
-        ContentKind::Unrecognised => panic!(
-            "Can't handle content reference that looks like: {}",
-            reference
-        ),
+        // Generation rejects this during preflight. Keep internal rendering
+        // callers safe as well, displaying arbitrary text without markup.
+        ContentKind::Unrecognised => format!("<p>{}</p>", escape_html(reference)),
     }
 }
 
@@ -665,8 +662,8 @@ fn get_navigation(
     menu_config: &MenuConfig,
     structure: &Structure,
     side_menu: Option<&String>,
-) -> String {
-    NavigationTemplate {
+) -> Result<String, String> {
+    Ok(NavigationTemplate {
         path,
         ui: ui_text(main_config.get_language()),
         site_title: &main_config.site_title,
@@ -675,12 +672,16 @@ fn get_navigation(
             menu_config,
             main_config.get_menu_dropdown_limit(),
             main_config.get_search().is_some_and(|s| s.shows_in_menu()),
-        ),
-        socials: &menu_config.socials.iter().map(SocialItem::new).collect(),
+        )?,
+        socials: &menu_config
+            .socials
+            .iter()
+            .map(SocialItem::new)
+            .collect::<Result<Vec<_>, _>>()?,
         side_menu,
     }
     .render()
-    .unwrap()
+    .unwrap())
 }
 
 fn get_breadcrumbs(path: &str, structure: &Structure, ui: &UiText) -> Option<String> {

@@ -84,21 +84,19 @@ pub(crate) fn write_feeds(
     destination: &crate::files::Output,
     main_config: &MainConfig,
     structure: &Structure,
-) {
+) -> Result<(), crate::generator::GenerateError> {
     let items = structure.get_feed_items();
     if items.is_empty() {
-        return;
+        return Ok(());
     }
     let Some(site_url) = main_config.get_site_url() else {
-        println!(
-            "main.json has no usable siteUrl (an absolute http(s) URL), so no feeds are published."
-        );
-        return;
+        return Ok(());
     };
     for item in items {
         let xml = render_feed(source, site_url, main_config, structure, &item);
-        write_raw(destination, &feed_href(&item.path), xml);
+        write_raw(destination, &feed_href(&item.path), xml)?;
     }
+    Ok(())
 }
 
 fn render_feed(

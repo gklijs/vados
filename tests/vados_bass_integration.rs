@@ -47,7 +47,7 @@ fn generated_site() -> &'static Path {
     DEST.get_or_init(|| {
         let dest = std::env::temp_dir().join("vados_bass_integration_dest");
         let _ = std::fs::remove_dir_all(&dest);
-        generate(&fixture_root(), &fixture_img_root(), dest.to_str().unwrap());
+        generate(&fixture_root(), &fixture_img_root(), dest.to_str().unwrap()).unwrap();
         dest
     })
 }

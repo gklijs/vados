@@ -651,7 +651,19 @@ fn main() -> ExitCode {
             if !external_is_available(external) {
                 return ExitCode::FAILURE;
             }
-            generate(&source, &img_source, &destination);
+            match generate(&source, &img_source, &destination) {
+                Ok(report) => {
+                    for warning in &report.warnings {
+                        println!("{warning}");
+                    }
+                    println!("generation passed: {} warning(s)", report.warnings.len());
+                }
+                Err(error) => {
+                    eprintln!("{error}");
+                    eprintln!("generation failed: {} problem(s)", error.findings.len());
+                    return ExitCode::FAILURE;
+                }
+            }
             if !check_links {
                 return ExitCode::SUCCESS;
             }

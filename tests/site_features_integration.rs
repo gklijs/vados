@@ -39,12 +39,17 @@ impl Site {
         fs::create_dir_all(file.parent().unwrap()).unwrap();
         fs::write(file, contents).unwrap();
     }
-    fn generate(&self) {
+    fn try_generate(
+        &self,
+    ) -> Result<vados::generator::GenerateReport, vados::generator::GenerateError> {
         generate(
             self.root.join("root").to_str().unwrap(),
             self.root.join("img").to_str().unwrap(),
             self.root.join("public").to_str().unwrap(),
-        );
+        )
+    }
+    fn generate(&self) {
+        self.try_generate().unwrap();
     }
     fn published(&self, path: &str) -> String {
         fs::read_to_string(self.root.join("public").join(path))
@@ -1032,7 +1037,7 @@ fn invalid_manifest_paths_do_not_delete_files_outside_the_destination() {
         r#"["../keep.txt"]"#,
     )
     .unwrap();
-    assert!(std::panic::catch_unwind(|| site.generate()).is_err());
+    assert!(site.try_generate().is_err());
     assert_eq!(
         fs::read_to_string(site.root.join("keep.txt")).unwrap(),
         "keep"
@@ -1052,7 +1057,7 @@ fn a_manifest_path_cannot_delete_through_a_symlink() {
         r#"["link/keep.txt"]"#,
     )
     .unwrap();
-    assert!(std::panic::catch_unwind(|| site.generate()).is_err());
+    assert!(site.try_generate().is_err());
     assert_eq!(
         fs::read_to_string(site.root.join("other/keep.txt")).unwrap(),
         "keep"
@@ -1068,7 +1073,7 @@ fn a_failed_generation_keeps_the_previous_manifest_and_stale_files() {
     fs::remove_dir_all(site.root.join("root/gone")).unwrap();
     // A failure before publication completes must not advance cleanup state.
     site.write("page.json", "invalid json");
-    assert!(std::panic::catch_unwind(|| site.generate()).is_err());
+    assert!(site.try_generate().is_err());
     assert_eq!(manifest, site.published(".vados-manifest.json"));
     assert!(site.exists("gone.html"));
     site.write("page.json", &page("Home", ""));

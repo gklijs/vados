@@ -56,6 +56,8 @@ impl fmt::Display for Severity {
 /// maintainer can act on; see `vados.allium`'s `FindingKind` enum.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FindingKind {
+    GenerationFailed,
+    SourceUnreadable,
     InvalidMermaidScript,
     EmptyMermaidDiagram,
     MermaidWithoutAlternativeText,
@@ -117,7 +119,11 @@ impl FindingKind {
     pub fn severity(self) -> Severity {
         use FindingKind::*;
         match self {
-            InvalidMermaidScript
+            GenerationFailed
+            | SourceUnreadable
+            | ImagesManifestUnreadable
+            | MissingImageSourceFile
+            | InvalidMermaidScript
             | SiteConfigUnreadable
             | MenuUnreadable
             | PageConfigUnreadable
@@ -141,13 +147,11 @@ impl FindingKind {
             EmptyMermaidDiagram
             | MermaidWithoutAlternativeText
             | MermaidDisabled
-            | ImagesManifestUnreadable
             | MissingContentFile
             | TopLevelHeadingInContent
             | UnresolvedMenuLink
             | UnknownPageImageReference
             | UnknownNotificationImageReference
-            | MissingImageSourceFile
             | DeadInternalNotificationLink
             | DuplicateLumaEvent
             | MissingFaviconFile
@@ -180,6 +184,8 @@ impl fmt::Display for FindingKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use FindingKind::*;
         f.write_str(match self {
+            GenerationFailed => "generation failed",
+            SourceUnreadable => "source directory could not be read",
             InvalidMermaidScript => "mermaidScript must name an HTTP(S) module or an existing root-relative file in staticDir",
             EmptyMermaidDiagram => "Mermaid diagram is empty",
             MermaidWithoutAlternativeText => "Mermaid diagram has no accTitle or accDescr text alternative",
@@ -554,7 +560,13 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                 });
             }
         }
+        let before_footer = findings.len();
         check_content_reference(source, "/", &main_config.footer_content, &mut findings);
+        for finding in &mut findings[before_footer..] {
+            if finding.kind == FindingKind::UnrecognisedContentReference {
+                finding.location = format!("{source}/main.json");
+            }
+        }
         check_content_links(
             source,
             "/",
@@ -759,9 +771,32 @@ fn read_json<T: serde::de::DeserializeOwned>(
     unreadable_kind: FindingKind,
     findings: &mut Vec<Finding>,
 ) -> Option<T> {
-    let result = File::open(path)
+    let result = std::fs::read(path)
         .map_err(|e| e.to_string())
-        .and_then(|f| serde_json::from_reader(f).map_err(|e| e.to_string()));
+        .and_then(|bytes| {
+            let value: serde_json::Value =
+                serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            // Report all missing top-level required fields together. Nested
+            // values and types are still validated by the actual serde types.
+            let required: &[&str] = match unreadable_kind {
+                FindingKind::SiteConfigUnreadable => {
+                    &["siteTitle", "jsFiles", "cssFiles", "footerContent"]
+                }
+                FindingKind::MenuUnreadable => &["mainMenu", "socials"],
+                _ => &[],
+            };
+            if let Some(object) = value.as_object() {
+                let missing: Vec<_> = required
+                    .iter()
+                    .filter(|key| !object.contains_key(**key))
+                    .copied()
+                    .collect();
+                if !missing.is_empty() {
+                    return Err(format!("missing required fields: {}", missing.join(", ")));
+                }
+            }
+            serde_json::from_slice(&bytes).map_err(|e| e.to_string())
+        });
     match result {
         Ok(value) => Some(value),
         Err(detail) => {
@@ -775,13 +810,37 @@ fn read_json<T: serde::de::DeserializeOwned>(
     }
 }
 
+fn checked_directories(
+    result: Result<Vec<String>, crate::generator::GenerateError>,
+    findings: &mut Vec<Finding>,
+) -> Vec<String> {
+    match result {
+        Ok(dirs) => dirs,
+        Err(error) => {
+            findings.extend(error.findings.into_iter().map(|mut f| {
+                f.kind = FindingKind::SourceUnreadable;
+                f
+            }));
+            vec![]
+        }
+    }
+}
+
 fn collect_images(img_source: &str, findings: &mut Vec<Finding>) -> Vec<CheckedImage> {
     let mut images = Vec::new();
-    for dir in get_all_directory_paths(img_source) {
+    for dir in checked_directories(get_all_directory_paths(img_source), findings) {
         let path = format!("{}/images.json", dir);
         let file = match File::open(&path) {
             Ok(f) => f,
-            Err(_) => continue, // images.json is optional per directory
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(e) => {
+                findings.push(Finding {
+                    kind: FindingKind::ImagesManifestUnreadable,
+                    location: path,
+                    detail: Some(e.to_string()),
+                });
+                continue;
+            }
         };
         let list: ImageList = match serde_json::from_reader(file) {
             Ok(l) => l,
@@ -836,7 +895,7 @@ fn collect_pages(
     findings: &mut Vec<Finding>,
 ) -> HashMap<String, PageConfig> {
     let mut pages = HashMap::new();
-    for dir in get_page_directory_paths(source, static_dir) {
+    for dir in checked_directories(get_page_directory_paths(source, static_dir), findings) {
         let page_path = if dir == source {
             String::from("/")
         } else {
@@ -855,7 +914,15 @@ fn collect_pages(
                     PageConfig::new(&dir)
                 }
             },
-            Err(_) => PageConfig::new(&dir), // page.json is optional per directory
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => PageConfig::new(&dir),
+            Err(e) => {
+                findings.push(Finding {
+                    kind: FindingKind::PageConfigUnreadable,
+                    location: page_json,
+                    detail: Some(e.to_string()),
+                });
+                PageConfig::new(&dir)
+            }
         };
         pages.insert(page_path, config);
     }
@@ -1679,7 +1746,7 @@ mod tests {
     }
 
     #[test]
-    fn missing_image_source_file_is_a_warning() {
+    fn missing_image_source_file_is_an_error() {
         let site = TestSite::new("image_missing_source");
         site.write_source("main.json", VALID_MAIN_JSON);
         site.write_source("menu.json", VALID_MENU_JSON);
@@ -1693,7 +1760,7 @@ mod tests {
         let report = site.check();
 
         assert_eq!(count_kind(&report, FindingKind::MissingImageSourceFile), 1);
-        assert!(report.passed());
+        assert!(!report.passed());
     }
 
     #[test]
@@ -1839,7 +1906,7 @@ mod tests {
     }
 
     #[test]
-    fn images_manifest_unreadable_is_a_warning() {
+    fn images_manifest_unreadable_is_an_error() {
         let site = TestSite::new("images_manifest_unreadable");
         site.write_source("main.json", VALID_MAIN_JSON);
         site.write_source("menu.json", VALID_MENU_JSON);
@@ -1852,7 +1919,7 @@ mod tests {
             count_kind(&report, FindingKind::ImagesManifestUnreadable),
             1
         );
-        assert!(report.passed());
+        assert!(!report.passed());
     }
 
     fn site_with_main_json_extra(name: &str, extra: &str) -> TestSite {

@@ -233,6 +233,8 @@ enum FindingKind {
     menu_unreadable
     page_config_unreadable
     images_manifest_unreadable
+    source_unreadable
+    generation_failed
 
     -- Content references.
     unrecognised_content_reference
@@ -1647,6 +1649,10 @@ config {
         site_config_unreadable,
         menu_unreadable,
         page_config_unreadable,
+        images_manifest_unreadable,
+        missing_image_source_file,
+        source_unreadable,
+        generation_failed,
         unrecognised_content_reference,
         external_menu_link_without_title,
         unrecognised_social_link_incomplete,
@@ -3165,6 +3171,25 @@ surface GeneratorInvocation {
 
     provides:
         GenerateRequested(source, image_source, destination)
+
+    @guarantee InputFailuresAreReported
+        -- The library returns Result<GenerateReport, GenerateError>. Input
+        -- failures are file-specific findings, never Rust panics; the CLI
+        -- exits non-zero. Every configuration file is validated and read
+        -- before any output is written, so invalid configuration leaves an
+        -- existing destination unchanged. Required main/menu fields and bad
+        -- files are reported together. Optional missing page.json and
+        -- images.json retain their defaults; an existing unreadable one fails.
+
+    @guarantee PublicationFailuresAreReported
+        -- A missing or unprocessable declared image, unreadable directory,
+        -- failed static copy, write or cleanup fails generation with its path.
+        -- Publication I/O or image failures can leave partial output; the
+        -- manifest advances only after a complete run. Invalid events and
+        -- Luma events are still omitted; these and other tolerated content
+        -- findings are returned as warnings and counted by the CLI. Source
+        -- check severities are retained by check, independently of these
+        -- generation fallbacks. Check is structural and does not decode images.
 
     @guarantee OneShotRun
         -- Generation is a batch process. A run reads the source and image

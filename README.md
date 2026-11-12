@@ -57,6 +57,19 @@ Reads the source and image trees and publishes a complete site to `--destination
 vados generate --source root --img-source imgroot --destination public
 ```
 
+Before writing, generation checks the source and reads every configuration file. Invalid JSON, unreadable source
+folders, unsupported content references and incomplete menu or social entries fail with file-specific diagnostics,
+leaving an existing destination untouched. Unreadable or malformed image manifests and missing image source files also
+fail; an image that cannot be decoded or processed fails during publication. Invalid events and Luma events are
+omitted with warnings, which are counted at the end. Other tolerated source problems are warnings too.
+
+Output creation, writing and cleanup failures exit non-zero. An I/O or image-processing failure during publication
+can leave partial output; fix the reported problem and run generation again. The output manifest advances only after
+a complete run.
+
+The library's `generator::generate` returns `Result<GenerateReport, GenerateError>`; the report contains the warnings,
+and the error contains the findings that prevented publication.
+
 `--check-links` also runs the [link check](#checking-links) on the result, and fails if it finds anything broken;
 `--external` adds other sites to it, as warnings.
 

@@ -94,7 +94,7 @@ fn a_freshly_scaffolded_project_publishes_a_robots_txt_and_nothing_of_its_static
     let project = TestProject::new("fresh_scaffold_generated");
 
     let dest = project.dir.join("public");
-    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+    generate(&project.source, &project.img_source, dest.to_str().unwrap()).unwrap();
 
     assert_eq!(
         fs::read_to_string(dest.join("robots.txt")).unwrap(),
@@ -336,7 +336,7 @@ fn a_linked_luma_event_is_published_on_its_own_page_only() {
     .unwrap();
 
     let dest = project.dir.join("public");
-    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+    generate(&project.source, &project.img_source, dest.to_str().unwrap()).unwrap();
 
     let events = fs::read_to_string(dest.join("events.html")).unwrap();
     // The title links to the event on Luma whatever else is shown; see
@@ -411,7 +411,7 @@ fn a_dutch_site_with_a_description_and_favicon_is_published_in_dutch() {
     assert!(report.findings.is_empty(), "{:?}", report.findings);
 
     let dest = project.dir.join("public");
-    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+    generate(&project.source, &project.img_source, dest.to_str().unwrap()).unwrap();
 
     assert!(dest.join("favicon.svg").is_file());
     let home = fs::read_to_string(dest.join("index.html")).unwrap();
@@ -493,7 +493,7 @@ fn a_section_ordered_by_date_lists_its_newest_posts_first() {
     );
 
     let dest = project.dir.join("public");
-    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+    generate(&project.source, &project.img_source, dest.to_str().unwrap()).unwrap();
 
     // The section page advertises its three newest posts, newest first.
     let blog = fs::read_to_string(dest.join("blog.html")).unwrap();
@@ -599,7 +599,7 @@ fn a_section_with_a_feed_publishes_its_newest_dated_posts_as_atom() {
     );
 
     let dest = project.dir.join("public");
-    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+    generate(&project.source, &project.img_source, dest.to_str().unwrap()).unwrap();
 
     let xml = fs::read_to_string(dest.join("blog/feed.xml")).unwrap();
     let doc = roxmltree::Document::parse(&xml).expect("the feed is well-formed XML");
@@ -682,7 +682,7 @@ fn without_a_site_url_no_feed_is_published_or_advertised() {
     assert!(!report.passed());
 
     let dest = project.dir.join("public");
-    generate(&project.source, &project.img_source, dest.to_str().unwrap());
+    generate(&project.source, &project.img_source, dest.to_str().unwrap()).unwrap();
 
     assert!(!dest.join("blog/feed.xml").exists());
     let blog = fs::read_to_string(dest.join("blog.html")).unwrap();

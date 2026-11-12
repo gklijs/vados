@@ -82,20 +82,26 @@ impl<'a> ImageProcessor<'a> {
             meta_cache: DashMap::new(),
         }
     }
-    pub(crate) fn process_list(&mut self, source: &str, list: Vec<ImageReference>) {
+    pub(crate) fn process_list(
+        &mut self,
+        source: &str,
+        list: Vec<ImageReference>,
+    ) -> Result<(), crate::generator::GenerateError> {
         let path_start = if source.len() == self.img_source.len() {
             String::new()
         } else {
             String::from(source).split_off(self.img_source.len())
         };
         for reference in list {
+            let path = format!("{}/{}", source, reference.file_name);
             match self.process_reference(source, &path_start, reference) {
                 Ok((key, value)) => {
                     self.meta_cache.insert(key, value);
                 }
-                Err(e) => println!("error: {}", e),
+                Err(e) => return Err(crate::generator::GenerateError::at(path, e)),
             }
         }
+        Ok(())
     }
     fn process_reference(
         &mut self,
@@ -175,7 +181,7 @@ impl<'a> ImageProcessor<'a> {
         let mut src = String::new();
         for (width, quality) in widths {
             let path = format!("/img{}/{}-w{}.webp", path_start, file_base, width);
-            if empty(self.destination, &path) {
+            if empty(self.destination, &path)? {
                 let height = ratio.get_height(&width);
                 // Create container for data of destination image
                 let mut dst_image = Image::new(width, height, src_image.pixel_type());
@@ -189,9 +195,9 @@ impl<'a> ImageProcessor<'a> {
                 // Write destination image as webp file
                 let enc = Encoder::from_rgba(dst_image.buffer(), width, height);
                 let mut result = enc.encode(quality);
-                write_raw(self.destination, &path, result.iter_mut());
+                write_raw(self.destination, &path, result.iter_mut())?;
             }
-            self.destination.record(&path);
+            self.destination.record(&path)?;
             srcset_part.push(format!("{} {}w", path, width));
             // A bare URL: the width descriptor only belongs in srcset.
             if width == src_width {
@@ -239,7 +245,7 @@ impl<'a> ImageProcessor<'a> {
         } else {
             (crop_width, crop_height)
         };
-        if empty(self.destination, &path) {
+        if empty(self.destination, &path)? {
             let x = (origin_width - crop_width) / 2;
             let y = (origin_height - crop_height) / 2;
             let cropped = origin.view(x, y, crop_width, crop_height).to_image();
@@ -265,9 +271,9 @@ impl<'a> ImageProcessor<'a> {
                 height,
                 ExtendedColorType::Rgb8,
             )?;
-            write_raw(self.destination, &path, jpeg);
+            write_raw(self.destination, &path, jpeg)?;
         }
-        self.destination.record(&path);
+        self.destination.record(&path)?;
         Ok(PreviewImage {
             path,
             width,

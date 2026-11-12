@@ -148,17 +148,18 @@ pub(crate) fn write_search(
     config: &SearchConfig,
     structure: &Structure,
     ui: &UiText,
-) {
+) -> Result<(), crate::generator::GenerateError> {
     write_raw(
         destination,
         SEARCH_INDEX_HREF,
         search_index(source, config, structure, ui),
-    );
+    )?;
     write_raw(
         destination,
         SEARCH_SCRIPT_HREF,
         include_str!("../assets/js/search.js"),
-    );
+    )?;
+    Ok(())
 }
 
 #[cfg(test)]

@@ -6,12 +6,10 @@
 //! commands and holds them to the two promises `vados.allium` makes about
 //! how they relate:
 //!
-//! 1. `check` never panics, on anything -- panicking is a `generate` failure
-//!    mode, not a `check` one; `check`'s whole job is to turn failures into
-//!    findings instead.
-//! 2. When `check` reports zero errors, `generate` does not panic. That is
-//!    the substance of "check tells you what generate would abort on"; if it
-//!    ever stopped holding, check would be lying to the maintainer.
+//! 1. Both `check` and `generate` never panic, even on invalid inputs.
+//! 2. On these trees (with decodable images and writable output), generation
+//!    succeeds whenever `check` reports no errors. Structural check findings
+//!    do not cover runtime image-decoding or output I/O failures.
 //!
 //! Images are kept to real, tiny (1x1) PNG/JPEG files so the pipeline is
 //! exercised for real without spending the fuzzing budget on image decoding.
@@ -578,15 +576,12 @@ proptest! {
 proptest! {
     #![proptest_config(ProptestConfig { cases: 60, .. ProptestConfig::default() })]
 
-    /// When `check` reports zero errors, `generate` does not panic. This is
-    /// the substance of the spec's promise that check tells the maintainer
-    /// what generate would abort on: if a tree checks clean and generate
-    /// still panics, check was wrong to call it clean.
+    /// Invalid input must return a result without panicking. On these trees,
+    /// a clean structural check must also mean successful generation.
     #[test]
-    fn generate_does_not_panic_when_check_reports_no_errors(spec in site_spec()) {
+    fn generate_never_panics_and_succeeds_when_check_reports_no_errors(spec in site_spec()) {
         let site = materialize(&spec);
         let report = check(site.source.to_str().unwrap(), site.img_source.to_str().unwrap());
-        prop_assume!(report.passed());
 
         let dest = site.root.join("dest");
         let result = catch_unwind(AssertUnwindSafe(|| {
@@ -598,9 +593,12 @@ proptest! {
         }));
         prop_assert!(
             result.is_ok(),
-            "generate() panicked on a tree check() called clean: {:#?}\nfindings={:#?}",
+            "generate() panicked on a tree: {:#?}\nfindings={:#?}",
             spec,
             report.findings
         );
+        if report.passed() {
+            prop_assert!(result.unwrap().is_ok(), "generation failed despite passing check: {spec:#?}");
+        }
     }
 }

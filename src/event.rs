@@ -527,16 +527,16 @@ pub(crate) fn write_calendars(
     destination: &crate::files::Output,
     main_config: &MainConfig,
     structure: &Structure,
-) {
+) -> Result<(), crate::generator::GenerateError> {
     let Some(site_url) = main_config.get_site_url() else {
-        return;
+        return Ok(());
     };
     let items = structure.get_all_items();
     for item in &items {
         if let Some(event) = &item.event {
             let entry = CalendarEntry::of_page(event, item, site_url);
             let file = calendar_file(&item.title, &[entry]);
-            write_raw(destination, &event_calendar_href(&item.path), file);
+            write_raw(destination, &event_calendar_href(&item.path), file)?;
         }
     }
     // After the events, so that an agenda at `/a` beats an event page at
@@ -550,9 +550,10 @@ pub(crate) fn write_calendars(
                 .collect();
             let name = format!("{} – {}", main_config.site_title, item.title);
             let file = calendar_file(&name, &entries);
-            write_raw(destination, &agenda_calendar_href(&item.path), file);
+            write_raw(destination, &agenda_calendar_href(&item.path), file)?;
         }
     }
+    Ok(())
 }
 
 #[cfg(test)]

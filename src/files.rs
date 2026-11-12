@@ -1,7 +1,8 @@
-use crate::config_files::{ImageList, MainConfig, MenuConfig, PageConfig};
-use std::collections::{BTreeSet, HashSet};
+use crate::config_files::{ImageList, MainConfig, MenuConfig};
+use crate::generator::GenerateError;
+use crate::json_files::{read_json, read_json_or};
+use std::collections::BTreeSet;
 use std::fs;
-use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use walkdir::WalkDir;
@@ -17,21 +18,21 @@ pub(crate) struct Output {
 }
 
 impl Output {
-    pub(crate) fn new(destination: &str) -> Self {
+    pub(crate) fn new(destination: &str) -> Result<Self, GenerateError> {
         let root = PathBuf::from(destination);
-        fs::create_dir_all(&root).expect("Unable to create destination");
-        let root = root.canonicalize().expect("Unable to resolve destination");
+        fs::create_dir_all(&root).map_err(|e| GenerateError::at(&root, e))?;
+        let root = root
+            .canonicalize()
+            .map_err(|e| GenerateError::at(&root, e))?;
         let manifest = root.join(MANIFEST);
-        assert!(
-            !manifest.is_symlink(),
-            "Output manifest must not be a symlink"
-        );
-        let previous = match fs::read(&manifest) {
-            Ok(bytes) => serde_json::from_slice::<BTreeSet<String>>(&bytes)
-                .expect("Unable to parse output manifest"),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeSet::new(),
-            Err(e) => panic!("Unable to read output manifest: {e}"),
-        };
+        if manifest.is_symlink() {
+            return Err(GenerateError::at(
+                &manifest,
+                "output manifest must not be a symlink",
+            ));
+        }
+        let previous =
+            read_json_or(&manifest, BTreeSet::new).map_err(|e| GenerateError::at(&manifest, e))?;
         let output = Self {
             root,
             previous,
@@ -39,50 +40,55 @@ impl Output {
         };
         // Validate before writing anything, including paths no longer in use.
         for path in &output.previous {
-            output.path(path);
+            output.path(path)?;
         }
-        output
+        Ok(output)
     }
 
-    fn path(&self, relative: &str) -> PathBuf {
-        assert!(
-            !relative.is_empty()
-                && !relative.contains('\\')
-                && relative
-                    .split('/')
-                    .all(|c| !c.is_empty() && c != "." && c != "..")
-                && relative.split('/').next() != Some(MANIFEST),
-            "Invalid output path: {relative}"
-        );
+    fn path(&self, relative: &str) -> Result<PathBuf, GenerateError> {
+        if relative.is_empty()
+            || relative.contains('\\')
+            || relative
+                .split('/')
+                .any(|c| c.is_empty() || c == "." || c == "..")
+            || relative.split('/').next() == Some(MANIFEST)
+        {
+            return Err(GenerateError::at(
+                self.root.join(relative),
+                "invalid output path",
+            ));
+        }
         let mut full = self.root.clone();
         for component in relative.split('/') {
             full.push(component);
-            assert!(
-                !full.is_symlink(),
-                "Output path must not traverse a symlink: {}",
-                full.display()
-            );
+            if full.is_symlink() {
+                return Err(GenerateError::at(
+                    &full,
+                    "output path must not traverse a symlink",
+                ));
+            }
         }
-        full
+        Ok(full)
     }
 
     /// Cached image variants belong to this run even when no write is needed.
-    pub(crate) fn record(&self, path: &str) {
+    pub(crate) fn record(&self, path: &str) -> Result<(), GenerateError> {
         let relative = path
             .strip_prefix('/')
-            .expect("output path must start with /");
-        self.path(relative);
+            .ok_or_else(|| GenerateError::at(path, "output path must start with /"))?;
+        self.path(relative)?;
         self.current.lock().unwrap().insert(relative.to_owned());
+        Ok(())
     }
 
-    pub(crate) fn finish(&self) {
+    pub(crate) fn finish(&self) -> Result<(), GenerateError> {
         let current = self.current.lock().unwrap();
         for relative in self.previous.difference(&current) {
-            let path = self.path(relative);
+            let path = self.path(relative)?;
             match fs::remove_file(&path) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => panic!("Unable to remove stale output {}: {e}", path.display()),
+                Err(e) => return Err(GenerateError::at(&path, e)),
             }
             // Only remove now-empty ancestors of a tracked file. Other build
             // steps can keep files in the same directories.
@@ -92,10 +98,7 @@ impl Output {
                     Ok(()) => {}
                     Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                     Err(e) if e.kind() == std::io::ErrorKind::DirectoryNotEmpty => break,
-                    Err(e) => panic!(
-                        "Unable to remove empty output directory {}: {e}",
-                        dir.display()
-                    ),
+                    Err(e) => return Err(GenerateError::at(dir, e)),
                 }
                 parent = dir.parent();
             }
@@ -113,79 +116,63 @@ impl Output {
             {
                 Ok(file) => file,
                 Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-                Err(e) => panic!("Unable to create output manifest: {e}"),
+                Err(e) => return Err(GenerateError::at(&temporary, e)),
             };
-            serde_json::to_writer_pretty(file, &*current).expect("Unable to write output manifest");
-            fs::rename(temporary, self.root.join(MANIFEST))
-                .expect("Unable to replace output manifest");
+            serde_json::to_writer_pretty(file, &*current)
+                .map_err(|e| GenerateError::at(&temporary, e))?;
+            fs::rename(&temporary, self.root.join(MANIFEST))
+                .map_err(|e| GenerateError::at(self.root.join(MANIFEST), e))?;
             break;
         }
+        Ok(())
     }
 }
 
-pub(crate) fn get_main_config(source: &str) -> MainConfig {
-    let path = format!("{}/main.json", source);
-    let config_file_path = Path::new(&path);
-    let file = File::open(config_file_path).expect("JSON file main.json could not be read");
-    serde_json::from_reader(file).expect("JSON file main.json was not well-formatted")
+pub(crate) fn get_main_config(source: &str) -> Result<MainConfig, GenerateError> {
+    let path = Path::new(source).join("main.json");
+    read_json(&path).map_err(|e| GenerateError::at(&path, e))
 }
 
-pub(crate) fn get_menu_config(source: &str) -> MenuConfig {
-    let path = format!("{}/menu.json", source);
-    let config_file_path = Path::new(&path);
-    let file = File::open(config_file_path).expect("JSON file menu.json could not be read");
-    serde_json::from_reader(file).expect("JSON file menu.json was not well-formatted")
+pub(crate) fn get_menu_config(source: &str) -> Result<MenuConfig, GenerateError> {
+    let path = Path::new(source).join("menu.json");
+    read_json(&path).map_err(|e| GenerateError::at(&path, e))
 }
 
-pub(crate) fn get_image_list(source: &str) -> Option<ImageList> {
-    let path = format!("{}/images.json", source);
-    let config_file_path = Path::new(&path);
-    let file = match File::open(config_file_path) {
-        Ok(f) => f,
-        Err(_) => return None,
-    };
-    match serde_json::from_reader(file) {
-        Ok(list) => Some(list),
-        Err(e) => {
-            println!("JSON file images.json was not well-formatted:\n{}", e);
-            None
-        }
-    }
+pub(crate) fn get_image_list(source: &str) -> Result<Option<ImageList>, GenerateError> {
+    let path = Path::new(source).join("images.json");
+    read_json_or(&path, || None).map_err(|e| GenerateError::at(&path, e))
 }
 
-/// Every hero image a page.json names, read ahead of the pages themselves so
-/// the images can be processed first. A page.json that can't be read names
-/// none here; reading the pages reports it.
-pub(crate) fn get_hero_image_references(source: &str, static_dir: Option<&str>) -> HashSet<String> {
-    get_page_directory_paths(source, static_dir)
-        .iter()
-        .filter_map(|dir| File::open(format!("{}/page.json", dir)).ok())
-        .filter_map(|file| serde_json::from_reader::<_, PageConfig>(file).ok())
-        .filter_map(|config| config.image)
-        .collect()
-}
-
-pub(crate) fn write_html(destination: &Output, path: &str, html: &str) {
+pub(crate) fn write_html(
+    destination: &Output,
+    path: &str,
+    html: &str,
+) -> Result<(), GenerateError> {
     let path = if path == "/" {
         String::from("/index.html")
     } else {
         format!("{}.html", path)
     };
-    write_raw(destination, &path, minifier::html::minify(html));
+    write_raw(destination, &path, minifier::html::minify(html))
 }
 
-pub(crate) fn write_raw<C: AsRef<[u8]>>(destination: &Output, path: &str, contents: C) {
+pub(crate) fn write_raw<C: AsRef<[u8]>>(
+    destination: &Output,
+    path: &str,
+    contents: C,
+) -> Result<(), GenerateError> {
     let relative = path
         .strip_prefix('/')
-        .expect("output path must start with /");
-    let full_path = destination.path(relative);
-    fs::create_dir_all(full_path.parent().unwrap()).expect("Unable to create output directory");
-    fs::write(full_path, contents).expect("Unable to write file");
-    destination.record(path);
+        .ok_or_else(|| GenerateError::at(path, "output path must start with /"))?;
+    let full_path = destination.path(relative)?;
+    fs::create_dir_all(full_path.parent().unwrap())
+        .map_err(|e| GenerateError::at(full_path.parent().unwrap(), e))?;
+    fs::write(&full_path, contents).map_err(|e| GenerateError::at(&full_path, e))?;
+    destination.record(path)
 }
 
-pub(crate) fn empty(destination: &Output, path: &str) -> bool {
-    !destination.path(path.trim_start_matches('/')).exists()
+pub(crate) fn empty(destination: &Output, path: &str) -> Result<bool, GenerateError> {
+    Ok(!destination.path(path.trim_start_matches('/'))?.exists())
 }
 
 /// The placeholder that keeps an empty directory in git; never published.
@@ -199,17 +186,33 @@ pub(crate) fn static_dir_path(source: &str, static_dir: &str) -> PathBuf {
 
 /// Every directory under the source root that is a page: all of them, except
 /// the static directory and everything in it when it sits inside the root.
-pub(crate) fn get_page_directory_paths(source: &str, static_dir: Option<&str>) -> Vec<String> {
+pub(crate) fn get_page_directory_paths(
+    source: &str,
+    static_dir: Option<&str>,
+) -> Result<Vec<String>, GenerateError> {
     let excluded = static_dir.and_then(|d| static_dir_path(source, d).canonicalize().ok());
+    directories(source, excluded.as_deref())
+}
+
+fn directories(source: &str, excluded: Option<&Path>) -> Result<Vec<String>, GenerateError> {
+    let root = Path::new(source);
+    if !fs::metadata(root)
+        .map_err(|e| GenerateError::at(root, e))?
+        .is_dir()
+    {
+        return Err(GenerateError::at(root, "source must be a directory"));
+    }
     WalkDir::new(source)
         .into_iter()
         .filter_entry(|e| {
-            e.metadata().unwrap().is_dir()
-                && excluded
-                    .as_ref()
-                    .is_none_or(|x| e.path().canonicalize().ok().as_ref() != Some(x))
+            e.file_type().is_dir()
+                && excluded.is_none_or(|x| e.path().canonicalize().ok().as_deref() != Some(x))
         })
-        .map(|e| e.unwrap().path().display().to_string())
+        .map(|entry| {
+            entry
+                .map(|e| e.path().display().to_string())
+                .map_err(|e| GenerateError::at(e.path().unwrap_or(Path::new(source)), &e))
+        })
         .collect()
 }
 
@@ -237,37 +240,26 @@ pub(crate) fn copy_static_files(
     source: &str,
     static_dir: &str,
     destination: &Output,
-) -> Vec<String> {
-    let files = get_static_files(source, static_dir);
-    if files.is_empty() && !static_dir_path(source, static_dir).is_dir() {
-        println!(
-            "staticDir {} is not a directory, so no static files are published.",
-            static_dir
-        );
+) -> Result<Vec<String>, GenerateError> {
+    let root = static_dir_path(source, static_dir);
+    if !root.exists() {
+        return Ok(vec![]);
     }
-    files
-        .into_iter()
-        .filter_map(|(published, from)| match fs::read(&from) {
-            Ok(contents) => {
-                write_raw(destination, &published, contents);
-                Some(published)
-            }
-            Err(e) => {
-                println!(
-                    "static file {} could not be read, skipping it: {}",
-                    from.display(),
-                    e
-                );
-                None
-            }
-        })
-        .collect()
+    let mut published = vec![];
+    for entry in WalkDir::new(&root) {
+        let entry = entry.map_err(|e| GenerateError::at(e.path().unwrap_or(&root), &e))?;
+        if !entry.file_type().is_file() || entry.file_name() == GITKEEP {
+            continue;
+        }
+        let path = entry.path();
+        let href = format!("/{}", path.strip_prefix(&root).unwrap().to_string_lossy());
+        let contents = fs::read(path).map_err(|e| GenerateError::at(path, e))?;
+        write_raw(destination, &href, contents)?;
+        published.push(href);
+    }
+    Ok(published)
 }
 
-pub(crate) fn get_all_directory_paths(source: &str) -> Vec<String> {
-    WalkDir::new(source)
-        .into_iter()
-        .filter_entry(|e| e.metadata().unwrap().is_dir())
-        .map(|e| e.unwrap().path().display().to_string())
-        .collect()
+pub(crate) fn get_all_directory_paths(source: &str) -> Result<Vec<String>, GenerateError> {
+    directories(source, None)
 }

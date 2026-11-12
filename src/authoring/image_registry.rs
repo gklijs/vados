@@ -128,7 +128,7 @@ pub fn source_readable(path: &Path) -> bool {
 pub fn collect_declared_image_keys(image_source: &str) -> HashSet<String> {
     let image_source = normalize_image_source(image_source);
     let mut keys = HashSet::new();
-    for dir in get_all_directory_paths(image_source) {
+    for dir in get_all_directory_paths(image_source).unwrap_or_default() {
         let images_json = Path::new(&dir).join("images.json");
         let list: ImageList = match read_json_or(&images_json, || ImageList {
             title: None,
@@ -153,7 +153,7 @@ pub fn collect_declared_image_keys(image_source: &str) -> HashSet<String> {
 /// alt text rather than asking the maintainer to repeat it.
 pub fn declared_image_alt_text(image_source: &str, reference_key: &str) -> Option<String> {
     let image_source = normalize_image_source(image_source);
-    for dir in get_all_directory_paths(image_source) {
+    for dir in get_all_directory_paths(image_source).unwrap_or_default() {
         let images_json = Path::new(&dir).join("images.json");
         let list: ImageList = match read_json_or(&images_json, || ImageList {
             title: None,

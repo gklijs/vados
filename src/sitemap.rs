@@ -13,8 +13,9 @@ pub(crate) fn write_sitemap(
     destination: &crate::files::Output,
     site_url: &str,
     structure: &Structure,
-) {
-    write_raw(destination, "/sitemap.xml", sitemap(site_url, structure));
+) -> Result<(), crate::generator::GenerateError> {
+    write_raw(destination, "/sitemap.xml", sitemap(site_url, structure))?;
+    Ok(())
 }
 
 /// Writes a robots.txt allowing every crawler, pointing at the sitemap when
@@ -23,10 +24,11 @@ pub(crate) fn write_robots(
     destination: &crate::files::Output,
     site_url: Option<&str>,
     static_files: &[String],
-) {
+) -> Result<(), crate::generator::GenerateError> {
     if !static_files.iter().any(|f| f == "/robots.txt") {
-        write_raw(destination, "/robots.txt", robots(site_url));
+        write_raw(destination, "/robots.txt", robots(site_url))?;
     }
+    Ok(())
 }
 
 fn sitemap(site_url: &str, structure: &Structure) -> String {

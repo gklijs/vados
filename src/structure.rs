@@ -112,36 +112,14 @@ impl Item {
     }
 }
 
-/// The page's date, if it gives one that can be read. A malformed date is
-/// reported and the page treated as undated, the same way a malformed Luma
-/// event is reported and dropped; `check` reports it as an error.
-fn published_date(path: &str, declared: Option<&str>) -> Option<PageDate> {
-    match declared?.parse() {
-        Ok(date) => Some(date),
-        Err(e) => {
-            println!(
-                "Page {} has an unreadable date: {}; treating it as undated.",
-                path, e
-            );
-            None
-        }
-    }
+/// Malformed dates are treated as undated; preflight collects their warnings.
+fn published_date(_path: &str, declared: Option<&str>) -> Option<PageDate> {
+    declared?.parse().ok()
 }
 
-/// The page's event, if it gives a valid one. An invalid one is reported and
-/// left off the page, and `check` reports it as an error.
-fn published_event(path: &str, declared: Option<&DeclaredEvent>) -> Option<Event> {
-    match declared?.resolve() {
-        Ok(event) => Some(event),
-        Err(problems) => {
-            println!(
-                "Page {} has an event that isn't valid, so it is left off: {}.",
-                path,
-                problems.join("; ")
-            );
-            None
-        }
-    }
+/// Invalid events are omitted. The generation preflight collects their warnings.
+fn published_event(_path: &str, declared: Option<&DeclaredEvent>) -> Option<Event> {
+    declared?.resolve().ok()
 }
 
 /// Where `a` goes relative to `b` among the children of a page that orders
@@ -161,39 +139,13 @@ fn display_order(child_order: ChildOrder, a: &Item, b: &Item) -> Ordering {
     by_date.then_with(|| a.cmp(b))
 }
 
-/// Drops the Luma events that can't be shown -- a malformed ID or no title
-/// -- reporting each as it goes, the same way an unresolvable main menu
-/// entry is reported and dropped. `check` reports the same events as
-/// errors; see `vados.allium`'s `AttachLumaEvent`.
-fn published_luma_events(path: &str, declared: Option<Vec<LumaEvent>>) -> Vec<LumaEvent> {
+/// Drops Luma events with a malformed ID or no title. Preflight collects the
+/// warnings; see `vados.allium`'s `AttachLumaEvent`.
+fn published_luma_events(_path: &str, declared: Option<Vec<LumaEvent>>) -> Vec<LumaEvent> {
     declared
         .unwrap_or_default()
         .into_iter()
-        .filter(|e| {
-            if !is_luma_event_id(&e.event_id) {
-                println!(
-                    "Luma event {} on page {} is not a Luma event ID; leaving it off the page.",
-                    e.event_id, path
-                );
-                false
-            } else if e.effective_title().is_none() {
-                println!(
-                    "Luma event {} on page {} has no title; leaving it off the page.",
-                    e.event_id, path
-                );
-                false
-            } else {
-                if let Some(Err(problems)) = e.schedule() {
-                    println!(
-                        "Luma event {} on page {} says when it is in a way that isn't valid, so agendas leave it out: {}.",
-                        e.event_id,
-                        path,
-                        problems.join("; ")
-                    );
-                }
-                true
-            }
-        })
+        .filter(|e| is_luma_event_id(&e.event_id) && e.effective_title().is_some())
         .collect()
 }
 
@@ -297,19 +249,19 @@ impl Item {
 }
 
 impl RawMenuItem {
-    fn to_external_item(&self) -> MenuItem {
-        MenuItem {
+    fn to_external_item(&self) -> Result<MenuItem, String> {
+        Ok(MenuItem {
             menu_type: MenuType::External,
             url: self.url.clone(),
             title: self
                 .title
                 .as_ref()
-                .expect("External link should have a title")
+                .ok_or_else(|| format!("external menu link {} has no title", self.url))?
                 .clone(),
             icon: self.icon.clone(),
             children: None,
             more: false,
-        }
+        })
     }
 }
 
@@ -370,11 +322,11 @@ impl Structure {
         menu_config: &MenuConfig,
         dropdown_limit: usize,
         search_entry: bool,
-    ) -> Vec<MenuItem> {
+    ) -> Result<Vec<MenuItem>, String> {
         let mut result = vec![];
         for item in &menu_config.main_menu {
             if item.url.starts_with("https://") {
-                result.push(item.to_external_item())
+                result.push(item.to_external_item()?)
             } else {
                 match self.by_path.get(&*item.url) {
                     None => println!(
@@ -412,7 +364,7 @@ impl Structure {
                 result.push(search.to_main_menu_item(None, icon, None));
             }
         }
-        result
+        Ok(result)
     }
     pub(crate) fn get_side_menu_items(&self, path: &str) -> Option<MenuItem> {
         let depth = path.matches('/').count();
@@ -862,36 +814,30 @@ pub struct SocialItem {
 }
 
 impl SocialItem {
-    pub(crate) fn new(raw: &RawSocialItem) -> SocialItem {
+    pub(crate) fn new(raw: &RawSocialItem) -> Result<SocialItem, String> {
         let provider = classify_social_provider(&raw.url);
+        let missing = |field| format!("social link {} has no {}", raw.url, field);
         let icon = canonical_icon(provider)
             .map(String::from)
-            .unwrap_or_else(|| {
-                raw.icon
-                    .clone()
-                    .expect("Other social links should have icon.")
-            });
-        // An explicit color wins over the provider's brand color, so a site
-        // can render every icon in one color (for example on a dark navbar).
+            .or_else(|| raw.icon.clone())
+            .ok_or_else(|| missing("icon"))?;
+        // An explicit color wins over the provider's brand color.
         let brand_color = raw
             .color
             .as_deref()
             .map(normalize_brand_color)
             .or_else(|| canonical_brand_color(provider).map(String::from))
-            .expect("Other social links should have color.");
+            .ok_or_else(|| missing("color"))?;
         let label = canonical_label(provider)
             .map(String::from)
-            .unwrap_or_else(|| {
-                raw.label
-                    .clone()
-                    .expect("Other social links should have label.")
-            });
-        SocialItem {
+            .or_else(|| raw.label.clone())
+            .ok_or_else(|| missing("label"))?;
+        Ok(SocialItem {
             url: raw.url.clone(),
             icon,
             brand_color,
             label,
-        }
+        })
     }
     pub(crate) fn get_url(&self) -> &str {
         &self.url
@@ -1014,7 +960,8 @@ mod tests {
             "https://hachyderm.io/@gklijs",
             Some("mastodon"),
             Some("#ffffff"),
-        ));
+        ))
+        .unwrap();
         assert_eq!(item.get_color(), "ffffff");
     }
 
@@ -1024,15 +971,16 @@ mod tests {
             "https://github.com/gklijs",
             None,
             Some("eeeeee"),
-        ));
+        ))
+        .unwrap();
         assert_eq!(item.get_color(), "eeeeee");
-        let item = SocialItem::new(&raw_social("https://github.com/gklijs", None, None));
+        let item = SocialItem::new(&raw_social("https://github.com/gklijs", None, None)).unwrap();
         assert_eq!(item.get_color(), "171515");
     }
 
     #[test]
     fn x_links_get_the_x_icon_and_color() {
-        let item = SocialItem::new(&raw_social("https://x.com/gklijs", None, None));
+        let item = SocialItem::new(&raw_social("https://x.com/gklijs", None, None)).unwrap();
         assert_eq!(item.get_icon(), "alpha-x-box");
         assert_eq!(item.get_color(), "000000");
     }

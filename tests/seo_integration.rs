@@ -69,7 +69,8 @@ impl TestSite {
             self.source.to_str().unwrap(),
             self.img_source.to_str().unwrap(),
             self.destination.to_str().unwrap(),
-        );
+        )
+        .unwrap();
     }
 
     fn published(&self, rel_path: &str) -> String {

@@ -7,7 +7,16 @@
 - Mermaid diagrams in fenced Markdown blocks (#33), with per-page script loading,
   theme switching, readable source fallback, a self-hosting override and source checks.
 
+### Changed
+
+- The library's `generator::generate` now returns `Result<GenerateReport, GenerateError>` (#54).
+- `check` treats unreadable image manifests and missing image source files as errors, matching generation.
+
 ### Fixed
+
+- `generate` reports invalid source files, image-processing failures and output I/O failures with their paths and
+  exits non-zero, instead of panicking or silently succeeding (#54). Configuration validation happens before any
+  output is written; invalid events are still omitted and returned as counted warnings.
 
 - `generate` removes files recorded by an earlier run that are no longer needed (#53), including removed or renamed
   pages, disabled features, static files and image variants. A destination manifest preserves cached images and

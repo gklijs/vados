@@ -301,16 +301,19 @@ impl MainConfig {
             }
         }
     }
-    pub(crate) fn get_js_links(&self, destination: &crate::files::Output) -> Vec<String> {
-        match self.include_default_js {
+    pub(crate) fn get_js_links(
+        &self,
+        destination: &crate::files::Output,
+    ) -> Result<Vec<String>, crate::generator::GenerateError> {
+        Ok(match self.include_default_js {
             Some(b) if !b => self.js_files.clone(),
             _ => {
-                write_raw(destination, default_js_links().first().unwrap(), vados_js());
+                write_raw(destination, default_js_links().first().unwrap(), vados_js())?;
                 let mut result = self.js_files.clone();
                 result.append(&mut default_js_links());
                 result
             }
-        }
+        })
     }
 }
 
