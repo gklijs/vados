@@ -1,0 +1,30 @@
+# Weekly update pull requests: one grouped pull request per ecosystem for minor
+# and patch updates, and one each for major updates, so those get their own look.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo-minor-and-patch:
+        update-types: [minor, patch]
+
+  # The browser tests' exact pins. A Bulma bump is checked by the browser job,
+  # which compiles the README's list of Bulma modules against it; a new Bulma
+  # minor or major may also need that list, and init's `^1.0.4`, updated.
+  - package-ecosystem: npm
+    directory: /tests/browser
+    schedule:
+      interval: weekly
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-and-patch:
+        update-types: [minor, patch]

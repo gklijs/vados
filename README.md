@@ -782,6 +782,13 @@ npm test
 After changing a configuration struct or its doc comments, which become the schemas' descriptions, rewrite `schemas/`
 with `VADOS_UPDATE_SCHEMAS=1 cargo test --lib schemas`; without it, that test fails while they're out of date.
 
+Dependabot opens weekly pull requests for the Rust crates, the browser tests' npm packages and the GitHub Actions,
+one grouped pull request per ecosystem for minor and patch updates and a separate one for each major update. A Bulma
+update runs the browser tests against the module list above; a new Bulma minor or major may need that list updated.
+The audit workflow runs `cargo deny check advisories licenses` weekly and whenever `Cargo.lock`, `Cargo.toml` or
+`deny.toml` changes: it fails on a RustSec advisory or on a dependency licence missing from `deny.toml`'s allow-list.
+Run the same command locally after `cargo install cargo-deny`.
+
 To release, set the new `version` in `Cargo.toml`, rename the changelog's "Unreleased" heading to
 `## <version> - <date>`, and push a `v<version>` tag. The release workflow checks the tag against `Cargo.toml`, builds
 and tests the Linux binaries, and publishes them with that changelog section as the release notes. A version such as

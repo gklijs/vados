@@ -183,3 +183,44 @@ event is available, including embed, registration button and CSP checks.
 - [ ] Pre-release tag (for example `v0.6.0-rc.1`, with that version in
   `Cargo.toml`) to run the workflow for real, including the aarch64 build.
 - [ ] One real Netlify deploy of a site scaffolded by a released version.
+
+## Decisions for #59
+
+- Dependabot rather than Renovate: no app to install. Three ecosystems (`cargo`
+  at the root, `npm` in `/tests/browser`, `github-actions`), weekly, with minor
+  and patch updates grouped per ecosystem and each major on its own.
+- `cargo deny` rather than `cargo audit`, so one tool checks advisories and
+  licences: `cargo deny check advisories licenses` in `audit.yml`, weekly and on
+  changes to `Cargo.lock`, `Cargo.toml` or `deny.toml`. Bans and sources are
+  left out.
+- Licences: yes, now that release binaries bundle every dependency. Allow-list
+  of permissive licences plus MPL-2.0 (cssparser/selectors via scraper). Data
+  inside crates (tzdb, syntect dumps) falls under that crate's licence; the
+  Material Design Icons in `assets/mdi` aren't a crate and keep their own
+  LICENSE file.
+- Audit findings on `main` today: RUSTSEC-2026-0433 (pulldown-cmark wikilinks;
+  vados doesn't enable them) fixed by updating to 0.13.6 in `Cargo.lock`. The
+  two unmaintained transitive crates, `basic-toml` (askama, compile time only)
+  and `bincode` (syntect's bundled dumps), are ignored in `deny.toml` with
+  reasons, rather than turned into issues: there's nothing to do until askama
+  and syntect move on.
+- `Swatinem/rust-cache` in all three CI jobs, saved only from `main`; npm cache
+  for the browser job. The release workflow stays uncached.
+- Bulma bumps: the browser job already compiles the README's module list against
+  the bumped Bulma; the Dependabot config and README say a minor or major may
+  need the list (and init's `^1.0.4`) updated.
+
+## Progress for #59
+
+- [x] `.github/dependabot.yml`, `deny.toml`, `.github/workflows/audit.yml`,
+  caching in `ci.yml`; README "Developing vados" and CHANGELOG.
+- [x] Locally: `cargo deny check advisories licenses` passes; library tests,
+  the `vados_bass` integration test, formatting and the 1.88.0 check pass
+  after the pulldown-cmark update. Workflow YAML parses; actionlint isn't
+  installed.
+- [ ] Maintainer commits, pushes, PR; audit job green in CI.
+- [ ] CI time before and after the cache (the second run on `main` after merge
+  is the first to restore), noted in the PR.
+- [ ] Dependabot's first pull requests open after merge and pass CI.
+- [ ] Not done here: the release archive doesn't include `assets/mdi/LICENSE`
+  although the binary embeds the icons; consider adding it.

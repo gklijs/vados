@@ -2,6 +2,10 @@ name: CI
 
 on: [push, pull_request]
 
+# Each job keeps its own Swatinem/rust-cache entry (dependencies only, keyed on
+# the toolchain and Cargo.lock). Only runs on main save it, so feature branches
+# and pull requests reuse main's entry instead of filling the cache quota. The
+# release workflow builds without a cache on purpose.
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
@@ -14,6 +18,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Format
         run: cargo fmt --check
       - name: Clippy
@@ -31,6 +38,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.88.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Check
         run: cargo check --all-targets --locked
 
@@ -40,9 +50,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: tests/browser/package-lock.json
       - name: Build
         run: cargo build --verbose
       - name: Install
