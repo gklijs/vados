@@ -48,14 +48,26 @@ event is available, including embed, registration button and CSP checks.
 - [x] #55 implemented with nested-key diagnostics and rewrite protection.
 - [x] Formatting and Clippy pass with default features and without default features.
 - [x] New key-diagnostic tests and CLI rewrite-protection tests pass.
-- [ ] Full suite passes in GitHub CI. Local library run: 266 passed; three
-  existing link-check tests were blocked by sandbox restrictions on binding a
-  local HTTP server. The full run stopped there, before integration suites.
-- PR #66 CI: browser and minimum-Rust-version checks passed. Both build runs
-  failed on an outdated integration assertion requiring `jsFiles` and
-  `cssFiles`. Updated it to require only mandatory fields and explicitly
-  exclude the optional asset lists from errors; all 10 generation-error
-  integration tests, formatting and default-feature Clippy pass locally.
-- Next: maintainer commits and pushes the PR #66 test correction, then rerun
-  GitHub CI for the full suite. #56 already exists in the checkout; no
-  duplicate implementation PR is needed.
+- [x] Full suite passes in GitHub CI: PR #66 merged with build, browser and
+  minimum-Rust-version checks green.
+
+## Progress for #64
+
+- [x] `main.rs` split into `src/cli/` (one file per command group plus
+  `prompt.rs`); `main.rs` keeps `Cli`, the top-level `Command` and dispatch.
+  Each group exposes `run(command)`; `init` keeps `run_init`.
+- [x] `check.rs` moved to `src/check/mod.rs` (the rename is staged on its own),
+  then helpers and their tests moved to `config`, `images`, `pages`,
+  `content_links`, `events`, `feeds_and_latest` and `bulma`; shared test
+  fixtures went to `test_support.rs`. Only visibility changed. All 47 tests are
+  kept.
+- [x] All 29 `--help`/`-h` outputs, `--version`, the error cases and `check`
+  on the `vados_bass` fixture are byte-identical before and after.
+- [x] Formatting, Clippy (default and no default features) and the full local
+  suite pass (269 library tests plus all integration suites).
+- [ ] Open: menu/social and hosting checks are inline in `check()`, so a pure
+  move gives them no file. Extracting those contiguous blocks into
+  `menu_and_social.rs`/`hosting.rs` would be a follow-up. It preserves
+  behaviour but isn't a pure move.
+- [ ] `content.rs` and `structure.rs` (issue step 4) not started.
+- [ ] Maintainer commits (rename, check split, CLI split), pushes, PR, CI.

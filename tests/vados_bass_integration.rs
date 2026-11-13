@@ -1,7 +1,7 @@
 //! Integration tests against a vendored snapshot of the real `vados_bass`
 //! content tree (https://github.com/gklijs/vados_bass), which is also the
 //! source of the live site at https://bass.gklijs.tech/. Unlike the
-//! hand-built fixtures in `check.rs`'s unit tests, this is real authored
+//! hand-built fixtures in `src/check/`'s unit tests, this is real authored
 //! content nobody wrote to exercise vados: nested log entries five levels
 //! deep, images with real EXIF and alpha channels, a social link with no
 //! recognised provider, notifications with and without images. It caught two

@@ -5,15 +5,15 @@
 //!
 //! This module holds everything testable without a terminal: conflict
 //! detection and the actual scaffolding. The interactive prompt sequence
-//! that gathers `ProjectBasics` lives in `main.rs`, the same way the spec
-//! excludes the prompt sequence itself from the domain while keeping the
-//! bundle of basics gathered as a first-class type here.
+//! that gathers `ProjectBasics` lives in `src/cli/init.rs`, the same way the
+//! spec excludes the prompt sequence itself from the domain while keeping
+//! the bundle of basics gathered as a first-class type here.
 
 use crate::config_files::favicon_media_type;
 use crate::content::escape_html;
 use crate::files::GITKEEP;
 use crate::json_files::write_json_pretty;
-// Re-exported so callers outside this crate (the CLI in `main.rs`) can name
+// Re-exported so callers outside this crate (the CLI in `src/cli/`) can name
 // the provider type through `vados::init` without reaching into the
 // otherwise-private `structure` module.
 pub use crate::structure::RecognizedSocialProvider;
