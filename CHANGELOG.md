@@ -28,6 +28,10 @@
 
 - vados states that it supports Linux, including WSL on Windows (#65). Other platforms are untested.
 
+- Dependabot keeps the crates, the browser tests' packages and the GitHub Actions up to date, a weekly audit checks
+  the dependencies for RustSec advisories and disallowed licences, and CI caches compiled dependencies (#59).
+- pulldown-cmark 0.13.6, for RUSTSEC-2026-0433 (wikilinks, which vados doesn't enable, so it wasn't affected).
+
 - The library's `generator::generate` now returns `Result<GenerateReport, GenerateError>` (#54).
 - `check` treats unreadable image manifests and missing image source files as errors, matching generation.
 

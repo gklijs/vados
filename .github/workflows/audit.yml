@@ -1,0 +1,25 @@
+name: Audit
+
+# Checks the dependencies against the RustSec advisory database and the licence
+# allow-list in deny.toml. New advisories appear without any change here, so it
+# also runs weekly; a failing scheduled run is the signal to update or ignore.
+on:
+  push:
+    paths: [Cargo.lock, Cargo.toml, deny.toml, .github/workflows/audit.yml]
+  pull_request:
+    paths: [Cargo.lock, Cargo.toml, deny.toml, .github/workflows/audit.yml]
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories licenses
