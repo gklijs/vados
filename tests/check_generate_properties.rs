@@ -1,6 +1,6 @@
 //! Property-based fuzzing over randomly generated source/image trees.
 //!
-//! Unlike `check.rs`'s hand-written unit tests (one input per finding kind)
+//! Unlike `src/check/`'s hand-written unit tests (one input per finding kind)
 //! and the `vados_bass` integration test (one fixed, real tree), this throws
 //! hundreds of small, schema-valid-but-otherwise-arbitrary trees at both
 //! commands and holds them to the two promises `vados.allium` makes about
