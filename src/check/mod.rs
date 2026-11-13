@@ -11,9 +11,7 @@ use crate::config_files::{is_site_url, MainConfig, MenuConfig};
 use crate::content::has_top_level_heading;
 use crate::files::{get_static_files, static_dir_path};
 use crate::icons::{is_known_icon, suggest_icons};
-use crate::link_check::headers_file_findings;
 use crate::search::SEARCH_PATH;
-use crate::structure::is_recognized_social_provider;
 use crate::ui_text::is_translated;
 use std::collections::HashSet;
 use std::fmt;
@@ -25,7 +23,9 @@ mod config;
 mod content_links;
 mod events;
 mod feeds_and_latest;
+mod hosting;
 mod images;
+mod menu_and_social;
 mod pages;
 #[cfg(test)]
 mod test_support;
@@ -35,7 +35,9 @@ use config::read_json;
 use content_links::check_content_links;
 use events::check_luma_events;
 use feeds_and_latest::check_page_selections;
+use hosting::check_static_dir;
 use images::{collect_images, duplicate_image_findings};
+use menu_and_social::check_menu;
 use pages::{
     check_content_reference, check_mermaid_reference, check_noindex, check_notification,
     check_page_date, collect_pages,
@@ -413,51 +415,7 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
         .collect();
 
     if let Some(menu_config) = &menu_config {
-        for item in &menu_config.main_menu {
-            if item.url.starts_with("https://") {
-                if item.title.is_none() {
-                    findings.push(Finding {
-                        kind: FindingKind::ExternalMenuLinkWithoutTitle,
-                        location: item.url.clone(),
-                        detail: None,
-                    });
-                }
-            } else if !page_paths.contains(item.url.as_str()) {
-                findings.push(Finding {
-                    kind: FindingKind::UnresolvedMenuLink,
-                    location: item.url.clone(),
-                    detail: None,
-                });
-            }
-        }
-        let menu_icons = menu_config
-            .main_menu
-            .iter()
-            .map(|i| (&i.url, &i.icon))
-            .chain(menu_config.socials.iter().map(|s| (&s.url, &s.icon)));
-        for (url, icon) in menu_icons {
-            // A recognised provider's icon is its own, whatever menu.json says.
-            let shown = !menu_config.socials.iter().any(|s| &s.url == url)
-                || !is_recognized_social_provider(url);
-            if let Some(icon) = icon.as_ref().filter(|i| shown && !is_known_icon(i)) {
-                findings.push(Finding {
-                    kind: FindingKind::UnknownIcon,
-                    location: url.clone(),
-                    detail: Some(unknown_icon_detail(icon)),
-                });
-            }
-        }
-        for social in &menu_config.socials {
-            if !is_recognized_social_provider(&social.url)
-                && (social.icon.is_none() || social.color.is_none() || social.label.is_none())
-            {
-                findings.push(Finding {
-                    kind: FindingKind::UnrecognisedSocialLinkIncomplete,
-                    location: social.url.clone(),
-                    detail: None,
-                });
-            }
-        }
+        check_menu(menu_config, &page_paths, &mut findings);
     }
 
     for (path, page_config) in &pages {
@@ -625,42 +583,7 @@ pub fn check(source: &str, img_source: &str) -> CheckReport {
                 });
             }
         }
-        if let Some(static_dir) = &main_config.static_dir {
-            if !static_dir_path(source, static_dir).is_dir() {
-                findings.push(Finding {
-                    kind: FindingKind::MissingStaticDir,
-                    location: format!("{}/main.json", source),
-                    detail: Some(static_dir.clone()),
-                });
-            }
-            let static_headers = static_dir_path(source, static_dir).join("_headers");
-            findings.extend(headers_file_findings(&static_headers));
-            let mut shadowed: Vec<(String, String)> = get_static_files(source, static_dir)
-                .into_iter()
-                .filter_map(|(published, from)| {
-                    let page = match published.as_str() {
-                        "/index.html" => "/",
-                        "/index.md" if main_config.markdown == Some(true) => "/",
-                        p => p.strip_suffix(".html").or_else(|| {
-                            (main_config.markdown == Some(true))
-                                .then(|| p.strip_suffix(".md"))
-                                .flatten()
-                        })?,
-                    };
-                    page_paths
-                        .contains(page)
-                        .then(|| (from.display().to_string(), String::from(page)))
-                })
-                .collect();
-            shadowed.sort();
-            for (file, page) in shadowed {
-                findings.push(Finding {
-                    kind: FindingKind::StaticFileShadowedByPage,
-                    location: file,
-                    detail: Some(page),
-                });
-            }
-        }
+        check_static_dir(source, main_config, &page_paths, &mut findings);
         if let Some(image_ref) = &main_config.default_image {
             if !image_keys.contains(image_ref.as_str()) {
                 findings.push(Finding {
@@ -810,131 +733,6 @@ mod tests {
         assert!(report.passed());
         assert_eq!(report.error_count(), 0);
         assert_eq!(report.warning_count(), 0);
-    }
-
-    #[test]
-    fn unresolved_internal_menu_link_is_a_warning() {
-        let site = TestSite::new("unresolved_menu_link");
-        site.write_source("main.json", VALID_MAIN_JSON);
-        site.write_source(
-            "menu.json",
-            r#"{"mainMenu":[{"url":"/missing","title":null,"icon":null}],"socials":[]}"#,
-        );
-        site.write_source("page.json", VALID_PAGE_JSON);
-
-        let report = site.check();
-
-        assert!(has_kind_at(
-            &report,
-            FindingKind::UnresolvedMenuLink,
-            "/missing"
-        ));
-        assert_eq!(
-            FindingKind::UnresolvedMenuLink.severity(),
-            Severity::Warning
-        );
-        assert!(report.passed());
-    }
-
-    #[test]
-    fn external_menu_link_without_title_is_an_error() {
-        let site = TestSite::new("external_link_no_title");
-        site.write_source("main.json", VALID_MAIN_JSON);
-        site.write_source(
-            "menu.json",
-            r#"{"mainMenu":[{"url":"https://example.com","title":null,"icon":null}],"socials":[]}"#,
-        );
-        site.write_source("page.json", VALID_PAGE_JSON);
-
-        let report = site.check();
-
-        assert!(has_kind_at(
-            &report,
-            FindingKind::ExternalMenuLinkWithoutTitle,
-            "https://example.com"
-        ));
-        assert!(!report.passed());
-    }
-
-    #[test]
-    fn unrecognised_social_provider_missing_icon_and_color_is_an_error() {
-        let site = TestSite::new("social_unrecognised");
-        site.write_source("main.json", VALID_MAIN_JSON);
-        site.write_source(
-            "menu.json",
-            r#"{"mainMenu":[],"socials":[{"url":"https://mastodon.social/@someone","icon":null,"color":null}]}"#,
-        );
-        site.write_source("page.json", VALID_PAGE_JSON);
-
-        let report = site.check();
-
-        assert!(has_kind_at(
-            &report,
-            FindingKind::UnrecognisedSocialLinkIncomplete,
-            "https://mastodon.social/@someone"
-        ));
-        assert!(!report.passed());
-    }
-
-    #[test]
-    fn unrecognised_social_provider_missing_only_the_label_is_an_error() {
-        // icon and color are given; the accessible-name label is not. It is
-        // just as required as the other two -- see
-        // vados.allium's UnrecognisedSocialLinkIsFullyDescribed.
-        let site = TestSite::new("social_missing_label");
-        site.write_source("main.json", VALID_MAIN_JSON);
-        site.write_source(
-            "menu.json",
-            r#"{"mainMenu":[],"socials":[{"url":"https://mastodon.social/@someone","icon":"mastodon","color":"6364FF"}]}"#,
-        );
-        site.write_source("page.json", VALID_PAGE_JSON);
-
-        let report = site.check();
-
-        assert!(has_kind_at(
-            &report,
-            FindingKind::UnrecognisedSocialLinkIncomplete,
-            "https://mastodon.social/@someone"
-        ));
-        assert!(!report.passed());
-    }
-
-    #[test]
-    fn unrecognised_social_provider_with_icon_color_and_label_is_not_flagged() {
-        let site = TestSite::new("social_fully_described");
-        site.write_source("main.json", VALID_MAIN_JSON);
-        site.write_source(
-            "menu.json",
-            r#"{"mainMenu":[],"socials":[{"url":"https://mastodon.social/@someone","icon":"mastodon","color":"6364FF","label":"Mastodon"}]}"#,
-        );
-        site.write_source("page.json", VALID_PAGE_JSON);
-
-        let report = site.check();
-
-        assert_eq!(
-            count_kind(&report, FindingKind::UnrecognisedSocialLinkIncomplete),
-            0
-        );
-        assert!(report.passed());
-    }
-
-    #[test]
-    fn recognized_social_provider_without_icon_is_not_flagged() {
-        let site = TestSite::new("social_recognized");
-        site.write_source("main.json", VALID_MAIN_JSON);
-        site.write_source(
-            "menu.json",
-            r#"{"mainMenu":[],"socials":[{"url":"https://github.com/someone","icon":null,"color":null}]}"#,
-        );
-        site.write_source("page.json", VALID_PAGE_JSON);
-
-        let report = site.check();
-
-        assert_eq!(
-            count_kind(&report, FindingKind::UnrecognisedSocialLinkIncomplete),
-            0
-        );
-        assert!(report.passed());
     }
 
     #[test]

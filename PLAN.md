@@ -65,10 +65,13 @@ event is available, including embed, registration button and CSP checks.
   on the `vados_bass` fixture are byte-identical before and after.
 - [x] Formatting, Clippy (default and no default features) and the full local
   suite pass (269 library tests plus all integration suites).
-- [ ] Open: menu/social and hosting checks are inline in `check()`, so a pure
-  move gives them no file. Extracting those contiguous blocks into
-  `menu_and_social.rs`/`hosting.rs` would be a follow-up. It preserves
-  behaviour but isn't a pure move.
+- [x] Follow-up: the inline menu/social and hosting blocks of `check()` moved
+  into `menu_and_social.rs` (`check_menu`, with the six menu/social tests) and
+  `hosting.rs` (`check_static_dir`: missing static directory, `_headers`,
+  shadowed static files). Called at the same point, so the order of findings
+  is unchanged; `check` output on `vados_bass`, and on a copy broken to trigger
+  the menu, icon, social and shadowing findings, is byte-identical to
+  `10db018`. The `_headers` path is covered by the integration test.
 - [x] First round merged as PR #67 (CLI and check splits), CI green.
 - [x] Step 4: `content.rs` moved to `src/content/mod.rs` and `structure.rs` to
   `src/structure/mod.rs` (both renames staged on their own). `content` then
@@ -83,5 +86,6 @@ event is available, including embed, registration button and CSP checks.
 - [x] Step 4 checks: generated `vados_bass` site, generate log, `check` output
   and all `--help` outputs byte-identical to `557bf43`; formatting, Clippy
   (default and no default features) and the full local suite pass.
-- [ ] Maintainer commits (renames, then the content/structure split), pushes,
-  PR, CI.
+- [x] Step 4 merged as PR #68, CI green.
+- [ ] Maintainer commits the check follow-up, pushes, PR, CI; then #64 can be
+  closed. Next: #62.
