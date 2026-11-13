@@ -72,7 +72,7 @@ jobs:
             --img-source ../tests/fixtures/vados_bass/imgroot \
             --destination public
           test -f public/index.html
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ env.NAME }}
           path: |
