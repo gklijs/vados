@@ -47,3 +47,13 @@ highlight = ["dep:syntect"]
 # Lets the link check ask other sites about links, with `--external`. Without it
 # vados has no way to reach the network at all.
 external-links = ["dep:ureq"]
+
+# Release binaries are attached to GitHub releases (see .github/workflows/release.yml);
+# `cargo binstall vados` downloads them instead of compiling.
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.tar.gz"
+bin-dir = "{ name }-{ version }-{ target }/{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[profile.release]
+strip = true

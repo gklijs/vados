@@ -468,15 +468,43 @@ fn write_package_manifest(dir: &Path, site_title: &str) -> io::Result<()> {
 }
 
 fn write_netlify_config(dir: &Path) -> io::Result<()> {
-    // Rust and `vados` are installed fresh on every build rather than
-    // pinned, so deploys pick up vados fixes automatically; see
-    // vados.allium's `AlwaysInstallsCurrentVados` guarantee.
-    let contents = format!(
-        "[build]\n\
-         \x20\x20publish = \"{DESTINATION_DIR}\"\n\
-         \x20\x20command = \"curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable && source \\\"$HOME/.cargo/env\\\" && cargo install vados && npm install && npm run build && vados generate --source {SOURCE_DIR} --img-source {IMAGE_DIR} --destination {DESTINATION_DIR} --check-links\"\n"
-    );
-    fs::write(dir.join("netlify.toml"), contents)
+    fs::write(dir.join("netlify.toml"), netlify_config_contents())
+}
+
+/// The release archive a Netlify build downloads. Netlify's build image is
+/// x86_64 Linux; the static musl build runs there whatever its C library.
+const NETLIFY_TARGET: &str = "x86_64-unknown-linux-musl";
+
+/// The Netlify build configuration: downloads the release binary of the
+/// version that scaffolded the site, checks it against the release's
+/// checksum, then builds the stylesheet and generates. The version is pinned
+/// in `[build.environment]`, so a release can't break a deploy and upgrading
+/// is a one-line change; see vados.allium's `InstallsTheScaffoldingVersion`.
+/// The binary goes to the build's home directory, outside the repository.
+fn netlify_config_contents() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    let repository = env!("CARGO_PKG_REPOSITORY");
+    // TOML's line-ending backslash joins the command into one shell line.
+    format!(
+        r#"[build]
+  publish = "{DESTINATION_DIR}"
+  command = """\
+    archive="vados-$VADOS_VERSION-{NETLIFY_TARGET}.tar.gz" \
+    && release="{repository}/releases/download/v$VADOS_VERSION" \
+    && mkdir -p "$HOME/vados" \
+    && (cd "$HOME/vados" \
+      && curl --proto '=https' --tlsv1.2 -sSfL -O "$release/$archive" -O "$release/$archive.sha256" \
+      && sha256sum -c "$archive.sha256" \
+      && tar -xzf "$archive") \
+    && npm install && npm run build \
+    && "$HOME/vados/vados-$VADOS_VERSION-{NETLIFY_TARGET}/vados" generate --source {SOURCE_DIR} --img-source {IMAGE_DIR} --destination {DESTINATION_DIR} --check-links\
+    """
+
+[build.environment]
+  # The vados release this site builds with. Change it to upgrade.
+  VADOS_VERSION = "{version}"
+"#
+    )
 }
 
 fn write_readme(dir: &Path, site_title: &str) -> io::Result<()> {
@@ -495,12 +523,14 @@ fn write_readme(dir: &Path, site_title: &str) -> io::Result<()> {
          ## Local development\n\
          \n\
          ```\n\
-         cargo install vados\n\
+         cargo binstall vados   # or: cargo install vados\n\
          npm install\n\
          npm run build\n\
          vados check --source {SOURCE_DIR} --img-source {IMAGE_DIR}\n\
          vados generate --source {SOURCE_DIR} --img-source {IMAGE_DIR} --destination {DESTINATION_DIR} --check-links\n\
          ```\n\
+         \n\
+         vados runs on Linux; on Windows, use WSL. [`cargo binstall`](https://github.com/cargo-bins/cargo-binstall) downloads a release binary, which you can also download yourself from the [releases](https://github.com/gklijs/vados/releases); `cargo install` compiles one, which needs a Rust toolchain.\n\
          \n\
          `--check-links` fails the build when a page links to something that wasn't generated, naming the page and the target. Leave it out if you'd rather deploy anyway.\n\
          \n\
@@ -508,7 +538,7 @@ fn write_readme(dir: &Path, site_title: &str) -> io::Result<()> {
          \n\
          The generated site in `{DESTINATION_DIR}/` is plain files, so any static host can serve it.\n\
          \n\
-         **Netlify:** connect the repository, and `netlify.toml` takes care of installing Rust, `vados`, and the Sass build.\n\
+         **Netlify:** connect the repository, and `netlify.toml` downloads `vados`, checks it against the release's checksum, and runs the Sass build and `generate`. It uses the vados version set as `VADOS_VERSION` in `netlify.toml`, the one that created this site; change it there to upgrade.\n\
          \n\
          **Cloudflare Pages:** build locally or in CI, then upload the result. Delete `netlify.toml` if you don't need it.\n\
          \n\
@@ -762,6 +792,31 @@ mod tests {
         .unwrap();
 
         assert_eq!(menu_json["mainMenu"].as_array().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn netlify_build_downloads_the_scaffolding_release_instead_of_installing_rust() {
+        let dir = TestDir::new("netlify_download");
+        scaffold(&dir.path, basics("Site")).unwrap();
+
+        let contents = fs::read_to_string(dir.path.join("netlify.toml")).unwrap();
+        if std::env::var_os("VADOS_PRINT_NETLIFY").is_some() {
+            println!("{contents}");
+        }
+        assert!(contents.contains(&format!(
+            "VADOS_VERSION = \"{}\"",
+            env!("CARGO_PKG_VERSION")
+        )));
+        assert!(
+            contents.contains("https://github.com/gklijs/vados/releases/download/v$VADOS_VERSION")
+        );
+        assert!(contents.contains(&format!("vados-$VADOS_VERSION-{NETLIFY_TARGET}.tar.gz")));
+        assert!(contents.contains("sha256sum -c \"$archive.sha256\""));
+        assert!(contents.contains(&format!(
+            "/vados\" generate --source {SOURCE_DIR} --img-source {IMAGE_DIR} --destination {DESTINATION_DIR} --check-links"
+        )));
+        assert!(!contents.contains("rustup"));
+        assert!(!contents.contains("cargo install"));
     }
 
     #[test]

@@ -103,8 +103,8 @@
 --     package.json, the Sass entry file, main.json, menu.json, page.json, the
 --     README) and the exact shell commands a Netlify build runs. Only the
 --     artifact categories and what they are wired from are domain
---   - Installing Rust, the `vados` binary or npm packages during a Netlify
---     build
+--   - Downloading and verifying the `vados` binary or installing npm packages
+--     during a Netlify build, and the release archives and their names
 --   - The `git` invocation and the literal lines a .gitignore ends up with.
 --     Only the choice to initialize-if-absent and merge-if-present is domain
 --   - The JSON Schemas published for main.json, menu.json, page.json and
@@ -135,6 +135,13 @@
 --     use to gather whatever input the maintainer didn't supply as a flag.
 --     Only the bundle of inputs gathered is domain, the same as `init`'s own
 --     prompt sequence is excluded above
+--
+-- Assumptions:
+--   - vados runs on Linux, including WSL on Windows, and only there: that is
+--     where it is developed, tested and released as a binary. Other platforms
+--     are untested. Path handling therefore need not be portable; addresses
+--     and file paths may both be built with `/`. Supporting native Windows
+--     would be a change of this assumption, not a bug fix
 
 ------------------------------------------------------------
 -- External Entities
@@ -3334,14 +3341,17 @@ surface InitInvocation {
 
     @guarantee DeployableWithoutFurtherSetup
         -- The scaffolded project is deployable to Netlify by connecting the
-        -- repository alone: its Netlify build configuration installs Rust and
-        -- `vados`, builds the stylesheet, and runs `generate`.
+        -- repository alone: its Netlify build configuration downloads a
+        -- released `vados` binary, builds the stylesheet, and runs
+        -- `generate`. No Rust toolchain is installed.
 
-    @guarantee AlwaysInstallsCurrentVados
-        -- The scaffolded Netlify build configuration installs whatever
-        -- version of `vados` is current at deploy time, not a pinned one:
-        -- deploys pick up vados fixes automatically. A considered trade
-        -- against reproducibility, not an oversight.
+    @guarantee InstallsTheScaffoldingVersion
+        -- The scaffolded Netlify build configuration installs the version of
+        -- `vados` that ran `init`, named once in that configuration, not
+        -- whatever is current at deploy time: a new release can't break a
+        -- deploy, and upgrading is a deliberate one-line change. It matches
+        -- the version the scaffolded files' `$schema` addresses name. A
+        -- considered trade of automatic fixes for reproducibility.
 }
 
 -- Where the maintainer supplies init's basics, once the conflict check has

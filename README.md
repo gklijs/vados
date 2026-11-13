@@ -18,11 +18,32 @@ which is kind of what this project does as well.
 
 ## Installation
 
+vados is developed and tested on Linux. On Windows, use [WSL](https://learn.microsoft.com/windows/wsl/). macOS may work
+but isn't tested.
+
+Each [release](https://github.com/gklijs/vados/releases) has ready-made binaries for x86_64 and aarch64 Linux. They are
+statically linked, so they run on any distribution. [cargo-binstall](https://github.com/cargo-bins/cargo-binstall)
+finds them:
+
+```
+cargo binstall vados
+```
+
+Or download one yourself, check it and put `vados` on your `PATH`:
+
+```
+version=0.6.0   # the release you want
+archive=vados-$version-x86_64-unknown-linux-musl.tar.gz
+curl -sSfL -O https://github.com/gklijs/vados/releases/download/v$version/$archive \
+  -O https://github.com/gklijs/vados/releases/download/v$version/$archive.sha256
+sha256sum -c $archive.sha256 && tar -xzf $archive
+```
+
+To compile it instead, which needs a fairly recent stable Rust toolchain (see `rust-version` in `Cargo.toml`):
+
 ```
 cargo install vados
 ```
-
-Requires a fairly recent stable Rust toolchain (see `rust-version` in `Cargo.toml`).
 
 ## Getting started
 
@@ -619,7 +640,7 @@ your static files.
 
 `generate` writes plain files, so any static host can serve them. These are the two vados sites run on.
 
-**Cloudflare Pages:** build wherever you like and upload the result, which avoids installing Rust on every build:
+**Cloudflare Pages:** build wherever you like and upload the result:
 
 ```
 npx wrangler login
@@ -632,7 +653,11 @@ Pages rather than Workers static assets suits a domain whose DNS isn't on Cloudf
 Cloudflare-managed nameservers. Point a CNAME at the project's `pages.dev` address and add the domain under the project's
 custom domains. If `pages project create` hands you over to Workers and fails, add `--force`.
 
-**Netlify:** connect the repository. The `netlify.toml` from `vados init` installs Rust and vados, and builds the site.
+**Netlify:** connect the repository. The `netlify.toml` from `vados init` downloads the vados release binary, checks it
+against the release's checksum and builds the site. No Rust toolchain is installed. It uses the version set as
+`VADOS_VERSION` in its `[build.environment]`, which is the version that scaffolded the site, so a new vados release
+can't break a deploy. To upgrade, change that line. A site that installs vados with `cargo install` can switch to the
+same download: copy the `command` and `VADOS_VERSION` from a freshly scaffolded `netlify.toml`.
 
 Both serve `/agenda` from `agenda.html` and `/404.html` for a missing path, including nested ones, and read a `_headers`
 and `_redirects` file from the site root. Put those in your static directory:
@@ -746,9 +771,6 @@ Spanish (matched on the language alone, so `nl-BE` gets Dutch); for any other la
 `cargo test` covers everything that doesn't need a browser. `tests/browser` drives real Chromium over generated sites
 for layout, keyboard use, scripts and colours, compiling its stylesheet from the [module list](#compiling-only-what-vados-needs):
 
-After changing a configuration struct or its doc comments, which become the schemas' descriptions, rewrite `schemas/`
-with `VADOS_UPDATE_SCHEMAS=1 cargo test --lib schemas`; without it, that test fails while they're out of date.
-
 ```
 cargo build
 cd tests/browser
@@ -756,6 +778,15 @@ npm ci
 npx playwright-core install chromium   # or set BROWSER_PATH to a browser you have
 npm test
 ```
+
+After changing a configuration struct or its doc comments, which become the schemas' descriptions, rewrite `schemas/`
+with `VADOS_UPDATE_SCHEMAS=1 cargo test --lib schemas`; without it, that test fails while they're out of date.
+
+To release, set the new `version` in `Cargo.toml`, rename the changelog's "Unreleased" heading to
+`## <version> - <date>`, and push a `v<version>` tag. The release workflow checks the tag against `Cargo.toml`, builds
+and tests the Linux binaries, and publishes them with that changelog section as the release notes. A version such as
+`0.6.0-rc.1` becomes a pre-release, using "Unreleased" if it has no section of its own. Publishing to crates.io stays
+a manual `cargo publish`.
 
 ## Examples
 
