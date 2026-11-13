@@ -25,6 +25,11 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # The CI uses `dtolnay/rust-toolchain@stable` and, for the minimum Rust
+    # version check, `@1.88.0`, which must match `rust-version` in Cargo.toml.
+    # Neither is a version to bump on its own.
+    ignore:
+      - dependency-name: dtolnay/rust-toolchain
     groups:
       actions-minor-and-patch:
         update-types: [minor, patch]
