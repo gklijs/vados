@@ -4,7 +4,9 @@ use crate::bulma::ImageRatio::{
 };
 use serde::{Deserialize, Serialize};
 
+/// One of Bulma's named colours.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Hash)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 pub(crate) enum Color {
     White,
     Black,
@@ -55,9 +57,11 @@ impl Color {
     }
 }
 
-/// `main.json`'s `navbarTheme`: what sits on the navbar, when the colour's
-/// default brightness isn't what the site compiled.
+/// The Bulma theme on the navbar: `light` or `dark`.
+// What sits on the navbar, when the colour's default brightness isn't what
+// the site compiled.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum NavbarTheme {
     Light,

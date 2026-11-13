@@ -87,5 +87,49 @@ event is available, including embed, registration button and CSP checks.
   and all `--help` outputs byte-identical to `557bf43`; formatting, Clippy
   (default and no default features) and the full local suite pass.
 - [x] Step 4 merged as PR #68, CI green.
-- [ ] Maintainer commits the check follow-up, pushes, PR, CI; then #64 can be
-  closed. Next: #62.
+- [ ] Check follow-up is PR #69 (`close_64`), CI was still running on
+  2026-11-13; once merged, #64 can be closed.
+
+## Decisions for #62
+
+- `"$schema"` is always written: by `init` into every file it scaffolds, and by
+  `page new`/`image add` into files they create. Authoring rewrites keep it.
+  It is accepted at the top level of all four files only (an ordinary struct
+  field, so #55's unknown-key check accepts it).
+- Address: `https://raw.githubusercontent.com/gklijs/vados/v{version}/schemas/{file}.schema.json`,
+  the repository at the release tag, so nothing depends on #58's release
+  workflow. Files written by an unreleased build point at a tag that doesn't
+  exist yet; editors then just show no hints.
+- `check` keeps its own findings and messages and doesn't read the schemas.
+- `schemars` and `jsonschema` are dev-dependencies only. The structs derive
+  `JsonSchema` under `cfg_attr(test, ...)`; a unit test in `src/schemas.rs`
+  fails when `schemas/` is stale (`VADOS_UPDATE_SCHEMAS=1` rewrites it).
+- Draft 7, the newest draft every common editor supports. Objects have
+  `additionalProperties: false`; optional fields accept `null`, since vados
+  writes nulls itself.
+- Patterns: page `date`/`updated`, event and Luma `start`/`end` (with a UTC
+  offset, in the forms `jiff` reads), Luma `eventId` (`evt-...`) and a social
+  link's hex `color`. A Luma event's `title` is required in the schema, since
+  `check` reports it missing as an error.
+- Field doc comments are written for site authors (they become the schema's
+  descriptions); maintainer notes moved to `//` comments next to them.
+
+## Progress for #62
+
+- [x] Schemas generated into `schemas/` and kept in step by a unit test.
+- [x] `init`, `page new` and `image add` write `$schema`; rewrites keep it;
+  `check`/`generate` accept it without warnings.
+- [x] Tests: `vados_bass` fixture, README JSON examples, a fresh scaffold and a
+  fully authored project validate; the property tests' generated trees
+  validate (except the Luma events deliberately generated with a malformed ID
+  or no title); misspelt keys, enum values and malformed dates, times, IDs and
+  colours are rejected.
+- [x] README "Editor support" section, `vados.allium` (`$schema` accepted;
+  schemas excluded as mechanics), CHANGELOG.
+- [x] Formatting, Clippy (default and no default features), full local suite
+  and `cargo +1.88.0 check --all-targets --locked` pass.
+- [ ] Maintainer commits, pushes, PR, CI.
+- [ ] After the first release that includes `schemas/`: check that the URLs
+  resolve and an editor picks them up, then offer the schemas to SchemaStore
+  (needs path patterns, since `main.json`/`menu.json`/`page.json` are common
+  names). Not done here: that's an outside submission.

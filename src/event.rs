@@ -17,8 +17,10 @@ use jiff::{Timestamp, Zoned};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-/// How someone attends. See `vados.allium`'s `EventAttendance`.
+/// How people attend: `online`, `inPerson` or `mixed`.
+// See `vados.allium`'s `EventAttendance`.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum EventAttendance {
     Online,
@@ -26,8 +28,11 @@ pub(crate) enum EventAttendance {
     Mixed,
 }
 
-/// See `vados.allium`'s `EventStatus`.
+/// Whether the event goes ahead: `scheduled`, `cancelled`, `postponed` or
+/// `rescheduled`.
+// See `vados.allium`'s `EventStatus`.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum EventStatus {
     Scheduled,
@@ -36,36 +41,58 @@ pub(crate) enum EventStatus {
     Rescheduled,
 }
 
-/// page.json's `event`, as written.
+/// The pattern of an event's `start` and `end`, for the published schema: a
+/// date and time with a UTC offset, the forms `jiff::Timestamp` reads.
+#[cfg(test)]
+pub(crate) const MOMENT_PATTERN: &str = r"^\d{4}-\d{2}-\d{2}[Tt ]\d{2}:\d{2}(:\d{2}([.,]\d{1,9})?)?([Zz]|[+-]\d{2}(:?\d{2}(:?\d{2})?)?)$";
+
+/// Makes the page an event. A detail left out is shown as "not confirmed",
+/// never guessed.
+// page.json's `event`, as written.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct EventConfig {
-    /// RFC 3339 with an explicit UTC offset: `2026-11-05T14:00:00-05:00`.
+    /// When it starts, with the UTC offset `timeZone` shows at that moment:
+    /// `2026-11-05T14:00:00-05:00`.
+    #[cfg_attr(test, schemars(pattern(MOMENT_PATTERN)))]
     pub(crate) start: String,
+    /// When it ends, in the same form as `start`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, schemars(pattern(MOMENT_PATTERN)))]
     pub(crate) end: Option<String>,
-    /// The IANA zone the event happens in: `America/New_York`.
+    /// The IANA time zone it happens in, such as `America/New_York`.
     pub(crate) time_zone: String,
+    /// How people attend.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) attendance: Option<EventAttendance>,
+    /// Whether it goes ahead.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) status: Option<EventStatus>,
+    /// Who organises it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) organiser: Option<String>,
+    /// Where it happens: the venue's name.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) venue: Option<String>,
+    /// The venue's address.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) address: Option<String>,
-    /// Free text, as the organiser states it. Absent means unknown, never free.
+    /// What it costs, as the organiser states it. Leaving it out means
+    /// unknown, never free.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) cost: Option<String>,
+    /// Where to register, as an http(s) URL.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) registration_url: Option<String>,
-    /// Where to attend online. Never inferred from `registrationUrl`.
+    /// Where to attend online, as an http(s) URL. Never taken from
+    /// `registrationUrl`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) virtual_url: Option<String>,
-    /// Raised whenever the event changes, so calendar subscribers take the
-    /// change. A static build keeps no state to work this out by itself.
+    /// Raise it whenever the event changes, so calendar subscribers take the
+    /// change. `vados page set-event` does so for you.
+    // A static build keeps no state to work this out by itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) sequence: Option<u32>,
 }

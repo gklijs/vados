@@ -8,6 +8,8 @@
 //! in isolation; this exercises the same functions chained together against
 //! one real tree, the way a maintainer actually uses them.
 
+mod schema_support;
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -283,6 +285,27 @@ fn authoring_every_kind_of_content_still_checks_clean() {
         report.findings
     );
     assert!(report.passed());
+
+    // Every file the commands created or rewrote still points editors to its
+    // schema, and follows it.
+    for path in [
+        PathBuf::from(&project.source).join("main.json"),
+        PathBuf::from(&project.source).join("menu.json"),
+        PathBuf::from(&project.source).join("page.json"),
+        PathBuf::from(&project.source).join("team/page.json"),
+        PathBuf::from(&project.img_source).join("team/images.json"),
+    ] {
+        let value: serde_json::Value =
+            serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        let schema = value["$schema"].as_str().unwrap_or_default();
+        assert!(
+            schema.ends_with(".schema.json"),
+            "{} lost its $schema: {value}",
+            path.display()
+        );
+    }
+    let errors = schema_support::tree_errors(&project.dir);
+    assert!(errors.is_empty(), "{errors:#?}");
 }
 
 #[test]

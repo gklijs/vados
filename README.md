@@ -172,6 +172,28 @@ A vados project is two plain-text trees plus generated output:
   vados versions needs a one-time manual cleanup. Keep the manifest between builds; it contains only relative output
   paths, and can be excluded from deployment if your host serves dotfiles.
 
+## Editor support
+
+vados publishes a [JSON Schema](https://json-schema.org/) for `main.json`, `menu.json`, `page.json` and `images.json`
+in [`schemas/`](schemas). Editors that understand JSON Schema (VS Code, the JetBrains IDEs, Zed, Neovim with a JSON
+language server) then complete keys, show what each one does, and flag a misspelt key, a wrong type or a value like
+`"childOrder": "datedesc"` while you type. They also check the form of dates, event times, Luma event IDs and
+social link colours.
+
+A file finds its schema through `"$schema"`, its first key:
+
+```json
+"$schema": "https://raw.githubusercontent.com/gklijs/vados/v<version>/schemas/page.schema.json"
+```
+
+with `<version>` being what `vados --version` says, such as `0.6.0`. Schemas are published from the first release
+that includes them.
+
+`vados init` writes it into every file it creates, and so do `page new` and `image add`, pointing at the schemas of
+the vados version that ran. The other authoring commands keep it when they rewrite a file. Add it by hand to files
+created before, and change the version in it after upgrading vados, so new keys aren't flagged. vados itself ignores
+`$schema`: `check` and `generate` don't need it, and `check` keeps its own findings and messages.
+
 ## Luma events
 
 A page can show events hosted on [Luma](https://luma.com) in its main area, right after its own content. Each one is
@@ -723,6 +745,9 @@ Spanish (matched on the language alone, so `nl-BE` gets Dutch); for any other la
 
 `cargo test` covers everything that doesn't need a browser. `tests/browser` drives real Chromium over generated sites
 for layout, keyboard use, scripts and colours, compiling its stylesheet from the [module list](#compiling-only-what-vados-needs):
+
+After changing a configuration struct or its doc comments, which become the schemas' descriptions, rewrite `schemas/`
+with `VADOS_UPDATE_SCHEMAS=1 cargo test --lib schemas`; without it, that test fails while they're out of date.
 
 ```
 cargo build

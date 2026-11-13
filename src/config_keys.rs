@@ -214,11 +214,20 @@ mod tests {
         ] {
             assert!(unknown_keys(Path::new(file), &value).is_empty());
         }
-        let findings = unknown_keys(
-            Path::new("page.json"),
-            &json!({"_note":1,"x-note":2,"$schema":"url"}),
+        let findings = unknown_keys(Path::new("page.json"), &json!({"_note":1,"x-note":2}));
+        assert_eq!(findings.len(), 2);
+    }
+
+    #[test]
+    fn every_file_accepts_a_schema_reference_at_its_top_level_only() {
+        for file in ["main.json", "menu.json", "page.json", "images.json"] {
+            let value = json!({"$schema": "https://example.com/schema.json"});
+            assert!(unknown_keys(Path::new(file), &value).is_empty(), "{file}");
+        }
+        assert_eq!(
+            unknown_keys(Path::new("page.json"), &json!({"feed": {"$schema": "url"}})),
+            ["/feed/$schema"]
         );
-        assert_eq!(findings.len(), 3);
     }
 
     #[test]

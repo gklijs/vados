@@ -1,0 +1,618 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "AgendaConfig": {
+      "additionalProperties": false,
+      "description": "Which pages an agenda lists events from.",
+      "properties": {
+        "depth": {
+          "description": "How many levels below `from` to look; any depth when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OneOrMany"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Events on pages below this path, or these paths. The pages below this one when absent."
+        },
+        "includeUnlisted": {
+          "description": "Also list events on pages with `\"listed\": false`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "AgendaSetting": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/AgendaConfig"
+        }
+      ],
+      "description": "`true` or `false`, or which pages to list events from."
+    },
+    "ChildOrder": {
+      "description": "How a page orders its children in menus and tiles: `order` (by `order`, then title), `dateDesc` (newest first) or `dateAsc` (oldest first). Undated children come last.",
+      "enum": [
+        "order",
+        "dateDesc",
+        "dateAsc"
+      ],
+      "type": "string"
+    },
+    "Color": {
+      "description": "One of Bulma's named colours.",
+      "enum": [
+        "White",
+        "Black",
+        "Light",
+        "Dark",
+        "Primary",
+        "Link",
+        "Info",
+        "Success",
+        "Warning",
+        "Danger"
+      ],
+      "type": "string"
+    },
+    "EventAttendance": {
+      "description": "How people attend: `online`, `inPerson` or `mixed`.",
+      "enum": [
+        "online",
+        "inPerson",
+        "mixed"
+      ],
+      "type": "string"
+    },
+    "EventConfig": {
+      "additionalProperties": false,
+      "description": "Makes the page an event. A detail left out is shown as \"not confirmed\", never guessed.",
+      "properties": {
+        "address": {
+          "description": "The venue's address.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "attendance": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EventAttendance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How people attend."
+        },
+        "cost": {
+          "description": "What it costs, as the organiser states it. Leaving it out means unknown, never free.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "end": {
+          "description": "When it ends, in the same form as `start`.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt ]\\d{2}:\\d{2}(:\\d{2}([.,]\\d{1,9})?)?([Zz]|[+-]\\d{2}(:?\\d{2}(:?\\d{2})?)?)$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "organiser": {
+          "description": "Who organises it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "registrationUrl": {
+          "description": "Where to register, as an http(s) URL.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sequence": {
+          "description": "Raise it whenever the event changes, so calendar subscribers take the change. `vados page set-event` does so for you.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "start": {
+          "description": "When it starts, with the UTC offset `timeZone` shows at that moment: `2026-11-05T14:00:00-05:00`.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt ]\\d{2}:\\d{2}(:\\d{2}([.,]\\d{1,9})?)?([Zz]|[+-]\\d{2}(:?\\d{2}(:?\\d{2})?)?)$",
+          "type": "string"
+        },
+        "status": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/EventStatus"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether it goes ahead."
+        },
+        "timeZone": {
+          "description": "The IANA time zone it happens in, such as `America/New_York`.",
+          "type": "string"
+        },
+        "venue": {
+          "description": "Where it happens: the venue's name.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "virtualUrl": {
+          "description": "Where to attend online, as an http(s) URL. Never taken from `registrationUrl`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "start",
+        "timeZone"
+      ],
+      "type": "object"
+    },
+    "EventStatus": {
+      "description": "Whether the event goes ahead: `scheduled`, `cancelled`, `postponed` or `rescheduled`.",
+      "enum": [
+        "scheduled",
+        "cancelled",
+        "postponed",
+        "rescheduled"
+      ],
+      "type": "string"
+    },
+    "FeedConfig": {
+      "additionalProperties": false,
+      "description": "A feed's title, size and entries.",
+      "properties": {
+        "content": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FeedContent"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "What an entry carries; the page's full content when absent."
+        },
+        "depth": {
+          "description": "How many levels below `from` to look: any depth when `from` is given, only direct children when it isn't.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OneOrMany"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Takes entries from below this path, or these paths, instead of the page's own direct children."
+        },
+        "includeUnlisted": {
+          "description": "Also takes pages with `\"listed\": false`, which feeds otherwise leave out.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "limit": {
+          "description": "How many entries the feed holds; 20 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "The feed's title; the site title plus the page's when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "FeedContent": {
+      "description": "What a feed entry carries: `full` content, or only the `summary`.",
+      "enum": [
+        "full",
+        "summary"
+      ],
+      "type": "string"
+    },
+    "FeedSetting": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/FeedConfig"
+        }
+      ],
+      "description": "`true` or `false`, or the feed's settings."
+    },
+    "LatestConfig": {
+      "additionalProperties": false,
+      "description": "Which sections to take the newest dated pages from, how many, and how deep below each to look.",
+      "properties": {
+        "depth": {
+          "description": "How many levels below a section to look; any depth when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "from": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/OneOrMany"
+            }
+          ],
+          "description": "A section's path, such as `/blog`, or a list of them."
+        },
+        "limit": {
+          "description": "How many pages to show; 4 when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "from"
+      ],
+      "type": "object"
+    },
+    "LumaEvent": {
+      "additionalProperties": false,
+      "description": "An event hosted on Luma.",
+      "properties": {
+        "buttonLabel": {
+          "description": "The register button's text; \"Register\" in the site's language when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "display": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/LumaEventDisplay"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "How the event is shown; `eventPage` when absent."
+        },
+        "end": {
+          "description": "When it ends, in the same form as `start`.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt ]\\d{2}:\\d{2}(:\\d{2}([.,]\\d{1,9})?)?([Zz]|[+-]\\d{2}(:?\\d{2}(:?\\d{2})?)?)$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "eventId": {
+          "description": "Luma's event ID, `evt-...`, shown in the event's embed options on Luma.",
+          "pattern": "^evt-[A-Za-z0-9]+$",
+          "type": "string"
+        },
+        "start": {
+          "description": "When it starts, for agendas and calendars, in the same form as an event's `start`. Nothing is fetched from Luma.",
+          "pattern": "^\\d{4}-\\d{2}-\\d{2}[Tt ]\\d{2}:\\d{2}(:\\d{2}([.,]\\d{1,9})?)?([Zz]|[+-]\\d{2}(:?\\d{2}(:?\\d{2})?)?)$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "timeZone": {
+          "description": "The IANA time zone it happens in, such as `Europe/Amsterdam`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "The text of the link to the event on Luma, and the embedded event page's accessible name. Required.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "eventId",
+        "title"
+      ],
+      "type": "object"
+    },
+    "LumaEventDisplay": {
+      "description": "How the event is shown: `eventPage` (Luma's embedded event page, with its registration), `registerButton` (a button opening Luma's registration over the page) or `both`.",
+      "enum": [
+        "eventPage",
+        "registerButton",
+        "both"
+      ],
+      "type": "string"
+    },
+    "Notification": {
+      "additionalProperties": false,
+      "description": "A tile below a page's content.",
+      "properties": {
+        "color": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Color"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The tile's Bulma colour; `Info` or `Link` when absent, depending on the tile."
+        },
+        "content": {
+          "description": "The tile's text: inline HTML, or the name of a `.md` or `.html` file in the page's directory.",
+          "type": "string"
+        },
+        "image": {
+          "description": "An image reference, such as `/team/alice`, shown in the tile.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "The tile's heading.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "Where the tile links to: a page's path or a full URL.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "content"
+      ],
+      "type": "object"
+    },
+    "OneOrMany": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "A page's path, such as `/blog`, or a list of them."
+    }
+  },
+  "description": "One page: the `page.json` in each directory of the source tree.",
+  "properties": {
+    "$schema": {
+      "description": "The JSON Schema this file follows, so editors can complete and check it. vados itself ignores it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "agenda": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AgendaSetting"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Lists events from elsewhere on this page, soonest first: `true` for those below it, or which pages to take them from."
+    },
+    "childOrder": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ChildOrder"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "How this page's children are ordered in menus and tiles; `order` when absent."
+    },
+    "content": {
+      "description": "The page's content: inline HTML, or the name of a `.md` or `.html` file in the page's directory.",
+      "type": "string"
+    },
+    "date": {
+      "description": "When the page was published: `YYYY-MM-DD`, optionally with a time, such as `2026-10-22T09:30`.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?$",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "event": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/EventConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Makes the page an event."
+    },
+    "feed": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/FeedSetting"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Publishes an Atom feed of the page's dated children at the page's path plus `/feed.xml`: `true`, or the feed's settings. Needs main.json's `siteUrl`."
+    },
+    "icon": {
+      "description": "A Material Design Icons name, such as `home` or `rss`, shown with the page in menus.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "image": {
+      "description": "The page's hero image, as an image reference: the image's directory in the image tree and its file name without extension, such as `/team/alice`.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "latest": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/LatestConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Shows the newest dated pages from elsewhere in the site as tiles."
+    },
+    "leftNotifications": {
+      "description": "Tiles in the left column below the page's content.",
+      "items": {
+        "$ref": "#/definitions/Notification"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "listed": {
+      "description": "`false` publishes the page but keeps it out of menus, side tiles, feeds, the site search and the sitemap.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "lumaEvents": {
+      "description": "Events hosted on Luma, shown after the page's content.",
+      "items": {
+        "$ref": "#/definitions/LumaEvent"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "noindex": {
+      "description": "Keeps the page out of search results, the site search and the sitemap, while it stays listed in menus.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "order": {
+      "description": "Where the page comes among its siblings when they are ordered by `order`: lower first, then by title.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "rightNotifications": {
+      "description": "Tiles in the right column below the page's content.",
+      "items": {
+        "$ref": "#/definitions/Notification"
+      },
+      "type": [
+        "array",
+        "null"
+      ]
+    },
+    "subTitle": {
+      "description": "A line shown under the title.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "description": "A short description of the page for search engines, link previews, feeds and the tiles advertising it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "title": {
+      "description": "The page's title: its heading, and its name in menus and tiles.",
+      "type": "string"
+    },
+    "updated": {
+      "description": "When the page last changed meaningfully, in the same form as `date`.",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}(T\\d{2}:\\d{2}(:\\d{2})?)?$",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "title",
+    "content"
+  ],
+  "title": "vados page.json",
+  "type": "object"
+}

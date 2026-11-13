@@ -9,7 +9,7 @@
 //! spec excludes the prompt sequence itself from the domain while keeping
 //! the bundle of basics gathered as a first-class type here.
 
-use crate::config_files::favicon_media_type;
+use crate::config_files::{favicon_media_type, schema_url};
 use crate::content::escape_html;
 use crate::files::GITKEEP;
 use crate::json_files::write_json_pretty;
@@ -291,6 +291,9 @@ pub fn scaffold(dir: &Path, basics: ProjectBasics) -> io::Result<InitOutcome> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MainJson {
+    /// Points editors to the file's JSON Schema.
+    #[serde(rename = "$schema")]
+    schema: String,
     site_title: String,
     js_files: Vec<String>,
     include_default_js: Option<bool>,
@@ -319,6 +322,7 @@ fn write_site_config(
     // so `$primary` can be overridden. Icons are inlined, so need no
     // stylesheet.
     let json = MainJson {
+        schema: schema_url("main.json"),
         site_title: site_title.to_string(),
         js_files: vec![],
         include_default_js: None,
@@ -345,6 +349,9 @@ struct SocialEntryJson {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct MenuJson {
+    /// Points editors to the file's JSON Schema.
+    #[serde(rename = "$schema")]
+    schema: String,
     main_menu: Vec<serde_json::Value>,
     socials: Vec<SocialEntryJson>,
 }
@@ -363,6 +370,7 @@ fn write_menu_config(dir: &Path, socials: &[SocialHandle]) -> io::Result<()> {
         })
         .collect();
     let json = MenuJson {
+        schema: schema_url("menu.json"),
         main_menu: vec![],
         socials: socials_json,
     };
@@ -372,6 +380,9 @@ fn write_menu_config(dir: &Path, socials: &[SocialHandle]) -> io::Result<()> {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct HomePageJson {
+    /// Points editors to the file's JSON Schema.
+    #[serde(rename = "$schema")]
+    schema: String,
     title: String,
     sub_title: Option<String>,
     image: Option<String>,
@@ -385,6 +396,7 @@ struct HomePageJson {
 
 fn write_home_page(dir: &Path, site_title: &str, home_intro: &str) -> io::Result<()> {
     let json = HomePageJson {
+        schema: schema_url("page.json"),
         title: site_title.to_string(),
         sub_title: None,
         image: None,
