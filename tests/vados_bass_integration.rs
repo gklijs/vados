@@ -6,7 +6,7 @@
 //! deep, images with real EXIF and alpha channels, a social link with no
 //! recognised provider, notifications with and without images. It caught two
 //! real bugs during development (see vados.allium's history and
-//! src/structure.rs) that no hand-written fixture had reached.
+//! src/structure/) that no hand-written fixture had reached.
 //!
 //! See tests/fixtures/vados_bass/README.md for how the snapshot was taken
 //! and how to refresh it.

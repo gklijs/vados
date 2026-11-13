@@ -69,5 +69,19 @@ event is available, including embed, registration button and CSP checks.
   move gives them no file. Extracting those contiguous blocks into
   `menu_and_social.rs`/`hosting.rs` would be a follow-up. It preserves
   behaviour but isn't a pure move.
-- [ ] `content.rs` and `structure.rs` (issue step 4) not started.
-- [ ] Maintainer commits (rename, check split, CLI split), pushes, PR, CI.
+- [x] First round merged as PR #67 (CLI and check splits), CI green.
+- [x] Step 4: `content.rs` moved to `src/content/mod.rs` and `structure.rs` to
+  `src/structure/mod.rs` (both renames staged on their own). `content` then
+  split into `reference` (content references and reading them), `navigation`
+  (navbar, side menu, breadcrumbs), `tiles` (notifications, `latest` tiles,
+  reading order) and `page` (main content and page template); `mod.rs` keeps
+  `GenericContent`, `ContentHelper` and the shared helpers. The social
+  provider table, `SocialItem` and `RecognizedSocialProvider` moved to
+  `structure/social.rs`. Re-exports keep every `crate::content::…` and
+  `crate::structure::…` path; only imports and visibility changed, and tests
+  moved with their code (269 library tests kept).
+- [x] Step 4 checks: generated `vados_bass` site, generate log, `check` output
+  and all `--help` outputs byte-identical to `557bf43`; formatting, Clippy
+  (default and no default features) and the full local suite pass.
+- [ ] Maintainer commits (renames, then the content/structure split), pushes,
+  PR, CI.
