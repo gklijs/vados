@@ -87,8 +87,7 @@ event is available, including embed, registration button and CSP checks.
   and all `--help` outputs byte-identical to `557bf43`; formatting, Clippy
   (default and no default features) and the full local suite pass.
 - [x] Step 4 merged as PR #68, CI green.
-- [ ] Check follow-up is PR #69 (`close_64`), CI was still running on
-  2026-11-13; once merged, #64 can be closed.
+- [x] Check follow-up merged as PR #69, CI green; #64 is done.
 
 ## Decisions for #62
 
@@ -128,8 +127,59 @@ event is available, including embed, registration button and CSP checks.
   schemas excluded as mechanics), CHANGELOG.
 - [x] Formatting, Clippy (default and no default features), full local suite
   and `cargo +1.88.0 check --all-targets --locked` pass.
-- [ ] Maintainer commits, pushes, PR, CI.
+- [x] Merged as PR #70, CI green.
 - [ ] After the first release that includes `schemas/`: check that the URLs
   resolve and an editor picks them up, then offer the schemas to SchemaStore
   (needs path patterns, since `main.json`/`menu.json`/`page.json` are common
   names). Not done here: that's an outside submission.
+
+## Decisions for #58 and #65
+
+- Pinned: the scaffolded `netlify.toml` sets `VADOS_VERSION` in
+  `[build.environment]` to the version that ran `init`, matching the `$schema`
+  addresses. The spec's `AlwaysInstallsCurrentVados` became
+  `InstallsTheScaffoldingVersion`. Like `$schema`, an unreleased build scaffolds
+  a version that has no release yet.
+- The release workflow doesn't publish to crates.io; `cargo publish` stays
+  manual.
+- No runtime note on native Windows; documentation only.
+- Targets `x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, each
+  built natively (`ubuntu-24.04`, `ubuntu-24.04-arm`) with `musl-gcc` for
+  libwebp's and ring's C code. Static binaries run on Netlify's and
+  Cloudflare's images whatever their glibc.
+- Archives `vados-{version}-{target}.tar.gz` holding a `vados-{version}-{target}/`
+  directory (binary, README, CHANGELOG, licence), plus a `sha256sum` file.
+  The Netlify build checks the archive against it; it only guards against a
+  corrupt download, since the binary that scaffolds a site can't know its own
+  release archive's checksum.
+- The tag must equal `v` + the Cargo.toml version. A version with a
+  pre-release part makes a GitHub pre-release; its notes fall back to
+  "Unreleased" when it has no changelog section.
+- `[profile.release]` gets only `strip = true`. Measured on the musl build:
+  18.5 MB stripped; fat LTO with `codegen-units = 1` gave 16.6 MB but took 4×
+  as long to build (2m19s vs 35s) and didn't make generating `vados_bass`
+  faster, and the profile also applies to everyone running `cargo install`.
+- musl's allocator was no slower here: generating `vados_bass` took ~3.4 s for
+  both the musl and the glibc builds. Measure again for #57's parallel
+  generation.
+
+## Progress for #58 and #65
+
+- [x] `.github/workflows/release.yml`: tag check, musl builds, packaging with
+  checksum, a smoke test of each archive (checksum, static linking, `--help`,
+  `--version`, generating `vados_bass`), release notes from `CHANGELOG.md`.
+- [x] `[package.metadata.binstall]` and `strip = true` in `Cargo.toml`.
+- [x] `init`: `netlify.toml` downloads and verifies the pinned binary;
+  scaffolded README updated; unit test for the build command.
+- [x] README (Installation with the platform statement, Hosting, releasing),
+  `vados.allium` (Linux/WSL assumption, pinned guarantee), `.gitattributes`
+  comment, CHANGELOG.
+- [x] Locally: the x86_64 musl build (with Ubuntu's musl-gcc unpacked in a
+  scratch directory), the workflow's package/test and release-notes steps,
+  and the scaffolded Netlify command against that archive with `curl` and
+  `npm` stubbed. Formatting, Clippy (default and no default features), full
+  suite and the 1.88.0 check pass.
+- [ ] Maintainer commits, pushes, PR, CI.
+- [ ] Pre-release tag (for example `v0.6.0-rc.1`, with that version in
+  `Cargo.toml`) to run the workflow for real, including the aarch64 build.
+- [ ] One real Netlify deploy of a site scaffolded by a released version.

@@ -1,0 +1,124 @@
+name: Release
+
+# Pushing a `v*` tag builds the Linux binaries and publishes them as a GitHub
+# release. The tag has to match `version` in Cargo.toml; a version with a
+# pre-release part (`0.6.0-rc.1`) makes a pre-release. Publishing to crates.io
+# stays a manual `cargo publish`.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    env:
+      TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Check the tag matches Cargo.toml
+        run: |
+          version=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "vados") | .version')
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $version in Cargo.toml"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      # Each job builds for its own architecture, so musl-gcc is a native
+      # compiler; it builds libwebp and ring's C code for the static binary.
+      - name: Install musl
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+      - name: Build
+        run: |
+          export "CC_${TARGET//-/_}=musl-gcc"
+          cargo build --release --locked --target "$TARGET"
+      - name: Package
+        run: |
+          name="vados-$VERSION-$TARGET"
+          mkdir "$name"
+          cp "target/$TARGET/release/vados" README.md CHANGELOG.md LICENSE-MIT "$name/"
+          tar -czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+          echo "NAME=$name" >> "$GITHUB_ENV"
+      # Unpacks the archive the way a Netlify build does, then uses it.
+      - name: Test the archive
+        run: |
+          mkdir smoke
+          cp "$NAME.tar.gz" "$NAME.tar.gz.sha256" smoke/
+          cd smoke
+          sha256sum -c "$NAME.tar.gz.sha256"
+          tar -xzf "$NAME.tar.gz"
+          file "$NAME/vados"
+          file "$NAME/vados" | grep -q "static"
+          "$NAME/vados" --help
+          test "$("$NAME/vados" --version)" = "vados $VERSION"
+          "$NAME/vados" generate \
+            --source ../tests/fixtures/vados_bass/root \
+            --img-source ../tests/fixtures/vados_bass/imgroot \
+            --destination public
+          test -f public/index.html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.NAME }}
+          path: |
+            ${{ env.NAME }}.tar.gz
+            ${{ env.NAME }}.tar.gz.sha256
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      # The release notes are the version's CHANGELOG.md section. A
+      # pre-release without its own section uses "Unreleased" instead.
+      - name: Release notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          section() {
+            awk -v heading="$1" '
+              /^## / { if (found) exit; found = ($2 == heading) ; next }
+              found
+            ' CHANGELOG.md
+          }
+          section "$version" > notes.md
+          prerelease=false
+          case "$version" in *-*) prerelease=true ;; esac
+          if [ ! -s notes.md ] && [ "$prerelease" = true ]; then
+            section Unreleased > notes.md
+          fi
+          if [ ! -s notes.md ]; then
+            echo "::error::CHANGELOG.md has no section for $version"
+            exit 1
+          fi
+          echo "PRERELEASE=$prerelease" >> "$GITHUB_ENV"
+          cat notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          flags=()
+          if [ "$PRERELEASE" = true ]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --verify-tag --title "$GITHUB_REF_NAME" --notes-file notes.md "${flags[@]}"

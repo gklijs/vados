@@ -4,6 +4,9 @@
 
 ### Added
 
+- Ready-made Linux binaries for each release (#58), for x86_64 and aarch64, statically linked and with a checksum,
+  built and published by a workflow when a version tag is pushed. `cargo binstall vados` finds them.
+
 - JSON Schemas for `main.json`, `menu.json`, `page.json` and `images.json` in `schemas/` (#62), so editors complete
   keys, describe them and flag mistakes while typing. They are generated from the configuration structs and checked
   in tests. `vados init`, `page new` and `image add` write `"$schema"` into the files they create, pointing at the
@@ -16,6 +19,14 @@
   theme switching, readable source fallback, a self-hosting override and source checks.
 
 ### Changed
+
+- A site scaffolded by `vados init` downloads the vados release binary on Netlify instead of installing Rust and
+  compiling vados on every build (#58). It is pinned to the version that scaffolded it, as `VADOS_VERSION` in
+  `netlify.toml`, so a new release can't break a deploy.
+
+- The release binary is stripped, which makes it smaller.
+
+- vados states that it supports Linux, including WSL on Windows (#65). Other platforms are untested.
 
 - The library's `generator::generate` now returns `Result<GenerateReport, GenerateError>` (#54).
 - `check` treats unreadable image manifests and missing image source files as errors, matching generation.
