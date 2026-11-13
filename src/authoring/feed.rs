@@ -7,7 +7,9 @@ use super::page::{page_dir, page_exists_at};
 use super::site_features::GivenFeedSelection;
 use crate::config_files::{is_site_url, FeedConfig, FeedSetting, MainConfig, PageConfig};
 use crate::feed::feed_href;
-use crate::json_files::{read_json, read_json_or, write_json_pretty};
+use crate::json_files::{
+    read_json_for_edit as read_json, read_json_or_for_edit as read_json_or, write_json_pretty,
+};
 use std::fmt;
 use std::io;
 use std::path::Path;
@@ -41,7 +43,7 @@ pub struct FeedEnablementBlock {
 /// read has none as far as this is concerned; the write that follows will
 /// surface the problem instead.
 pub fn usable_site_url(source: &str) -> Option<String> {
-    read_json::<MainConfig>(&Path::new(source).join("main.json"))
+    crate::json_files::read_json::<MainConfig>(&Path::new(source).join("main.json"))
         .ok()
         .and_then(|c| c.get_site_url().map(String::from))
 }
@@ -109,6 +111,9 @@ pub fn enable_feed(
         .filter(|t| !t.is_empty());
     let site_url_written = details.site_url.map(|u| u.trim().to_string());
 
+    let page_json = page_dir(source, path).join("page.json");
+    let mut config = read_json_or(&page_json, || PageConfig::new(path))?;
+
     if let Some(url) = &site_url_written {
         let main_json = Path::new(source).join("main.json");
         let mut main_config: MainConfig = read_json(&main_json)?;
@@ -116,8 +121,6 @@ pub fn enable_feed(
         write_json_pretty(main_json, &main_config)?;
     }
 
-    let page_json = page_dir(source, path).join("page.json");
-    let mut config = read_json_or(&page_json, || PageConfig::new(path))?;
     // Only the title and limit are this command's to set; a selection the
     // page already has stays.
     let mut feed = FeedConfig {

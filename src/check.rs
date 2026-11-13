@@ -95,6 +95,7 @@ pub enum FindingKind {
     StaticFileShadowedByPage,
     UnresolvedLatestSource,
     UnknownIcon,
+    UnknownConfigKey,
     OutdatedBulmaStylesheet,
     OutdatedBulmaDependency,
     BulmaSassImport,
@@ -165,6 +166,7 @@ impl FindingKind {
             | StaticFileShadowedByPage
             | UnresolvedLatestSource
             | UnknownIcon
+            | UnknownConfigKey
             | BulmaSassImport
             | EmptyFeed
             | UnresolvedSelectionSource
@@ -184,6 +186,7 @@ impl fmt::Display for FindingKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use FindingKind::*;
         f.write_str(match self {
+            UnknownConfigKey => "unknown configuration key",
             GenerationFailed => "generation failed",
             SourceUnreadable => "source directory could not be read",
             InvalidMermaidScript => "mermaidScript must name an HTTP(S) module or an existing root-relative file in staticDir",
@@ -776,12 +779,19 @@ fn read_json<T: serde::de::DeserializeOwned>(
         .and_then(|bytes| {
             let value: serde_json::Value =
                 serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
+            findings.extend(
+                crate::config_keys::unknown_keys(Path::new(path), &value)
+                    .into_iter()
+                    .map(|detail| Finding {
+                        kind: FindingKind::UnknownConfigKey,
+                        location: path.to_owned(),
+                        detail: Some(detail),
+                    }),
+            );
             // Report all missing top-level required fields together. Nested
             // values and types are still validated by the actual serde types.
             let required: &[&str] = match unreadable_kind {
-                FindingKind::SiteConfigUnreadable => {
-                    &["siteTitle", "jsFiles", "cssFiles", "footerContent"]
-                }
+                FindingKind::SiteConfigUnreadable => &["siteTitle", "footerContent"],
                 FindingKind::MenuUnreadable => &["mainMenu", "socials"],
                 _ => &[],
             };
@@ -830,28 +840,13 @@ fn collect_images(img_source: &str, findings: &mut Vec<Finding>) -> Vec<CheckedI
     let mut images = Vec::new();
     for dir in checked_directories(get_all_directory_paths(img_source), findings) {
         let path = format!("{}/images.json", dir);
-        let file = match File::open(&path) {
-            Ok(f) => f,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => {
-                findings.push(Finding {
-                    kind: FindingKind::ImagesManifestUnreadable,
-                    location: path,
-                    detail: Some(e.to_string()),
-                });
-                continue;
-            }
-        };
-        let list: ImageList = match serde_json::from_reader(file) {
-            Ok(l) => l,
-            Err(e) => {
-                findings.push(Finding {
-                    kind: FindingKind::ImagesManifestUnreadable,
-                    location: path,
-                    detail: Some(e.to_string()),
-                });
-                continue;
-            }
+        if !Path::new(&path).try_exists().unwrap_or(true) {
+            continue;
+        }
+        let Some(list) =
+            read_json::<ImageList>(&path, FindingKind::ImagesManifestUnreadable, findings)
+        else {
+            continue;
         };
         let path_start = &dir[img_source.len()..];
         for reference in list.list {
@@ -902,27 +897,11 @@ fn collect_pages(
             dir[source.len()..].to_string()
         };
         let page_json = format!("{}/page.json", dir);
-        let config = match File::open(&page_json) {
-            Ok(f) => match serde_json::from_reader(f) {
-                Ok(config) => config,
-                Err(e) => {
-                    findings.push(Finding {
-                        kind: FindingKind::PageConfigUnreadable,
-                        location: page_json,
-                        detail: Some(e.to_string()),
-                    });
-                    PageConfig::new(&dir)
-                }
-            },
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => PageConfig::new(&dir),
-            Err(e) => {
-                findings.push(Finding {
-                    kind: FindingKind::PageConfigUnreadable,
-                    location: page_json,
-                    detail: Some(e.to_string()),
-                });
-                PageConfig::new(&dir)
-            }
+        let config = if !Path::new(&page_json).try_exists().unwrap_or(true) {
+            PageConfig::new(&dir)
+        } else {
+            read_json(&page_json, FindingKind::PageConfigUnreadable, findings)
+                .unwrap_or_else(|| PageConfig::new(&dir))
         };
         pages.insert(page_path, config);
     }

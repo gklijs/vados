@@ -80,6 +80,10 @@ image references, incomplete social links, and so on -- without writing anything
 error-severity finding turned up; warnings are reported but never fail the check. Safe (and fast) to run on every
 save.
 
+Unknown JSON keys are warnings, including nested keys, with a close-name suggestion where possible.
+Authoring commands refuse to rewrite a file containing unknown keys, so your data is not silently lost.
+There are no exemptions for `_` or `x-` keys. In `main.json`, omitted `jsFiles` and `cssFiles` default to empty lists.
+
 ```
 vados check --source root --img-source imgroot
 ```

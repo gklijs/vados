@@ -4,6 +4,7 @@ mod bulma;
 mod bulma_modules;
 pub mod check;
 mod config_files;
+mod config_keys;
 mod content;
 mod event;
 pub mod feed;

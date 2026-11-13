@@ -3,7 +3,7 @@
 
 use super::page::{page_dir, page_exists_at};
 use crate::config_files::PageConfig;
-use crate::json_files::{read_json_or, write_json_pretty};
+use crate::json_files::{read_json_or_for_edit as read_json_or, write_json_pretty};
 pub use crate::luma::LumaEventDisplay;
 use crate::luma::{is_luma_event_id, LumaEvent};
 use std::fmt;

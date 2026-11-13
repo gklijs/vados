@@ -235,6 +235,8 @@ enum FindingKind {
     images_manifest_unreadable
     source_unreadable
     generation_failed
+    -- Unknown keys at any depth in main/menu/page/images JSON; warning only.
+    unknown_config_key
 
     -- Content references.
     unrecognised_content_reference
@@ -522,6 +524,7 @@ entity SiteConfig {
     site_title: String
     footer_content: ContentReference
 
+    -- Omitted cssFiles/jsFiles in main.json default to empty lists.
     extra_css_files: List<String>
     extra_js_files: List<String>
     include_default_css: Boolean?
@@ -1229,6 +1232,13 @@ entity ScaffoldConflict {
 }
 
 -- Authoring content into an existing project --------------------------------
+-- Before rewriting a configuration file, authoring commands reject unknown
+-- keys at any depth, naming the file and key and suggesting a close accepted
+-- name when available. No keys (including `_`, `x-`, or `$schema`) are exempt.
+-- The affected file remains byte-for-byte unchanged on rejection; multi-file
+-- operations validate their configuration inputs before the first write.
+-- Generation tolerates these keys; check reports unknown_config_key warnings.
+-- Accepted names come from the deserialised structs, including optional fields.
 --
 -- The six entities below are each their own short-lived run, the same way
 -- InitializationRun is its own lifecycle rather than a third RunMode: they

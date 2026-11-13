@@ -8,7 +8,7 @@
 use crate::config_files::{ImageList, ImageReference};
 use crate::files::get_all_directory_paths;
 use crate::image::reference_key_for;
-use crate::json_files::{read_json_or, write_json_pretty};
+use crate::json_files::{read_json_or_for_edit as read_json_or, write_json_pretty};
 use std::collections::HashSet;
 use std::fmt;
 use std::io;
@@ -130,7 +130,7 @@ pub fn collect_declared_image_keys(image_source: &str) -> HashSet<String> {
     let mut keys = HashSet::new();
     for dir in get_all_directory_paths(image_source).unwrap_or_default() {
         let images_json = Path::new(&dir).join("images.json");
-        let list: ImageList = match read_json_or(&images_json, || ImageList {
+        let list: ImageList = match crate::json_files::read_json_or(&images_json, || ImageList {
             title: None,
             list: vec![],
         }) {
@@ -155,7 +155,7 @@ pub fn declared_image_alt_text(image_source: &str, reference_key: &str) -> Optio
     let image_source = normalize_image_source(image_source);
     for dir in get_all_directory_paths(image_source).unwrap_or_default() {
         let images_json = Path::new(&dir).join("images.json");
-        let list: ImageList = match read_json_or(&images_json, || ImageList {
+        let list: ImageList = match crate::json_files::read_json_or(&images_json, || ImageList {
             title: None,
             list: vec![],
         }) {

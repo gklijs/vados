@@ -95,12 +95,13 @@ fn reports_multiple_bad_files_and_all_missing_main_fields_together() {
         "blog/page.json",
         "siteTitle",
         "footerContent",
-        "jsFiles",
-        "cssFiles",
         "mainMenu",
         "socials",
     ] {
         assert!(text.contains(name), "missing {name}: {text}");
+    }
+    for name in ["jsFiles", "cssFiles"] {
+        assert!(!text.contains(name), "optional field {name}: {text}");
     }
     assert!(!site.0.join("public").exists());
 }
