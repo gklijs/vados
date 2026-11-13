@@ -2,7 +2,7 @@
 //! list of social links. See `vados.allium`'s `SocialLinkChangeRun`.
 
 use crate::config_files::{MenuConfig, RawSocialItem};
-use crate::json_files::{read_json, write_json_pretty};
+use crate::json_files::{read_json_for_edit as read_json, write_json_pretty};
 use crate::structure::{
     canonical_brand_color, canonical_icon, canonical_label, normalize_brand_color,
 };

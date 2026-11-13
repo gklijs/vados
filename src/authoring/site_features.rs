@@ -10,7 +10,9 @@ use crate::config_files::{
     SearchConfig, SearchSetting, SpareTile, SpareTileLink,
 };
 use crate::event::{DeclaredEvent, EventAttendance, EventConfig, EventStatus};
-use crate::json_files::{read_json, read_json_or, write_json_pretty};
+use crate::json_files::{
+    read_json_for_edit as read_json, read_json_or_for_edit as read_json_or, write_json_pretty,
+};
 use std::path::Path;
 
 /// `--from` given any number of times, as page.json writes it.

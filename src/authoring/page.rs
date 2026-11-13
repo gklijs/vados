@@ -6,7 +6,7 @@ use super::image_registry;
 pub use crate::config_files::ChildOrder;
 use crate::config_files::{Notification, PageConfig};
 use crate::content::{ensure_content_reference, escape_html};
-use crate::json_files::{read_json, read_json_or, write_json_pretty};
+use crate::json_files::{read_json_or_for_edit as read_json_or, write_json_pretty};
 use crate::page_date::PageDate;
 use crate::structure::parent_path;
 use std::fmt;
@@ -40,7 +40,7 @@ pub fn parent_orders_by_date(source: &str, path: &str) -> bool {
     let Some(parent) = parent_path(path) else {
         return false;
     };
-    read_json::<PageConfig>(&page_dir(source, &parent).join("page.json"))
+    crate::json_files::read_json::<PageConfig>(&page_dir(source, &parent).join("page.json"))
         .ok()
         .and_then(|c| c.child_order)
         .is_some_and(|o| o != ChildOrder::Order)
@@ -302,7 +302,7 @@ pub struct PageImageAttachmentRequest {
 /// any. Backs `existing_page_image_reference`.
 pub fn existing_page_image_reference(source: &str, path: &str) -> Option<String> {
     let page_json = page_dir(source, path).join("page.json");
-    let config: PageConfig = read_json(&page_json).ok()?;
+    let config: PageConfig = crate::json_files::read_json(&page_json).ok()?;
     config.image
 }
 
@@ -418,6 +418,10 @@ pub fn attach_image(
         hero_available(source, &request.given_path),
     );
 
+    let page_json_path = page_dir(source, &request.given_path).join("page.json");
+    let mut config: PageConfig =
+        read_json_or(&page_json_path, || PageConfig::new(&request.given_path))?;
+
     let (reference_key, resolved_alt_text) = match &request.source {
         GivenImageSource::Existing { reference } => (
             reference.clone(),
@@ -442,10 +446,6 @@ pub fn attach_image(
             (outcome.reference_key, alt_text)
         }
     };
-
-    let page_json_path = page_dir(source, &request.given_path).join("page.json");
-    let mut config: PageConfig =
-        read_json_or(&page_json_path, || PageConfig::new(&request.given_path))?;
 
     let (side, content) = match role {
         PageImageRole::Hero => {

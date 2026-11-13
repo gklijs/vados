@@ -48,6 +48,35 @@ pub(crate) fn read_json_or<T: DeserializeOwned>(
     }
 }
 
+/// Read for an authoring operation, refusing keys that a rewrite would lose.
+pub(crate) fn read_json_for_edit<T: DeserializeOwned>(path: &Path) -> io::Result<T> {
+    let bytes = fs::read(path)?;
+    let value: serde_json::Value = serde_json::from_slice(&bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+    let unknown = crate::config_keys::unknown_keys(path, &value);
+    if !unknown.is_empty() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "{}: refusing to rewrite file with unknown keys: {}",
+                path.display(),
+                unknown.join(", ")
+            ),
+        ));
+    }
+    serde_json::from_slice(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
+}
+
+pub(crate) fn read_json_or_for_edit<T: DeserializeOwned>(
+    path: &Path,
+    default: impl FnOnce() -> T,
+) -> io::Result<T> {
+    match read_json_for_edit(path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(default()),
+        result => result,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

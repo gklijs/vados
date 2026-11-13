@@ -19,8 +19,10 @@ pub(crate) struct MainConfig {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) markdown: Option<bool>,
     pub(crate) site_title: String,
+    #[serde(default)]
     pub(crate) js_files: Vec<String>,
     pub(crate) include_default_js: Option<bool>,
+    #[serde(default)]
     pub(crate) css_files: Vec<String>,
     pub(crate) include_default_css: Option<bool>,
     pub(crate) background_class: Option<String>,

@@ -4,7 +4,7 @@
 
 use super::page::page_exists_at;
 use crate::config_files::{MainConfig, MenuConfig, RawMenuItem};
-use crate::json_files::{read_json, write_json_pretty};
+use crate::json_files::{read_json_for_edit as read_json, write_json_pretty};
 use std::fmt;
 use std::io;
 use std::path::Path;

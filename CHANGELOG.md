@@ -4,6 +4,9 @@
 
 ### Added
 
+- `check` warns about unknown configuration keys with nested paths and typo suggestions (#55).
+  Authoring commands refuse rewrites that would discard them; omitted `jsFiles` and `cssFiles` default to empty.
+
 - Mermaid diagrams in fenced Markdown blocks (#33), with per-page script loading,
   theme switching, readable source fallback, a self-hosting override and source checks.
 

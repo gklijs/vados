@@ -688,3 +688,169 @@ fn without_a_site_url_no_feed_is_published_or_advertised() {
     let blog = fs::read_to_string(dest.join("blog.html")).unwrap();
     assert!(!blog.contains("application/atom+xml"));
 }
+
+#[test]
+fn unknown_keys_warn_but_generation_continues_and_cli_edits_leave_files_untouched() {
+    use serde_json::{json, Value};
+    use std::process::Command;
+    let project = TestProject::new("unknown_keys");
+    let source = PathBuf::from(&project.source);
+    let main_path = source.join("main.json");
+    let mut main: Value = serde_json::from_slice(&fs::read(&main_path).unwrap()).unwrap();
+    main.as_object_mut().unwrap().remove("jsFiles");
+    main.as_object_mut().unwrap().remove("cssFiles");
+    main["search"] = json!({"deph": 2});
+    fs::write(&main_path, serde_json::to_vec(&main).unwrap()).unwrap();
+    let menu_path = source.join("menu.json");
+    fs::write(
+        &menu_path,
+        r#"{"mainMenu":[{"url":"/","titel":"Home"}],"socials":[]}"#,
+    )
+    .unwrap();
+    let page_path = source.join("page.json");
+    fs::write(
+        &page_path,
+        r#"{"title":"Home","content":"<p>Welcome</p>","sumary":"A summary"}"#,
+    )
+    .unwrap();
+    let images_path = PathBuf::from(&project.img_source).join("images.json");
+    fs::write(&images_path, r#"{"list":[],"titel":"Pictures"}"#).unwrap();
+    let report = check(&project.source, &project.img_source);
+    assert!(report.passed(), "{:?}", report.findings);
+    let unknown: Vec<_> = report
+        .findings
+        .iter()
+        .filter(|f| f.kind == FindingKind::UnknownConfigKey)
+        .collect();
+    assert_eq!(unknown.len(), 4, "{:?}", report.findings);
+    for (file, detail) in [
+        ("main.json", "/search/deph; did you mean depth?"),
+        ("menu.json", "/mainMenu/0/titel; did you mean title?"),
+        ("page.json", "/sumary; did you mean summary?"),
+        ("images.json", "/titel; did you mean title?"),
+    ] {
+        assert!(unknown
+            .iter()
+            .any(|f| f.location.ends_with(file) && f.detail.as_deref() == Some(detail)));
+    }
+    let destination = project.dir.join("public");
+    generate(
+        &project.source,
+        &project.img_source,
+        destination.to_str().unwrap(),
+    )
+    .unwrap();
+    assert!(destination.join("index.html").is_file());
+    project.write_image_file("new.png");
+    for (file, args) in [
+        (
+            main_path,
+            vec![
+                "footer",
+                "set",
+                "--source",
+                &project.source,
+                "--content",
+                "<p>Changed</p>",
+            ],
+        ),
+        (
+            menu_path,
+            vec![
+                "menu",
+                "add-item",
+                "--source",
+                &project.source,
+                "--url",
+                "/new",
+            ],
+        ),
+        (
+            page_path,
+            vec![
+                "page",
+                "set-noindex",
+                "--source",
+                &project.source,
+                "--path",
+                "/",
+            ],
+        ),
+        (
+            images_path,
+            vec![
+                "image",
+                "add",
+                "--img-source",
+                &project.img_source,
+                "--file-name",
+                "new.png",
+                "--alt-text",
+                "New image",
+            ],
+        ),
+    ] {
+        let before = fs::read(&file).unwrap();
+        let output = Command::new(env!("CARGO_BIN_EXE_vados"))
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(!output.status.success());
+        let message = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            message.contains("unknown keys")
+                && message.contains(file.file_name().unwrap().to_str().unwrap()),
+            "{message}"
+        );
+        assert_eq!(fs::read(&file).unwrap(), before);
+    }
+}
+
+#[test]
+fn unknown_page_keys_block_multi_file_authoring_before_any_write() {
+    let project = TestProject::new("unknown_keys_multi_file");
+    let source = PathBuf::from(&project.source);
+    fs::write(
+        source.join("page.json"),
+        r#"{"title":"Home","content":"<p>Hi</p>","sumary":"Typo"}"#,
+    )
+    .unwrap();
+    let before = fs::read(source.join("main.json")).unwrap();
+    assert!(feed_authoring::enable_feed(
+        &project.source,
+        "/",
+        feed_authoring::FeedEnablementDetails {
+            title: None,
+            limit: None,
+            site_url: Some("https://example.com".to_owned()),
+            selection: Default::default(),
+        }
+    )
+    .is_err());
+    assert_eq!(before, fs::read(source.join("main.json")).unwrap());
+    project.write_image_file("new.png");
+    assert!(page::attach_image(
+        &project.source,
+        &project.img_source,
+        page::PageImageAttachmentRequest {
+            given_path: "/".to_owned(),
+            source: page::GivenImageSource::New {
+                dir: "".to_owned(),
+                file_name: "new.png".to_owned()
+            },
+            given_as: None,
+        },
+        page::PageImageAttachmentDetails {
+            alt_text: Some("New image".to_owned()),
+            ..Default::default()
+        }
+    )
+    .is_err());
+    assert!(!PathBuf::from(&project.img_source)
+        .join("images.json")
+        .exists());
+}
