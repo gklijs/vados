@@ -12,133 +12,215 @@ use std::path::Path;
 // struct out again -- so the shape read and the shape written must always be
 // exactly the same one. `generate`/`check` only ever read these, so before
 // those commands existed there was nothing to round-trip.
+//
+// In tests they also derive `JsonSchema`, which generates the published
+// schemas in `schemas/` (see `crate::schemas`). Their `///` comments become
+// the descriptions editors show while a site's author types, so they are
+// written for that author; notes for maintainers use `//`.
+
+/// The JSON Schema `vados init` and the authoring commands point new files
+/// to, published from the repository at this version's tag.
+pub(crate) fn schema_url(file: &str) -> String {
+    let stem = file.trim_end_matches(".json");
+    format!(
+        "https://raw.githubusercontent.com/gklijs/vados/v{}/schemas/{stem}.schema.json",
+        env!("CARGO_PKG_VERSION")
+    )
+}
+
+/// Site-wide settings: `main.json` in the root of the source tree.
 #[derive(Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields, title = "vados main.json"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MainConfig {
-    /// Publish a Markdown alternate for each page; off when absent.
+    /// The JSON Schema this file follows, so editors can complete and check
+    /// it. vados itself ignores it.
+    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    pub(crate) schema: Option<String>,
+    /// Publishes a Markdown version of every page next to its HTML, such as
+    /// `/blog/post.md`. Off when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) markdown: Option<bool>,
+    /// The site's name: the home page's title, and part of every other
+    /// page's `<title>`.
     pub(crate) site_title: String,
+    /// Extra scripts every page loads, as URLs or paths from the site root.
     #[serde(default)]
     pub(crate) js_files: Vec<String>,
+    /// Whether pages also load vados's own script, which runs the navbar's
+    /// dropdowns and burger menu. On when absent.
     pub(crate) include_default_js: Option<bool>,
+    /// Extra stylesheets every page loads, as URLs or paths from the site
+    /// root. They must use Bulma 1.0 or later.
     #[serde(default)]
     pub(crate) css_files: Vec<String>,
+    /// Whether pages also load Bulma from jsDelivr. On when absent; turn it
+    /// off when `cssFiles` holds a compiled Bulma of your own.
     pub(crate) include_default_css: Option<bool>,
+    /// The CSS class(es) on the page's background; `has-background-light-soft`
+    /// when absent.
     pub(crate) background_class: Option<String>,
+    /// The navbar's Bulma colour; `Warning` when absent.
     pub(crate) navbar_color: Option<Color>,
+    /// The site's language as a BCP 47 tag, such as `en`, `nl` or `nl-BE`;
+    /// `en` when absent. It sets each page's `lang` and the language of the
+    /// text vados adds itself.
     pub(crate) language: Option<String>,
-    /// The site's description for search engines, used by every page that
-    /// has no `summary` of its own. See `vados.allium`'s
-    /// `SiteConfig.description` and `PagesAreDescribed`.
+    /// A short description of the site for search engines and link previews,
+    /// used on every page without a `summary` of its own.
+    //
+    // See `vados.allium`'s `SiteConfig.description` and `PagesAreDescribed`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) description: Option<String>,
-    /// A file in the source root (`favicon.svg`, `favicon.png`, `favicon.ico`)
-    /// published at the site root and linked as every page's icon. See
-    /// `vados.allium`'s `SiteConfig.favicon`.
+    /// A file in the source root, such as `favicon.svg`, `favicon.png` or
+    /// `favicon.ico`, published at the site root as every page's icon.
+    //
+    // See `vados.allium`'s `SiteConfig.favicon`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) favicon: Option<String>,
-    /// Where the site is published, e.g. `https://example.com`. Feeds need it
-    /// to give every link in full. See `vados.allium`'s `SiteConfig.site_url`.
+    /// Where the site is published, such as `https://example.com`. Feeds,
+    /// the sitemap, calendar files and link-preview images need it.
+    //
+    // See `vados.allium`'s `SiteConfig.site_url`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) site_url: Option<String>,
     /// What goes between a page's title and the site title in `<title>`;
-    /// ` · ` when absent. See `vados.allium`'s `SiteConfig.title_separator`.
+    /// ` · ` when absent.
+    //
+    // See `vados.allium`'s `SiteConfig.title_separator`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) title_separator: Option<String>,
-    /// An image reference, like a page's `image`, shown in link previews of
-    /// every page without a hero image of its own. See `vados.allium`'s
-    /// `SiteConfig.default_image`.
+    /// An image reference, like a page's `image` (`/team/alice`), shown in
+    /// link previews of pages without a hero image of their own.
+    //
+    // See `vados.allium`'s `SiteConfig.default_image`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) default_image: Option<String>,
-    /// Who writes the site, named in structured data and feeds; the site
-    /// title when absent. See `vados.allium`'s `SiteConfig.author`.
+    /// Who writes the site, named in structured data and feeds. The site
+    /// title when absent.
+    //
+    // See `vados.allium`'s `SiteConfig.author`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) author: Option<AuthorConfig>,
     /// A directory, relative to the source root, whose files are published
-    /// as they are at the site root. See `vados.allium`'s
-    /// `SiteConfig.static_dir`.
+    /// as they are at the site root: `robots.txt`, `_headers`, downloads.
+    //
+    // See `vados.allium`'s `SiteConfig.static_dir`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) static_dir: Option<String>,
-    /// The site owner's fediverse handle, `@user@instance`, which Mastodon
-    /// shows as the author of link previews. See `vados.allium`'s
-    /// `SiteConfig.fediverse_creator`.
+    /// Your fediverse handle, `@user@instance`, which Mastodon shows as the
+    /// author of link previews. Taken from a Mastodon social link when absent.
+    //
+    // See `vados.allium`'s `SiteConfig.fediverse_creator`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) fediverse_creator: Option<String>,
-    /// Whether fenced Markdown code blocks are highlighted; on when absent.
-    /// See `vados.allium`'s `SiteConfig.code_highlight`.
+    /// Whether fenced Markdown code blocks that name a language are
+    /// highlighted. On when absent.
+    //
+    // See `vados.allium`'s `SiteConfig.code_highlight`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) code_highlight: Option<bool>,
-    /// Render fenced Mermaid diagrams in the browser; on when absent.
+    /// Whether fenced `mermaid` blocks become diagrams in the reader's
+    /// browser. On when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) mermaid: Option<bool>,
-    /// Mermaid ESM entry point: an HTTP(S) URL or a path under staticDir.
+    /// Where pages with a diagram load Mermaid from: an http(s) module URL,
+    /// or a path from the site root to a file in `staticDir`. jsDelivr when
+    /// absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) mermaid_script: Option<String>,
-    /// Pins the site to Bulma's light or dark theme instead of following the
-    /// reader's colour-scheme preference. See `vados.allium`'s
-    /// `SiteConfig.color_scheme` and `FollowsTheReadersColourScheme`.
+    /// Pins every page to Bulma's light or dark theme. Without it, pages
+    /// follow the reader's colour-scheme preference.
+    //
+    // See `vados.allium`'s `SiteConfig.color_scheme` and
+    // `FollowsTheReadersColourScheme`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) color_scheme: Option<ColorScheme>,
     /// Whether the last side notification grows to end where the page's
-    /// content does; off when absent. See `vados.allium`'s
-    /// `SiteConfig.stretch_side_notification`.
+    /// content does. Off when absent.
+    //
+    // See `vados.allium`'s `SiteConfig.stretch_side_notification`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) stretch_side_notification: Option<bool>,
-    /// Which theme sits on the navbar, for a colour a site's stylesheet
-    /// recolours to the opposite brightness. See `vados.allium`'s
-    /// `SiteConfig.navbar_theme`.
+    /// Which Bulma theme sits on the navbar, for a stylesheet that recolours
+    /// `navbarColor` to the opposite brightness. Without it, the colour's
+    /// default brightness decides.
+    //
+    // See `vados.allium`'s `SiteConfig.navbar_theme`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) navbar_theme: Option<NavbarTheme>,
     /// How many children a main menu dropdown lists before ending in a link
-    /// to the section. See `vados.allium`'s `SiteConfig.menu_dropdown_limit`.
+    /// to the section; 12 when absent.
+    //
+    // See `vados.allium`'s `SiteConfig.menu_dropdown_limit`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) menu_dropdown_limit: Option<u32>,
-    /// What fills the cells the shorter column of child tiles leaves over.
-    /// See `vados.allium`'s `SiteConfig.spare_tile`.
+    /// A block of links for the cells the shorter column of tiles leaves
+    /// empty, such as an archive or a way to subscribe.
+    //
+    // See `vados.allium`'s `SiteConfig.spare_tile`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) spare_tile: Option<SpareTile>,
-    /// Publishes a site search. See `vados.allium`'s `SiteSearch`.
+    /// Publishes a site search at `/search`: `true`, or which pages to
+    /// search.
+    //
+    // See `vados.allium`'s `SiteSearch`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) search: Option<SearchSetting>,
+    /// The footer on every page: inline HTML, or the name of a `.md` or
+    /// `.html` file in the source root.
     pub(crate) footer_content: String,
 }
 
-/// main.json's `spareTile`: a block of links for the cells child tiles leave.
+/// A block of links for the cells child tiles leave empty.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpareTile {
+    /// The block's heading.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) title: Option<String>,
     pub(crate) links: Vec<SpareTileLink>,
 }
 
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpareTileLink {
+    /// A page's path, such as `/topics`, or a full URL.
     pub(crate) url: String,
+    /// The link's text.
     pub(crate) title: String,
 }
 
-/// main.json's `search`: `true`/`false`, or which pages to search.
+/// `true` or `false`, or which pages to search.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub(crate) enum SearchSetting {
     Enabled(bool),
     Configured(SearchConfig),
 }
 
+/// Which pages the site search covers.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Default)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SearchConfig {
-    /// Every page when absent.
+    /// Only pages below this path, or these paths. Every page when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) from: Option<OneOrMany>,
+    /// How many levels below `from` to look; any depth when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) depth: Option<u32>,
+    /// Also search pages with `"listed": false`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) include_unlisted: Option<bool>,
-    /// Whether the main menu gets an entry for it; on when absent.
+    /// Whether the main menu gets an entry for the search. On when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) menu: Option<bool>,
 }
@@ -185,8 +267,10 @@ pub(crate) fn is_below(path: &str, source: &str, depth: Option<u32>) -> bool {
         .is_some_and(|r| depth.is_none_or(|d| r.split('/').count() as u32 <= d))
 }
 
-/// A colour scheme a site can be pinned to; Bulma's `data-theme` values.
+/// Bulma's `light` or `dark` theme.
+// Bulma's `data-theme` values.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum ColorScheme {
     Light,
@@ -202,9 +286,13 @@ impl ColorScheme {
     }
 }
 
+/// Who writes the site.
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AuthorConfig {
+    /// The author's name.
     pub(crate) name: String,
     /// The author's own page, when it isn't the site's home page.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -343,78 +431,123 @@ pub(crate) fn favicon_media_type(file_name: &str) -> Option<&'static str> {
     }
 }
 
+/// The pattern of a page's `date` and `updated`, for the published schema.
+#[cfg(test)]
+pub(crate) const PAGE_DATE_PATTERN: &str = r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}(:\d{2})?)?$";
+
+/// One page: the `page.json` in each directory of the source tree.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields, title = "vados page.json"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PageConfig {
+    /// The JSON Schema this file follows, so editors can complete and check
+    /// it. vados itself ignores it.
+    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    pub(crate) schema: Option<String>,
+    /// The page's title: its heading, and its name in menus and tiles.
     pub(crate) title: String,
+    /// A line shown under the title.
     pub(crate) sub_title: Option<String>,
+    /// The page's hero image, as an image reference: the image's directory
+    /// in the image tree and its file name without extension, such as
+    /// `/team/alice`.
     pub(crate) image: Option<String>,
+    /// A Material Design Icons name, such as `home` or `rss`, shown with the
+    /// page in menus.
     pub(crate) icon: Option<String>,
+    /// A short description of the page for search engines, link previews,
+    /// feeds and the tiles advertising it.
     pub(crate) summary: Option<String>,
+    /// The page's content: inline HTML, or the name of a `.md` or `.html`
+    /// file in the page's directory.
     pub(crate) content: String,
+    /// Where the page comes among its siblings when they are ordered by
+    /// `order`: lower first, then by title.
     pub(crate) order: Option<u32>,
+    /// Tiles in the left column below the page's content.
     pub(crate) left_notifications: Option<Vec<Notification>>,
+    /// Tiles in the right column below the page's content.
     pub(crate) right_notifications: Option<Vec<Notification>>,
-    /// Luma events shown in the page's main area, after its content. Left
-    /// out of page.json entirely when there are none, so pages that never
-    /// use Luma don't grow a `"lumaEvents": null` line on every rewrite.
+    /// Events hosted on Luma, shown after the page's content.
+    // Left out of page.json entirely when there are none, so pages that never
+    // use Luma don't grow a `"lumaEvents": null` line on every rewrite.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) luma_events: Option<Vec<LumaEvent>>,
-    /// When the page was published, as `YYYY-MM-DD` with an optional
-    /// `THH:MM[:SS]`. Kept as the raw text so a malformed date is reported
-    /// against this one field instead of making the whole page.json
-    /// unreadable. See `vados.allium`'s `Page.date`.
+    /// When the page was published: `YYYY-MM-DD`, optionally with a time,
+    /// such as `2026-10-22T09:30`.
+    // Kept as the raw text so a malformed date is reported against this one
+    // field instead of making the whole page.json unreadable. See
+    // `vados.allium`'s `Page.date`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, schemars(pattern(PAGE_DATE_PATTERN)))]
     pub(crate) date: Option<String>,
     /// When the page last changed meaningfully, in the same form as `date`.
-    /// See `vados.allium`'s `Page.updated`.
+    // See `vados.allium`'s `Page.updated`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, schemars(pattern(PAGE_DATE_PATTERN)))]
     pub(crate) updated: Option<String>,
-    /// `false` keeps the page out of menus, side tiles, feeds and the
-    /// sitemap while still publishing it. See `vados.allium`'s `Page.listed`.
+    /// `false` publishes the page but keeps it out of menus, side tiles,
+    /// feeds, the site search and the sitemap.
+    // See `vados.allium`'s `Page.listed`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) listed: Option<bool>,
-    /// How this page's children are ordered; `order` when absent. See
-    /// `vados.allium`'s `Page.child_order`.
+    /// How this page's children are ordered in menus and tiles; `order`
+    /// when absent.
+    // See `vados.allium`'s `Page.child_order`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) child_order: Option<ChildOrder>,
-    /// Whether this page publishes an Atom feed of its dated children. See
-    /// `vados.allium`'s `Page.feed`.
+    /// Publishes an Atom feed of the page's dated children at the page's
+    /// path plus `/feed.xml`: `true`, or the feed's settings. Needs
+    /// main.json's `siteUrl`.
+    // See `vados.allium`'s `Page.feed`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) feed: Option<FeedSetting>,
-    /// Shows the newest dated pages from elsewhere in the site as child
-    /// tiles. See `vados.allium`'s `Page.latest_sources`.
+    /// Shows the newest dated pages from elsewhere in the site as tiles.
+    // See `vados.allium`'s `Page.latest_sources`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) latest: Option<LatestConfig>,
-    /// Keeps the page out of search results and the sitemap, which `listed`
-    /// doesn't. See `vados.allium`'s `Page.noindex`.
+    /// Keeps the page out of search results, the site search and the
+    /// sitemap, while it stays listed in menus.
+    // See `vados.allium`'s `Page.noindex`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) noindex: Option<bool>,
-    /// Makes the page an event. See `vados.allium`'s `Event`.
+    /// Makes the page an event.
+    // See `vados.allium`'s `Event`. An event that doesn't match is still read,
+    // so `check` can report it, but the schema only describes a valid one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, schemars(with = "Option<crate::event::EventConfig>"))]
     pub(crate) event: Option<DeclaredEvent>,
-    /// Lists events from elsewhere on this page, soonest first. See
-    /// `vados.allium`'s `Page.agenda`.
+    /// Lists events from elsewhere on this page, soonest first: `true` for
+    /// those below it, or which pages to take them from.
+    // See `vados.allium`'s `Page.agenda`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) agenda: Option<AgendaSetting>,
 }
 
-/// page.json's `agenda`: `true`/`false`, or which pages to list.
+/// `true` or `false`, or which pages to list events from.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub(crate) enum AgendaSetting {
     Enabled(bool),
     Configured(AgendaConfig),
 }
 
+/// Which pages an agenda lists events from.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Default)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgendaConfig {
-    /// The page's own descendants when absent.
+    /// Events on pages below this path, or these paths. The pages below
+    /// this one when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) from: Option<OneOrMany>,
+    /// How many levels below `from` to look; any depth when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) depth: Option<u32>,
+    /// Also list events on pages with `"listed": false`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) include_unlisted: Option<bool>,
 }
@@ -429,12 +562,16 @@ impl AgendaConfig {
     }
 }
 
-/// page.json's `latest`: which sections to take the newest dated pages
-/// from, how many, and how deep below each to look.
+/// Which sections to take the newest dated pages from, how many, and how
+/// deep below each to look.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LatestConfig {
+    /// A section's path, such as `/blog`, or a list of them.
     pub(crate) from: OneOrMany,
+    /// How many pages to show; 4 when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) limit: Option<u32>,
     /// How many levels below a section to look; any depth when absent.
@@ -454,7 +591,9 @@ impl LatestConfig {
     }
 }
 
+/// A page's path, such as `/blog`, or a list of them.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub(crate) enum OneOrMany {
     One(String),
@@ -489,29 +628,38 @@ impl PageConfig {
     }
 }
 
-/// page.json's `feed`: `true`/`false`, or an object giving the feed's title
-/// and how many entries it holds.
+/// `true` or `false`, or the feed's settings.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(untagged)]
 pub(crate) enum FeedSetting {
     Enabled(bool),
     Configured(FeedConfig),
 }
 
+/// A feed's title, size and entries.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Default)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct FeedConfig {
+    /// The feed's title; the site title plus the page's when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) title: Option<String>,
+    /// How many entries the feed holds; 20 when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) limit: Option<u32>,
-    /// Sections to take entries from; the page's own direct children when
-    /// absent. See `vados.allium`'s `Page.feed_entries`.
+    /// Takes entries from below this path, or these paths, instead of the
+    /// page's own direct children.
+    // See `vados.allium`'s `Page.feed_entries`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) from: Option<OneOrMany>,
+    /// How many levels below `from` to look: any depth when `from` is
+    /// given, only direct children when it isn't.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) depth: Option<u32>,
-    /// Takes unlisted pages too: "listed nowhere" otherwise includes feeds.
+    /// Also takes pages with `"listed": false`, which feeds otherwise leave
+    /// out.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) include_unlisted: Option<bool>,
     /// What an entry carries; the page's full content when absent.
@@ -519,12 +667,13 @@ pub(crate) struct FeedConfig {
     pub(crate) content: Option<FeedContent>,
 }
 
-/// What a feed entry carries as its content.
+/// What a feed entry carries: `full` content, or only the `summary`.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum FeedContent {
     Full,
-    /// Only the `summary`, for a page that has one.
+    // Only the `summary`, for a page that has one.
     Summary,
 }
 
@@ -546,17 +695,20 @@ impl FeedConfig {
     }
 }
 
-/// How a page orders its children -- in menus, side menus and side
-/// notifications alike. See `vados.allium`'s `ChildOrder`.
+/// How a page orders its children in menus and tiles: `order` (by
+/// `order`, then title), `dateDesc` (newest first) or `dateAsc` (oldest
+/// first). Undated children come last.
+// See `vados.allium`'s `ChildOrder`.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy, Default)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub enum ChildOrder {
-    /// By `order`, then title.
+    // By `order`, then title.
     #[default]
     Order,
-    /// Newest first; children without a date come last.
+    // Newest first; children without a date come last.
     DateDesc,
-    /// Oldest first; children without a date come last.
+    // Oldest first; children without a date come last.
     DateAsc,
 }
 
@@ -564,6 +716,7 @@ impl PageConfig {
     pub(crate) fn new(path: &str) -> PageConfig {
         let last = path.split('/').next_back().unwrap();
         PageConfig {
+            schema: Some(schema_url("page.json")),
             title: String::from(last),
             sub_title: None,
             image: None,
@@ -587,53 +740,126 @@ impl PageConfig {
     }
 }
 
+/// One entry of the main menu.
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RawMenuItem {
+    /// A page's path, such as `/blog`, or a full URL.
     pub(crate) url: String,
+    /// The entry's text. Required for a full URL; a page's own title when
+    /// absent.
     pub(crate) title: Option<String>,
+    /// A Material Design Icons name, such as `home`; the page's own icon
+    /// when absent.
     pub(crate) icon: Option<String>,
 }
 
+/// The pattern of a social link's `color`, for the published schema.
+#[cfg(test)]
+pub(crate) const HEX_COLOR_PATTERN: &str =
+    "^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$";
+
+/// A link to your profile on another site, shown as an icon on every page.
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RawSocialItem {
+    /// The profile's address. vados recognises GitHub, LinkedIn, Facebook,
+    /// YouTube, Twitter/X and Mastodon links by it.
     pub(crate) url: String,
+    /// A Material Design Icons name. Required for a site vados doesn't
+    /// recognise.
     pub(crate) icon: Option<String>,
+    /// The icon's colour, in hex with or without `#`, such as `6364FF`.
+    /// Required for a site vados doesn't recognise; it also overrides a
+    /// recognised site's own colour.
+    #[cfg_attr(test, schemars(pattern(HEX_COLOR_PATTERN)))]
     pub(crate) color: Option<String>,
-    /// The link's accessible name (see `vados.allium`'s `SocialLink.label`).
-    /// Required for a provider `is_recognized_social_provider` doesn't
-    /// recognise, the same as `icon`/`color`.
+    /// What screen readers announce for the link, which has no visible
+    /// text. Required for a site vados doesn't recognise.
+    // See `vados.allium`'s `SocialLink.label`. Required for a provider
+    // `is_recognized_social_provider` doesn't recognise, the same as
+    // `icon`/`color`.
     pub(crate) label: Option<String>,
 }
 
+/// The main menu and social links: `menu.json` in the root of the source
+/// tree.
 #[derive(Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields, title = "vados menu.json"))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct MenuConfig {
+    /// The JSON Schema this file follows, so editors can complete and check
+    /// it. vados itself ignores it.
+    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    pub(crate) schema: Option<String>,
+    /// The navbar's entries, in order.
     pub(crate) main_menu: Vec<RawMenuItem>,
+    /// Links to your profiles on other sites, in order.
     pub(crate) socials: Vec<RawSocialItem>,
 }
 
+/// A tile below a page's content.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Notification {
+    /// The tile's text: inline HTML, or the name of a `.md` or `.html` file
+    /// in the page's directory.
     pub(crate) content: String,
+    /// The tile's heading.
     pub(crate) title: Option<String>,
+    /// An image reference, such as `/team/alice`, shown in the tile.
     pub(crate) image: Option<String>,
+    /// Where the tile links to: a page's path or a full URL.
     pub(crate) url: Option<String>,
+    /// The tile's Bulma colour; `Info` or `Link` when absent, depending on
+    /// the tile.
     pub(crate) color: Option<Color>,
 }
 
+/// One image to publish.
 #[derive(Debug, Deserialize, Serialize, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImageReference {
+    /// The image's caption.
     pub(crate) title: Option<String>,
+    /// The image file, in the same directory as this images.json.
     pub(crate) file_name: String,
+    /// What the image shows, for readers who can't see it. Required.
     pub(crate) alt_text: String,
 }
 
+/// The images to publish from one directory: `images.json` in a directory
+/// of the image tree.
 #[derive(Debug, Deserialize, Serialize)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields, title = "vados images.json"))]
 pub(crate) struct ImageList {
+    /// The JSON Schema this file follows, so editors can complete and check
+    /// it. vados itself ignores it.
+    #[serde(rename = "$schema", default, skip_serializing_if = "Option::is_none")]
+    pub(crate) schema: Option<String>,
+    /// A title for the directory's images.
     pub(crate) title: Option<String>,
+    /// The images, each published as responsive WebP variants.
     pub(crate) list: Vec<ImageReference>,
+}
+
+impl ImageList {
+    /// An images.json with no images yet, as an authoring command creates it.
+    pub(crate) fn new() -> ImageList {
+        ImageList {
+            schema: Some(schema_url("images.json")),
+            title: None,
+            list: vec![],
+        }
+    }
 }

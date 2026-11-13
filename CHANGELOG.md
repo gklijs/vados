@@ -4,6 +4,11 @@
 
 ### Added
 
+- JSON Schemas for `main.json`, `menu.json`, `page.json` and `images.json` in `schemas/` (#62), so editors complete
+  keys, describe them and flag mistakes while typing. They are generated from the configuration structs and checked
+  in tests. `vados init`, `page new` and `image add` write `"$schema"` into the files they create, pointing at the
+  schemas of the running version; every command accepts it and keeps it when rewriting a file.
+
 - `check` warns about unknown configuration keys with nested paths and typo suggestions (#55).
   Authoring commands refuse rewrites that would discard them; omitted `jsFiles` and `cssFiles` default to empty.
 

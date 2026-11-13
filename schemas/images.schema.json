@@ -1,0 +1,61 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "ImageReference": {
+      "additionalProperties": false,
+      "description": "One image to publish.",
+      "properties": {
+        "altText": {
+          "description": "What the image shows, for readers who can't see it. Required.",
+          "type": "string"
+        },
+        "fileName": {
+          "description": "The image file, in the same directory as this images.json.",
+          "type": "string"
+        },
+        "title": {
+          "description": "The image's caption.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "fileName",
+        "altText"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "The images to publish from one directory: `images.json` in a directory of the image tree.",
+  "properties": {
+    "$schema": {
+      "description": "The JSON Schema this file follows, so editors can complete and check it. vados itself ignores it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "list": {
+      "description": "The images, each published as responsive WebP variants.",
+      "items": {
+        "$ref": "#/definitions/ImageReference"
+      },
+      "type": "array"
+    },
+    "title": {
+      "description": "A title for the directory's images.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "list"
+  ],
+  "title": "vados images.json",
+  "type": "object"
+}

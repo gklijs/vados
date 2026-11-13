@@ -107,6 +107,10 @@
 --     build
 --   - The `git` invocation and the literal lines a .gitignore ends up with.
 --     Only the choice to initialize-if-absent and merge-if-present is domain
+--   - The JSON Schemas published for main.json, menu.json, page.json and
+--     images.json, and the address a file's `$schema` points to. Only that
+--     `$schema` is an accepted key is domain (see "Authoring content into an
+--     existing project")
 --   - The literal mechanics of reading, modifying and rewriting main.json,
 --     menu.json, page.json or images.json when authoring content into an
 --     existing project. Only the bundle of inputs gathered and the resulting
@@ -1234,7 +1238,16 @@ entity ScaffoldConflict {
 -- Authoring content into an existing project --------------------------------
 -- Before rewriting a configuration file, authoring commands reject unknown
 -- keys at any depth, naming the file and key and suggesting a close accepted
--- name when available. No keys (including `_`, `x-`, or `$schema`) are exempt.
+-- name when available. No keys (including `_` or `x-`) are exempt. The one
+-- addition is `$schema` at the top level of each of the four files: a
+-- reference to the file's published JSON Schema, which editors use to complete
+-- and check what an author types. It is an accepted key like any other, kept
+-- when a file is rewritten, and has no effect on generation or check. `init`
+-- writes it into every file it scaffolds, and the authoring commands into
+-- every file they create, pointing at the schema published for the running
+-- version. The schemas themselves, their address and their contents are
+-- mechanics, generated from the same structs that name the accepted keys, so
+-- they accept exactly what generation reads; check keeps its own findings.
 -- The affected file remains byte-for-byte unchanged on rejection; multi-file
 -- operations validate their configuration inputs before the first write.
 -- Generation tolerates these keys; check reports unknown_config_key warnings.

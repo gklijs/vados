@@ -186,6 +186,7 @@ pub fn create_page(
         .unwrap_or_else(|| default_page_content(given_path));
 
     let page_config = PageConfig {
+        schema: Some(crate::config_files::schema_url("page.json")),
         title: details.title.clone(),
         sub_title: details.sub_title.clone(),
         image: given_image_reference.clone(),

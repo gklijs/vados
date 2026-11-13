@@ -11,8 +11,14 @@
 //!    succeeds whenever `check` reports no errors. Structural check findings
 //!    do not cover runtime image-decoding or output I/O failures.
 //!
+//! 3. Every generated configuration file follows the published JSON Schema,
+//!    except for the Luma events deliberately generated with an ID in the
+//!    wrong form or without a title.
+//!
 //! Images are kept to real, tiny (1x1) PNG/JPEG files so the pipeline is
 //! exercised for real without spending the fuzzing budget on image decoding.
+
+mod schema_support;
 
 use proptest::prelude::*;
 use serde_json::json;
@@ -600,5 +606,28 @@ proptest! {
         if report.passed() {
             prop_assert!(result.unwrap().is_ok(), "generation failed despite passing check: {spec:#?}");
         }
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig { cases: 100, .. ProptestConfig::default() })]
+
+    /// The trees are meant to be schema-valid, so the published schemas must
+    /// accept them. The only exceptions are a Luma event ID in the wrong form
+    /// and a Luma event without a title, which the generator makes on purpose
+    /// so `check` can report them.
+    #[test]
+    fn generated_configuration_files_follow_the_published_schemas(spec in site_spec()) {
+        let site = materialize(&spec);
+        let unexpected: Vec<_> = schema_support::tree_errors(&site.root)
+            .into_iter()
+            .filter(|error| {
+                let malformed_luma_id = error.contains("/eventId: ")
+                    && (error.contains("\"evt-\"") || error.contains("\"cal-a1\""));
+                let untitled_luma_event = error.contains("/title: null ");
+                !(error.contains("/lumaEvents/") && (malformed_luma_id || untitled_luma_event))
+            })
+            .collect();
+        prop_assert!(unexpected.is_empty(), "{unexpected:#?}\nfor {spec:#?}");
     }
 }

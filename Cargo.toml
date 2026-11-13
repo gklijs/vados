@@ -32,8 +32,13 @@ walkdir = "2.3.2"
 webp = "0.3.1"
 
 [dev-dependencies]
+# Validates configuration files against the committed JSON Schemas in tests.
+jsonschema = { version = "0.60.2", default-features = false }
 proptest = "1"
 roxmltree = "0.21.1"
+# Generates the JSON Schemas in `schemas/` from the configuration structs, in a
+# unit test, so the normal binary never depends on it.
+schemars = "1.2.3"
 
 [features]
 # Colours Markdown code blocks at build time. On by default; without it they stay plain.

@@ -130,10 +130,7 @@ pub fn collect_declared_image_keys(image_source: &str) -> HashSet<String> {
     let mut keys = HashSet::new();
     for dir in get_all_directory_paths(image_source).unwrap_or_default() {
         let images_json = Path::new(&dir).join("images.json");
-        let list: ImageList = match crate::json_files::read_json_or(&images_json, || ImageList {
-            title: None,
-            list: vec![],
-        }) {
+        let list: ImageList = match crate::json_files::read_json_or(&images_json, ImageList::new) {
             Ok(l) => l,
             Err(_) => continue, // unreadable images.json elsewhere: not this run's problem to fix
         };
@@ -155,10 +152,7 @@ pub fn declared_image_alt_text(image_source: &str, reference_key: &str) -> Optio
     let image_source = normalize_image_source(image_source);
     for dir in get_all_directory_paths(image_source).unwrap_or_default() {
         let images_json = Path::new(&dir).join("images.json");
-        let list: ImageList = match crate::json_files::read_json_or(&images_json, || ImageList {
-            title: None,
-            list: vec![],
-        }) {
+        let list: ImageList = match crate::json_files::read_json_or(&images_json, ImageList::new) {
             Ok(l) => l,
             Err(_) => continue,
         };
@@ -241,10 +235,7 @@ pub fn register_image(
     alt_text: String,
 ) -> io::Result<ImageRegistrationOutcome> {
     let path = images_json_path(image_source, given_dir);
-    let mut list: ImageList = read_json_or(&path, || ImageList {
-        title: None,
-        list: vec![],
-    })?;
+    let mut list: ImageList = read_json_or(&path, ImageList::new)?;
     list.list.push(ImageReference {
         title: title.clone(),
         file_name: file_name.to_string(),
@@ -419,11 +410,7 @@ mod tests {
         )
         .unwrap();
 
-        let list: ImageList = read_json_or(&tree.path.join("images.json"), || ImageList {
-            title: None,
-            list: vec![],
-        })
-        .unwrap();
+        let list: ImageList = read_json_or(&tree.path.join("images.json"), ImageList::new).unwrap();
         assert_eq!(list.title, Some("Gallery".to_string()));
         assert_eq!(list.list.len(), 2);
         assert_eq!(list.list[0].file_name, "first.jpg");

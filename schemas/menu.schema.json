@@ -1,0 +1,100 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "RawMenuItem": {
+      "additionalProperties": false,
+      "description": "One entry of the main menu.",
+      "properties": {
+        "icon": {
+          "description": "A Material Design Icons name, such as `home`; the page's own icon when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "title": {
+          "description": "The entry's text. Required for a full URL; a page's own title when absent.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "A page's path, such as `/blog`, or a full URL.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    },
+    "RawSocialItem": {
+      "additionalProperties": false,
+      "description": "A link to your profile on another site, shown as an icon on every page.",
+      "properties": {
+        "color": {
+          "description": "The icon's colour, in hex with or without `#`, such as `6364FF`. Required for a site vados doesn't recognise; it also overrides a recognised site's own colour.",
+          "pattern": "^#?([0-9A-Fa-f]{3}|[0-9A-Fa-f]{4}|[0-9A-Fa-f]{6}|[0-9A-Fa-f]{8})$",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "icon": {
+          "description": "A Material Design Icons name. Required for a site vados doesn't recognise.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "label": {
+          "description": "What screen readers announce for the link, which has no visible text. Required for a site vados doesn't recognise.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "url": {
+          "description": "The profile's address. vados recognises GitHub, LinkedIn, Facebook, YouTube, Twitter/X and Mastodon links by it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "The main menu and social links: `menu.json` in the root of the source tree.",
+  "properties": {
+    "$schema": {
+      "description": "The JSON Schema this file follows, so editors can complete and check it. vados itself ignores it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "mainMenu": {
+      "description": "The navbar's entries, in order.",
+      "items": {
+        "$ref": "#/definitions/RawMenuItem"
+      },
+      "type": "array"
+    },
+    "socials": {
+      "description": "Links to your profiles on other sites, in order.",
+      "items": {
+        "$ref": "#/definitions/RawSocialItem"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "mainMenu",
+    "socials"
+  ],
+  "title": "vados menu.json",
+  "type": "object"
+}

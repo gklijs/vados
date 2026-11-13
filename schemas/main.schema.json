@@ -1,0 +1,393 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "additionalProperties": false,
+  "definitions": {
+    "AuthorConfig": {
+      "additionalProperties": false,
+      "description": "Who writes the site.",
+      "properties": {
+        "name": {
+          "description": "The author's name.",
+          "type": "string"
+        },
+        "url": {
+          "description": "The author's own page, when it isn't the site's home page.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Color": {
+      "description": "One of Bulma's named colours.",
+      "enum": [
+        "White",
+        "Black",
+        "Light",
+        "Dark",
+        "Primary",
+        "Link",
+        "Info",
+        "Success",
+        "Warning",
+        "Danger"
+      ],
+      "type": "string"
+    },
+    "ColorScheme": {
+      "description": "Bulma's `light` or `dark` theme.",
+      "enum": [
+        "light",
+        "dark"
+      ],
+      "type": "string"
+    },
+    "NavbarTheme": {
+      "description": "The Bulma theme on the navbar: `light` or `dark`.",
+      "enum": [
+        "light",
+        "dark"
+      ],
+      "type": "string"
+    },
+    "OneOrMany": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "A page's path, such as `/blog`, or a list of them."
+    },
+    "SearchConfig": {
+      "additionalProperties": false,
+      "description": "Which pages the site search covers.",
+      "properties": {
+        "depth": {
+          "description": "How many levels below `from` to look; any depth when absent.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/OneOrMany"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Only pages below this path, or these paths. Every page when absent."
+        },
+        "includeUnlisted": {
+          "description": "Also search pages with `\"listed\": false`.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "menu": {
+          "description": "Whether the main menu gets an entry for the search. On when absent.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "SearchSetting": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/definitions/SearchConfig"
+        }
+      ],
+      "description": "`true` or `false`, or which pages to search."
+    },
+    "SpareTile": {
+      "additionalProperties": false,
+      "description": "A block of links for the cells child tiles leave empty.",
+      "properties": {
+        "links": {
+          "items": {
+            "$ref": "#/definitions/SpareTileLink"
+          },
+          "type": "array"
+        },
+        "title": {
+          "description": "The block's heading.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "links"
+      ],
+      "type": "object"
+    },
+    "SpareTileLink": {
+      "additionalProperties": false,
+      "properties": {
+        "title": {
+          "description": "The link's text.",
+          "type": "string"
+        },
+        "url": {
+          "description": "A page's path, such as `/topics`, or a full URL.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url",
+        "title"
+      ],
+      "type": "object"
+    }
+  },
+  "description": "Site-wide settings: `main.json` in the root of the source tree.",
+  "properties": {
+    "$schema": {
+      "description": "The JSON Schema this file follows, so editors can complete and check it. vados itself ignores it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "author": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/AuthorConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Who writes the site, named in structured data and feeds. The site title when absent."
+    },
+    "backgroundClass": {
+      "description": "The CSS class(es) on the page's background; `has-background-light-soft` when absent.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "codeHighlight": {
+      "description": "Whether fenced Markdown code blocks that name a language are highlighted. On when absent.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "colorScheme": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/ColorScheme"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Pins every page to Bulma's light or dark theme. Without it, pages follow the reader's colour-scheme preference."
+    },
+    "cssFiles": {
+      "default": [],
+      "description": "Extra stylesheets every page loads, as URLs or paths from the site root. They must use Bulma 1.0 or later.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "defaultImage": {
+      "description": "An image reference, like a page's `image` (`/team/alice`), shown in link previews of pages without a hero image of their own.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "description": {
+      "description": "A short description of the site for search engines and link previews, used on every page without a `summary` of its own.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "favicon": {
+      "description": "A file in the source root, such as `favicon.svg`, `favicon.png` or `favicon.ico`, published at the site root as every page's icon.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "fediverseCreator": {
+      "description": "Your fediverse handle, `@user@instance`, which Mastodon shows as the author of link previews. Taken from a Mastodon social link when absent.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "footerContent": {
+      "description": "The footer on every page: inline HTML, or the name of a `.md` or `.html` file in the source root.",
+      "type": "string"
+    },
+    "includeDefaultCss": {
+      "description": "Whether pages also load Bulma from jsDelivr. On when absent; turn it off when `cssFiles` holds a compiled Bulma of your own.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "includeDefaultJs": {
+      "description": "Whether pages also load vados's own script, which runs the navbar's dropdowns and burger menu. On when absent.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "jsFiles": {
+      "default": [],
+      "description": "Extra scripts every page loads, as URLs or paths from the site root.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "language": {
+      "description": "The site's language as a BCP 47 tag, such as `en`, `nl` or `nl-BE`; `en` when absent. It sets each page's `lang` and the language of the text vados adds itself.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "markdown": {
+      "description": "Publishes a Markdown version of every page next to its HTML, such as `/blog/post.md`. Off when absent.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "menuDropdownLimit": {
+      "description": "How many children a main menu dropdown lists before ending in a link to the section; 12 when absent.",
+      "format": "uint32",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "mermaid": {
+      "description": "Whether fenced `mermaid` blocks become diagrams in the reader's browser. On when absent.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "mermaidScript": {
+      "description": "Where pages with a diagram load Mermaid from: an http(s) module URL, or a path from the site root to a file in `staticDir`. jsDelivr when absent.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "navbarColor": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/Color"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "The navbar's Bulma colour; `Warning` when absent."
+    },
+    "navbarTheme": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/NavbarTheme"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Which Bulma theme sits on the navbar, for a stylesheet that recolours `navbarColor` to the opposite brightness. Without it, the colour's default brightness decides."
+    },
+    "search": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SearchSetting"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Publishes a site search at `/search`: `true`, or which pages to search."
+    },
+    "siteTitle": {
+      "description": "The site's name: the home page's title, and part of every other page's `<title>`.",
+      "type": "string"
+    },
+    "siteUrl": {
+      "description": "Where the site is published, such as `https://example.com`. Feeds, the sitemap, calendar files and link-preview images need it.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "spareTile": {
+      "anyOf": [
+        {
+          "$ref": "#/definitions/SpareTile"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "A block of links for the cells the shorter column of tiles leaves empty, such as an archive or a way to subscribe."
+    },
+    "staticDir": {
+      "description": "A directory, relative to the source root, whose files are published as they are at the site root: `robots.txt`, `_headers`, downloads.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "stretchSideNotification": {
+      "description": "Whether the last side notification grows to end where the page's content does. Off when absent.",
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "titleSeparator": {
+      "description": "What goes between a page's title and the site title in `<title>`; ` · ` when absent.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "siteTitle",
+    "footerContent"
+  ],
+  "title": "vados main.json",
+  "type": "object"
+}

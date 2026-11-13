@@ -23,13 +23,17 @@ const EVENT_URL: &str = "https://luma.com/event/{id}";
 /// registration over the page.
 pub(crate) const BUTTON_SCRIPT_URL: &str = "https://embed.lu.ma/checkout-button.js";
 
-/// How a Luma event is shown. See `vados.allium`'s `LumaEventDisplay`.
+/// How the event is shown: `eventPage` (Luma's embedded event page, with
+/// its registration), `registerButton` (a button opening Luma's
+/// registration over the page) or `both`.
+// See `vados.allium`'s `LumaEventDisplay`.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone, Copy, Default)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
 #[serde(rename_all = "camelCase")]
 pub enum LumaEventDisplay {
-    /// The default: the embedded event page already carries Luma's own
-    /// registration, so a button is opted into rather than out of. See
-    /// `config.default_luma_event_display`.
+    // The default: the embedded event page already carries Luma's own
+    // registration, so a button is opted into rather than out of. See
+    // `config.default_luma_event_display`.
     #[default]
     EventPage,
     RegisterButton,
@@ -58,24 +62,46 @@ impl fmt::Display for LumaEventDisplay {
     }
 }
 
-/// One Luma event as page.json declares it. See `vados.allium`'s
-/// `LumaEvent`; `title` is optional only so its absence can be reported.
+/// The pattern of a Luma event ID, for the published schema.
+#[cfg(test)]
+pub(crate) const EVENT_ID_PATTERN: &str = "^evt-[A-Za-z0-9]+$";
+
+/// An event hosted on Luma.
+// One Luma event as page.json declares it. See `vados.allium`'s
+// `LumaEvent`; `title` is optional only so its absence can be reported.
 #[derive(Debug, Deserialize, Serialize, Eq, PartialEq, Clone)]
+#[cfg_attr(test, derive(schemars::JsonSchema))]
+#[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct LumaEvent {
+    /// Luma's event ID, `evt-...`, shown in the event's embed options on
+    /// Luma.
+    #[cfg_attr(test, schemars(pattern(EVENT_ID_PATTERN)))]
     pub(crate) event_id: String,
+    /// The text of the link to the event on Luma, and the embedded event
+    /// page's accessible name. Required.
+    // Optional in the struct only so `check` can report it missing.
+    #[cfg_attr(test, schemars(required))]
     pub(crate) title: Option<String>,
+    /// How the event is shown; `eventPage` when absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) display: Option<LumaEventDisplay>,
+    /// The register button's text; "Register" in the site's language when
+    /// absent.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) button_label: Option<String>,
-    /// When it happens, for agendas and calendars. Nothing is fetched from
-    /// Luma, so an agenda only knows what page.json says. Read like an event's
-    /// `start`, `end` and `timeZone`; see `vados.allium`'s `LumaEvent`.
+    /// When it starts, for agendas and calendars, in the same form as an
+    /// event's `start`. Nothing is fetched from Luma.
+    // Read like an event's `start`, `end` and `timeZone`; see
+    // `vados.allium`'s `LumaEvent`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, schemars(pattern(crate::event::MOMENT_PATTERN)))]
     pub(crate) start: Option<String>,
+    /// When it ends, in the same form as `start`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[cfg_attr(test, schemars(pattern(crate::event::MOMENT_PATTERN)))]
     pub(crate) end: Option<String>,
+    /// The IANA time zone it happens in, such as `Europe/Amsterdam`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) time_zone: Option<String>,
 }
