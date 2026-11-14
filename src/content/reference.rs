@@ -74,10 +74,10 @@ fn md_to_content(file_path: &str, options: MarkdownOptions) -> String {
             html_output
         }
         Err(e) => {
-            println!(
+            crate::parallel::message(format!(
                 "There was an error reading Markdown content from path {}.\n{}",
                 file_path, e
-            );
+            ));
             String::from("")
         }
     }
@@ -116,10 +116,10 @@ fn html_to_content(file_path: &str) -> String {
     match fs::read_to_string(file_path) {
         Ok(text) => text,
         Err(e) => {
-            println!(
+            crate::parallel::message(format!(
                 "There was an error reading Html content from path {}.\n{}",
                 file_path, e
-            );
+            ));
             String::from("")
         }
     }

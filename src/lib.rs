@@ -20,6 +20,7 @@ pub mod luma;
 mod markdown;
 mod mermaid;
 pub mod page_date;
+mod parallel;
 #[cfg(test)]
 mod schemas;
 pub mod search;

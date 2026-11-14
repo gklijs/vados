@@ -475,6 +475,12 @@ enum LumaEventAttachmentBlockReason {
 -- mode. Only after `structure_built` do the two diverge: a generate run
 -- assembles and publishes, a check run evaluates the structure it just built
 -- and reports.
+-- Generation may process independent images and render pages concurrently.
+-- A positive --jobs limit bounds each stage; the default is available CPUs.
+-- One worker produces the same output bytes. Diagnostics retain source task
+-- order (preflight findings sort by location and message). Structure insertion,
+-- static/generated precedence, colliding image stems and / versus /index writes
+-- keep their serial precedence. A failed task prevents manifest advancement.
 entity GenerationRun {
     mode: RunMode
     source_location: String

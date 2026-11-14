@@ -337,10 +337,10 @@ impl Structure {
                 result.push(item.to_external_item()?)
             } else {
                 match self.by_path.get(&*item.url) {
-                    None => println!(
+                    None => crate::parallel::message(format!(
                         "Main menu entry with url {} does not match any page; dropping it from the menu.",
                         item.url
-                    ),
+                    )),
                     Some(i) => {
                         let children = self.by_parent.get(&*item.url);
                         let more = children
@@ -663,7 +663,10 @@ impl Structure {
         if let Some(p) = self.image_meta_cache.get(image_reference) {
             Some(to_internal_image(p.clone(), image_type))
         } else {
-            println!("No image was found with reference {}.", image_reference);
+            crate::parallel::message(format!(
+                "No image was found with reference {}.",
+                image_reference
+            ));
             None
         }
     }

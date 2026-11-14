@@ -32,6 +32,9 @@ enum Command {
         img_source: String,
         #[arg(long)]
         destination: String,
+        /// Maximum generation workers (defaults to available CPUs); use 1 for serial work.
+        #[arg(long)]
+        jobs: Option<std::num::NonZeroUsize>,
         /// Check the links of the published site, and fail if any are broken.
         #[arg(long = "check-links")]
         check_links: bool,
@@ -112,7 +115,8 @@ fn main() -> ExitCode {
             destination,
             check_links,
             external,
-        } => cli::generate::run(source, img_source, destination, check_links, external),
+            jobs,
+        } => cli::generate::run(source, img_source, destination, check_links, external, jobs),
         Command::Check {
             source,
             img_source,

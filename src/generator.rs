@@ -74,6 +74,31 @@ pub fn generate(
     img_source: &str,
     destination: &str,
 ) -> Result<GenerateReport, GenerateError> {
+    generate_inner(
+        source,
+        img_source,
+        destination,
+        std::thread::available_parallelism().map_or(1, usize::from),
+    )
+}
+
+/// Publishes with at most `jobs` workers per stage. One worker uses the same
+/// pipeline without spawning threads, for reproducibility and constrained hosts.
+pub fn generate_with_jobs(
+    source: &str,
+    img_source: &str,
+    destination: &str,
+    jobs: std::num::NonZeroUsize,
+) -> Result<GenerateReport, GenerateError> {
+    generate_inner(source, img_source, destination, jobs.get())
+}
+
+fn generate_inner(
+    source: &str,
+    img_source: &str,
+    destination: &str,
+    jobs: usize,
+) -> Result<GenerateReport, GenerateError> {
     use crate::check::FindingKind::*;
     let checked = crate::check::check(source, img_source);
     let mut errors = vec![];
@@ -118,6 +143,8 @@ pub fn generate(
             });
         }
     }
+    warnings.sort_by(|a, b| (&a.location, &a.message).cmp(&(&b.location, &b.message)));
+    errors.sort_by(|a, b| (&a.location, &a.detail).cmp(&(&b.location, &b.detail)));
     if !errors.is_empty() {
         return Err(GenerateError { findings: errors });
     }
@@ -156,14 +183,44 @@ pub fn generate(
     } else {
         Default::default()
     };
-    let mut image_processor = ImageProcessor::new(img_source, destination, preview_keys);
-    for (directory_path, list) in images {
-        if let Some(l) = list {
-            image_processor.process_list(&directory_path, l.list)?
-        }
+    let tasks: Vec<_> = images
+        .into_iter()
+        .flat_map(|(dir, list)| {
+            list.into_iter().flat_map(move |list| {
+                let dir = dir.clone();
+                list.list
+                    .into_iter()
+                    .map(move |reference| (dir.clone(), reference))
+            })
+        })
+        .collect();
+    // Different extensions can share an output stem. Preserve their historical
+    // last-writer precedence rather than racing on variants and cache records.
+    let mut stems = std::collections::HashSet::new();
+    let image_jobs = if tasks.iter().all(|(dir, reference)| {
+        stems.insert((
+            dir.clone(),
+            reference
+                .file_name
+                .rsplit_once('.')
+                .map_or(reference.file_name.as_str(), |(stem, _)| stem)
+                .to_owned(),
+        ))
+    }) {
+        jobs
+    } else {
+        1
+    };
+    let processed = crate::parallel::map(tasks, image_jobs, |(dir, reference)| {
+        let mut processor = ImageProcessor::new(img_source, destination, preview_keys.clone());
+        processor.process_list(&dir, vec![reference])?;
+        Ok::<_, GenerateError>(processor.meta_cache)
+    });
+    let mut metadata = dashmap::DashMap::new();
+    for result in processed {
+        metadata.extend(result?);
     }
-
-    let structure = Structure::new(image_processor.meta_cache);
+    let structure = Structure::new(metadata);
     let mut all_paths = vec![];
     // Static files go first, so a generated page at the same path wins.
     let static_files = match &main_config.static_dir {
@@ -171,14 +228,16 @@ pub fn generate(
         None => vec![],
     };
 
-    for (directory_path, page_config) in pages {
-        let content_items = to_content_items(
+    let content_items = crate::parallel::map(pages, jobs, |(directory_path, page_config)| {
+        to_content_items(
             source,
             directory_path,
             page_config,
             &structure,
             MarkdownOptions::for_site(&main_config),
-        );
+        )
+    });
+    for content_items in content_items {
         let path = content_items.item.path.clone();
         if let Some(notifications) = content_items.left_sub_notifications {
             structure.add_left_sub_notifications(&path, notifications)
@@ -199,8 +258,15 @@ pub fn generate(
     structure.sort();
 
     let generic_content = GenericContent::new(source, destination, &main_config, &menu_config)?;
-    let mut uses_mermaid = false;
-    for path in &all_paths {
+    // Both `/` and `/index` publish index.html (and index.md). Keep their
+    // established precedence if a site declares both.
+    let page_jobs = if all_paths.iter().any(|path| path == "/index") {
+        1
+    } else {
+        jobs
+    };
+    let rendered = crate::parallel::map(all_paths, page_jobs, |path| {
+        let path = &path;
         let content_helper = ContentHelper::new(path, &structure);
         let navigation = content_helper
             .get_navigation(&main_config, &menu_config)
@@ -208,7 +274,7 @@ pub fn generate(
         let main_content = content_helper.get_main_content(source, &generic_content);
         let page = content_helper.get_page(&navigation, &main_content, &generic_content);
 
-        uses_mermaid |= page.contains("data-mermaid-script=");
+        let uses_mermaid = page.contains("data-mermaid-script=");
 
         //generating the end html and writing it to file
         write_html(destination, path, &page)?;
@@ -216,6 +282,11 @@ pub fn generate(
             let markdown = content_helper.get_markdown(source, &generic_content);
             write_raw(destination, &crate::markdown::href(path), markdown)?;
         }
+        Ok::<_, GenerateError>(uses_mermaid)
+    });
+    let mut uses_mermaid = false;
+    for result in rendered {
+        uses_mermaid |= result?;
     }
     if uses_mermaid {
         write_raw(

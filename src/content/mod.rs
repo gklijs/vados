@@ -104,7 +104,10 @@ fn publish_favicon(
     let contents = match fs::read(format!("{}/{}", source, favicon)) {
         Ok(c) => c,
         Err(e) => {
-            println!("favicon {} could not be read, skipping it: {}", favicon, e);
+            crate::parallel::message(format!(
+                "favicon {} could not be read, skipping it: {}",
+                favicon, e
+            ));
             return Ok(None);
         }
     };

@@ -57,3 +57,13 @@ pkg-fmt = "tgz"
 
 [profile.release]
 strip = true
+
+# Keep image-heavy debug generation and tests practical.
+[profile.dev.package.image]
+opt-level = 3
+[profile.dev.package.fast_image_resize]
+opt-level = 3
+[profile.dev.package.webp]
+opt-level = 3
+[profile.dev.package.libwebp-sys]
+opt-level = 3

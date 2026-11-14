@@ -4,6 +4,10 @@
 
 ### Added
 
+- Parallel image processing, page rendering and HTML minification (#57), with `generate --jobs N`
+  to limit workers and `--jobs 1` for serial work. Diagnostics retain stable ordering, and image
+  codecs are optimized in dev builds to speed up image-heavy tests.
+
 - Optional Markdown versions alongside HTML pages (`"markdown": true` in `main.json`),
   with alternate links and content including events, agendas and dated listings (#61).
 

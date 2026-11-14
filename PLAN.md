@@ -315,3 +315,36 @@ event is available, including embed, registration button and CSP checks.
   and Clippy (`--all-targets -- -D warnings`) pass locally.
 - [ ] Maintainer commit and push, focused PR; full suite, browser and minimum-Rust
   checks pending in CI.
+
+## Decisions for #57
+
+- Scoped standard-library workers, bounded by available CPUs by default;
+  `generate --jobs N` and library `generate_with_jobs(NonZeroUsize)` allow
+  limits. `--jobs 1` uses the same pipeline without spawning workers.
+- One image task owns its processor/resizer; image metadata and page structure
+  are merged in input order. Page rendering, highlighting, minification and
+  writes run after `structure.sort()`. Static files still precede pages;
+  shared assets, feeds, search and manifest cleanup follow successful tasks.
+- Duplicate image output stems use a serial image stage; `/index` uses a serial
+  page stage because it shares root's HTML/Markdown output paths. This retains
+  existing last-writer precedence.
+- Renderer messages are buffered per task and replayed in input order;
+  preflight generation findings sort by location and message. Failed tasks
+  return the first input-order failure and never advance the output manifest.
+- Dev-profile optimization for image, fast_image_resize, webp and libwebp-sys.
+- Release profiling identified WebP encoding and HTML minification as the
+  dominant costs. Measurements and a prepared PR are in `docs/issue-57-pr.md`;
+  `scripts/benchmark-generation.py` reproduces the three workloads and checks
+  every output file, including cache metadata and manifests.
+
+## Progress for #57
+
+- [x] Parallel images, page-content preparation and rendering; worker limit,
+  deterministic diagnostics and collision precedence; README, spec, changelog.
+- [x] Regression coverage for serial/parallel/cached trees and messages,
+  colliding outputs, ordered decode failures and manifest preservation.
+- [x] Focused tests, formatting and Clippy (default and no default features).
+- [x] Release before/after timings and byte comparisons of the real fixture
+  and 2,000 Markdown pages recorded in the prepared PR.
+- [ ] Maintainer commit and push, focused PR; full suite, browser and minimum
+  Rust version checks in GitHub CI.

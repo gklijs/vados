@@ -8,11 +8,18 @@ pub fn run(
     destination: String,
     check_links: bool,
     external: bool,
+    jobs: Option<std::num::NonZeroUsize>,
 ) -> ExitCode {
     if !external_is_available(external) {
         return ExitCode::FAILURE;
     }
-    match generate(&source, &img_source, &destination) {
+    let result = match jobs {
+        Some(jobs) => {
+            vados::generator::generate_with_jobs(&source, &img_source, &destination, jobs)
+        }
+        None => generate(&source, &img_source, &destination),
+    };
+    match result {
         Ok(report) => {
             for warning in &report.warnings {
                 println!("{warning}");

@@ -82,6 +82,10 @@ Reads the source and image trees and publishes a complete site to `--destination
 vados generate --source root --img-source imgroot --destination public
 ```
 
+Image processing, page rendering and HTML minification use available CPUs by default. Set `--jobs N` to
+limit the workers, or `--jobs 1` for a serial run. Output bytes and diagnostic order are independent of the
+worker count. Image cache reuse and cleanup follow the same rules in either mode.
+
 Before writing, generation checks the source and reads every configuration file. Invalid JSON, unreadable source
 folders, unsupported content references and incomplete menu or social entries fail with file-specific diagnostics,
 leaving an existing destination untouched. Unreadable or malformed image manifests and missing image source files also
@@ -93,7 +97,8 @@ can leave partial output; fix the reported problem and run generation again. The
 a complete run.
 
 The library's `generator::generate` returns `Result<GenerateReport, GenerateError>`; the report contains the warnings,
-and the error contains the findings that prevented publication.
+and the error contains the findings that prevented publication. `generator::generate_with_jobs` accepts a
+`NonZeroUsize` worker limit.
 
 `--check-links` also runs the [link check](#checking-links) on the result, and fails if it finds anything broken;
 `--external` adds other sites to it, as warnings.
