@@ -144,8 +144,13 @@ fails fast with a clear message instead of hanging.
 - **`vados social remove --source root --match github`** -- removes an existing social link.
 - **`vados footer set --source root --content footer.md`** -- replaces the site-wide footer's content reference.
 - **`vados menu add-item --source root --url /blog`** -- appends one entry to the main menu. `--title` is required
-  for an external (`https://`) url; an internal one falls back to its target page's own title. There's no
-  `remove-item`/`update-item` yet -- edit `menu.json` by hand for that.
+  for an external (`https://`) url; an internal one falls back to its target page's own title.
+- **`vados menu remove-item --source root --match /blog`** -- removes a main-menu entry selected by a URL
+  substring. When several match, `--index` selects one by its zero-based index among the matches.
+- **`vados menu update-item --source root --match /blog --title News --position 0`** -- updates supplied
+  `--url`, `--title` or `--icon` fields, keeping omitted fields. `--clear-title` restores an internal link's
+  page title; `--clear-icon` removes its icon. `--position` moves the entry to a zero-based final position
+  in the full menu. Selection uses the same `--match`/`--index` rules as removal. Invalid edits leave the file untouched.
 - **`vados page add-luma-event --source root --path /events --event-id evt-AbC123 --title "Spring jam"`** -- links
   an event hosted on [Luma](https://luma.com) to a page; see [Luma events](#luma-events). `--display` picks
   `event-page` (the default), `register-button` or `both`; `--button-label` changes the button's text (default

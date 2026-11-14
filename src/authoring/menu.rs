@@ -1,5 +1,5 @@
-//! `footer set` and `menu add-item`: adjusts main.json's footer content
-//! reference and appends an entry to menu.json's main menu. See
+//! Footer and main-menu authoring: adjusts main.json's footer content
+//! reference and adds, updates or removes menu.json entries. See
 //! `vados.allium`'s `FooterUpdateRun` and `MenuLinkAdditionRun`.
 
 use super::page::page_exists_at;
@@ -78,6 +78,101 @@ pub struct MenuLinkAddedOutcome {
 
 fn url_already_in_menu(menu_config: &MenuConfig, url: &str) -> bool {
     menu_config.main_menu.iter().any(|item| item.url == url)
+}
+
+/// Fields omitted from an update keep their current values. The nested
+/// options allow an explicit clearing of a title or icon.
+#[derive(Debug, Default)]
+pub struct MenuLinkUpdate {
+    pub url: Option<String>,
+    pub title: Option<Option<String>>,
+    pub icon: Option<Option<String>>,
+    /// Zero-based final position in the full menu, after moving the entry.
+    pub position: Option<usize>,
+}
+
+fn invalid_request(message: &str) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, message)
+}
+
+fn select_menu_link(menu: &MenuConfig, pattern: &str, index: Option<i64>) -> io::Result<usize> {
+    let matches: Vec<_> = menu
+        .main_menu
+        .iter()
+        .enumerate()
+        .filter(|(_, item)| item.url.contains(pattern))
+        .map(|(i, _)| i)
+        .collect();
+    if matches.is_empty() {
+        return Err(invalid_request("no matching menu item; nothing to change"));
+    }
+    match index {
+        Some(i) if i < 0 || i as usize >= matches.len() => Err(invalid_request(
+            "--index does not name one of the matching menu items",
+        )),
+        Some(i) => Ok(matches[i as usize]),
+        None if matches.len() > 1 => Err(invalid_request(
+            "more than one menu item matches; use --index to pick one",
+        )),
+        None => Ok(matches[0]),
+    }
+}
+
+/// Removes a URL-substring match. Index is zero-based among matches, as in
+/// `social remove`. Rejections leave the file untouched.
+pub fn remove_menu_link(source: &str, pattern: &str, index: Option<i64>) -> io::Result<String> {
+    let path = Path::new(source).join("menu.json");
+    let mut menu: MenuConfig = read_json(&path)?;
+    let selected = select_menu_link(&menu, pattern, index)?;
+    let removed = menu.main_menu.remove(selected);
+    write_json_pretty(path, &menu)?;
+    Ok(removed.url)
+}
+
+/// Updates only the supplied fields and optionally moves the selected entry.
+/// All validation finishes before writing the file.
+pub fn update_menu_link(
+    source: &str,
+    pattern: &str,
+    index: Option<i64>,
+    update: MenuLinkUpdate,
+) -> io::Result<String> {
+    let path = Path::new(source).join("menu.json");
+    let mut menu: MenuConfig = read_json(&path)?;
+    let selected = select_menu_link(&menu, pattern, index)?;
+    if update.url.is_none()
+        && update.title.is_none()
+        && update.icon.is_none()
+        && update.position.is_none()
+    {
+        return Err(invalid_request(
+            "give a URL, title, icon, clearing flag or position to update",
+        ));
+    }
+    let position = update.position.unwrap_or(selected);
+    if position >= menu.main_menu.len() {
+        return Err(invalid_request("--position is outside the main menu"));
+    }
+    let mut item = menu.main_menu.remove(selected);
+    if let Some(url) = update.url {
+        item.url = url;
+    }
+    if let Some(title) = update.title {
+        item.title = title;
+    }
+    if let Some(icon) = update.icon {
+        item.icon = icon;
+    }
+    if menu_link_kind_of(&item.url) == MenuLinkKind::External && item.title.is_none() {
+        return Err(invalid_request("an external menu link needs a title"));
+    }
+    if url_already_in_menu(&menu, &item.url) {
+        return Err(invalid_request("this url is already in the main menu"));
+    }
+    let url = item.url.clone();
+    menu.main_menu.insert(position, item);
+    write_json_pretty(path, &menu)?;
+    Ok(url)
 }
 
 /// `menu add-item`. See `vados.allium`'s `ApplyMenuLinkAddition`. Single-phase

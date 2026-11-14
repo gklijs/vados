@@ -1,13 +1,13 @@
-use super::prompt::require_flag;
+use super::prompt::{report_change, require_flag};
 use clap::Subcommand;
 use std::process::ExitCode;
 use vados::authoring::menu::{self as menu_authoring, MenuLinkKind};
 
 #[derive(Subcommand)]
 pub enum MenuCommand {
-    /// Appends one entry to menu.json's main menu. There is no
-    /// `remove-item`/`update-item` yet -- edit menu.json by hand for that.
-    AddItem {
+    /// Appends one entry to menu.json's main menu.
+    #[command(name = "add-item")]
+    Add {
         #[arg(long)]
         source: String,
         /// A site-relative path (e.g. `/blog`) or an `https://` url.
@@ -20,16 +20,104 @@ pub enum MenuCommand {
         #[arg(long)]
         icon: Option<String>,
     },
+    /// Removes a main-menu entry selected by a substring of its URL.
+    #[command(name = "remove-item")]
+    Remove {
+        #[arg(long)]
+        source: String,
+        #[arg(long = "match")]
+        match_value: Option<String>,
+        /// Zero-based index among matching entries.
+        #[arg(long)]
+        index: Option<i64>,
+    },
+    /// Changes supplied fields of an entry, keeping omitted fields.
+    #[command(name = "update-item")]
+    Update {
+        #[arg(long)]
+        source: String,
+        #[arg(long = "match")]
+        match_value: Option<String>,
+        /// Zero-based index among matching entries.
+        #[arg(long)]
+        index: Option<i64>,
+        #[arg(long)]
+        url: Option<String>,
+        #[arg(long, conflicts_with = "clear_title")]
+        title: Option<String>,
+        #[arg(long, conflicts_with = "clear_icon")]
+        icon: Option<String>,
+        /// Falls back to the target page's title; requires an internal URL.
+        #[arg(long)]
+        clear_title: bool,
+        #[arg(long)]
+        clear_icon: bool,
+        /// Zero-based final position in the full main menu.
+        #[arg(long)]
+        position: Option<usize>,
+    },
 }
 
 pub fn run(command: MenuCommand) -> ExitCode {
     match command {
-        MenuCommand::AddItem {
+        MenuCommand::Add {
             source,
             url,
             title,
             icon,
         } => run_menu_add_item(source, url, title, icon),
+        MenuCommand::Remove {
+            source,
+            match_value,
+            index,
+        } => {
+            let Some(pattern) = require_flag(match_value, "match", "Menu URL substring") else {
+                return ExitCode::FAILURE;
+            };
+            report_change(
+                menu_authoring::remove_menu_link(&source, &pattern, index)
+                    .map(|url| format!("Removed menu link {url}"))
+                    .map_err(|e| e.to_string()),
+            )
+        }
+        MenuCommand::Update {
+            source,
+            match_value,
+            index,
+            url,
+            title,
+            icon,
+            clear_title,
+            clear_icon,
+            position,
+        } => {
+            let Some(pattern) = require_flag(match_value, "match", "Menu URL substring") else {
+                return ExitCode::FAILURE;
+            };
+            report_change(
+                menu_authoring::update_menu_link(
+                    &source,
+                    &pattern,
+                    index,
+                    menu_authoring::MenuLinkUpdate {
+                        url,
+                        title: if clear_title {
+                            Some(None)
+                        } else {
+                            title.map(Some)
+                        },
+                        icon: if clear_icon {
+                            Some(None)
+                        } else {
+                            icon.map(Some)
+                        },
+                        position,
+                    },
+                )
+                .map(|url| format!("Updated menu link {url}"))
+                .map_err(|e| e.to_string()),
+            )
+        }
     }
 }
 
