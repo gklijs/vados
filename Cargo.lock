@@ -2191,7 +2191,7 @@ dependencies = [
 
 [[package]]
 name = "vados"
-version = "0.6.0-rc.1"
+version = "0.6.0"
 dependencies = [
  "askama",
  "clap",

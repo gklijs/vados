@@ -1,5 +1,22 @@
 # Open issue implementation plan
 
+## 0.6.0 stable release
+
+- [x] Promote the validated RC to `0.6.0` in Cargo.toml, Cargo.lock and the
+  dated changelog. Preserve an RC history entry. No runtime code or dependency
+  versions changed after the tested RC.
+- [x] Stable-version release build, 11 focused schema/scaffold tests,
+  formatting, Clippy with default and no default features, source-package
+  compilation and stable release-notes/archive
+  smoke checks pass. Host smoke confirms normal-release classification;
+  static Linux builds remain tag-triggered CI checks.
+- [ ] Maintainer commit/push; verify full candidate CI before tagging `v0.6.0`.
+- [ ] Maintainer pushes stable tag; verify both musl archive jobs and the
+  published GitHub release, checksums and stable schema URLs.
+- The two sandbox-blocked downstream swamp_sites checks remain documented
+  follow-ups; vados's own full suite and browser CI passed for the RC.
+- Release handoff and proposed PR text: `docs/release-0.6.0.md`.
+
 ## 0.6.0-rc.1 preparation
 
 - [x] Set the package and lockfile version to `0.6.0-rc.1`; moved the pending
@@ -9,11 +26,25 @@
 - [x] Offline release build, 11 focused schema/scaffold tests, formatting,
   Clippy with default and no default features, workflow YAML parsing and
   local host archive/notes smoke checks pass.
-- [ ] Maintainer commit/push and candidate CI: full suite, browser, minimum
-  Rust version and dependency audit. Commits, pushes and tagging remain manual.
-- [ ] After candidate CI passes, maintainer tags `v0.6.0-rc.1`; inspect both
-  musl archive jobs and the GitHub prerelease, verify hosted schemas, and run
-  a real Netlify deploy using a scaffold created by the released RC.
+- [x] Maintainer pushed `7f0ee2d` on main and tagged `v0.6.0-rc.1`.
+  Full suite, browser and minimum Rust version pass in
+  [CI](https://github.com/gklijs/vados/actions/runs/43613012034);
+  [dependency audit](https://github.com/gklijs/vados/actions/runs/43613012028) passes.
+- [x] Both native musl builds and archive smoke tests pass in the
+  [release workflow](https://github.com/gklijs/vados/actions/runs/43613012032).
+  GitHub prerelease published; downloaded archive checksums and icon notices
+  verified, x86_64 binary runs locally, all four public schema URLs resolve
+  and match the committed schemas.
+- [x] Downloaded x86_64 musl RC rebuilt all four temporary swamp_sites sites
+  through their full pipelines, with their temporary version pin updated to
+  the RC. All final link checks report zero errors and warnings.
+- [x] VS Code JSON language-service checks pass for all four downloaded public
+  schemas: property completion, valid configurations, unknown-key diagnostics
+  and page childOrder enums. No graphical editor session was tested.
+- [x] Fresh released-RC scaffold built through Netlify CLI using its generated
+  pinned download/checksum/Sass/generate command, then deployed as a draft.
+  HTTPS homepage and CSS checks pass; production blog deploy unchanged.
+  This used a local CLI build, not Netlify's hosted build workers.
 - Prepared PR and release handoff: `docs/rc1-release.md`.
 
 ## Release dry run (2026-11-14)
@@ -157,8 +188,9 @@ event is available, including embed, registration button and CSP checks.
 - [x] Formatting, Clippy (default and no default features), full local suite
   and `cargo +1.88.0 check --all-targets --locked` pass.
 - [x] Merged as PR #70, CI green.
-- [ ] After the first release that includes `schemas/`: check that the URLs
-  resolve and an editor picks them up, then offer the schemas to SchemaStore
+- [x] RC public schema URLs resolve; VS Code JSON language-service completion
+  and diagnostics work with the downloaded schemas (no GUI editor check).
+- [ ] Offer the schemas to SchemaStore
   (needs path patterns, since `main.json`/`menu.json`/`page.json` are common
   names). Not done here: that's an outside submission.
 
@@ -215,11 +247,12 @@ event is available, including embed, registration button and CSP checks.
   `.gitattributes` keeps LF normalization for Windows-side WSL checkouts;
   release targets are Linux only. The optional native-Windows note was
   deliberately omitted (documentation only, as decided above).
-- [ ] Pre-release tag (for example `v0.6.0-rc.1`, with that version in
-  `Cargo.toml`) to run the workflow for real, including the aarch64 build.
-- [ ] One real Netlify deploy of a site scaffolded by a released version.
-  These two release/deploy checks remain follow-up validation for #58; no
-  release workflow run exists yet as of 2026-11-14.
+- [x] `v0.6.0-rc.1` release workflow passed for both architectures, including
+  native aarch64 archive execution; downloaded checksums and notices verified.
+- [x] Fresh RC scaffold built with Netlify CLI and deployed as a draft on the
+  existing blog project; HTTPS homepage/CSS pass, live blog unchanged. Build
+  command downloaded and verified the released binary; hosted build workers
+  were not exercised. Details in `docs/rc1-release.md`.
 
 ## Decisions for #59
 
