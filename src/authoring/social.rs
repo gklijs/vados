@@ -155,12 +155,10 @@ pub struct SocialLinkChangedOutcome {
 }
 
 fn resolved_icon(provider: SocialProviderKind, given: &Option<String>) -> Option<String> {
-    canonical_icon(provider)
-        .map(String::from)
-        .or_else(|| given.clone())
+    crate::structure::resolve_metadata(provider, given, canonical_icon(provider))
 }
 
-/// Unlike the icon and label, a given brand color wins over a recognised
+/// A given brand color wins over a recognised
 /// provider's own, the same as when generating (`SocialItem::new`).
 fn resolved_brand_color(provider: SocialProviderKind, given: &Option<String>) -> Option<String> {
     given
@@ -175,9 +173,7 @@ fn given_brand_color(given: &GivenSocialLink) -> Option<String> {
 }
 
 fn resolved_label(provider: SocialProviderKind, given: &Option<String>) -> Option<String> {
-    canonical_label(provider)
-        .map(String::from)
-        .or_else(|| given.clone())
+    crate::structure::resolve_metadata(provider, given, canonical_label(provider))
 }
 
 fn menu_json_path(source: &str) -> std::path::PathBuf {

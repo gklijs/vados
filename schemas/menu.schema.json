@@ -43,7 +43,7 @@
           ]
         },
         "icon": {
-          "description": "A Material Design Icons name. Required for a site vados doesn't recognise.",
+          "description": "A bundled icon name (Material Design Icons plus extra social logos). Required for a site vados doesn't recognise.",
           "type": [
             "string",
             "null"
@@ -57,7 +57,7 @@
           ]
         },
         "url": {
-          "description": "The profile's address. vados recognises GitHub, LinkedIn, Facebook, YouTube, Twitter/X and Mastodon links by it.",
+          "description": "The profile address or mailto: email link. Common providers are recognised by host (with or without www.); see the README for the supported list.",
           "type": "string"
         }
       },

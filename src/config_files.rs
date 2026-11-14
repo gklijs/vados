@@ -767,10 +767,10 @@ pub(crate) const HEX_COLOR_PATTERN: &str =
 #[cfg_attr(test, schemars(deny_unknown_fields))]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RawSocialItem {
-    /// The profile's address. vados recognises GitHub, LinkedIn, Facebook,
-    /// YouTube, Twitter/X and Mastodon links by it.
+    /// The profile address or mailto: email link. Common providers are recognised
+    /// by host (with or without www.); see the README for the supported list.
     pub(crate) url: String,
-    /// A Material Design Icons name. Required for a site vados doesn't
+    /// A bundled icon name (Material Design Icons plus extra social logos). Required for a site vados doesn't
     /// recognise.
     pub(crate) icon: Option<String>,
     /// The icon's colour, in hex with or without `#`, such as `6364FF`.

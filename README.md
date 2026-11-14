@@ -133,11 +133,23 @@ fails fast with a clear message instead of hanging.
   `--existing-reference`) to a page. The first image attached to a page becomes its hero; every one after becomes a
   notification, unless `--as hero`/`--as notification` overrides that.
 - **`vados social add --source root --provider github --handle gklijs`** -- adds a social link, named either by
-  `--provider`/`--handle` for a recognised provider (github, linkedin, facebook, youtube, twitter) or by `--url`
+  `--provider`/`--handle` for a recognised provider (see below) or by `--url`
   (plus `--icon`/`--brand-color`/`--label` for one vados doesn't recognise automatically -- `--label` is the link's
   accessible name, since it's rendered as an icon with no visible text). `--brand-color` (hex, with or without `#`)
   also overrides a recognised provider's own color, for example to show every icon in white on a dark navbar.
   `--provider mastodon --handle you@instance` adds a Mastodon link with its icon, color and label filled in.
+  Supported providers: github, linkedin, facebook, youtube, twitter (X), bluesky, instagram, threads, tiktok,
+  twitch, discord, reddit, gitlab, codeberg, stackoverflow, medium, spotify, soundcloud, vimeo, pinterest,
+  telegram, whatsapp, signal and email. The init wizard offers these too. A URL alone is enough, for example
+  `vados social add --source root --url https://bsky.app/profile/you.bsky.social` or
+  `--url mailto:you@example.com`. Web links are recognised by their exact host, with or without `www.`,
+  regardless of the path; a shared `/@you` path on an unknown host doesn't identify a provider.
+  For `--handle`, omit a leading `@` (the provider's profile URL adds it where needed). Use a Discord user ID,
+  Stack Overflow user ID, Spotify user ID, WhatsApp international phone number (digits only), Signal share-link
+  token (the part after `#eu/`), or a full email address. For Discord invitations and Signal phone-number links,
+  supply the complete `--url` instead. Self-hosted GitLab and other hosts still need custom metadata.
+  Existing custom links to the new providers keep their explicit icon, colour and accessible name; missing
+  fields get provider defaults. The original five providers keep their canonical icon and name.
 - **`vados social update --source root --match github --url https://github.com/newhandle`** -- replaces an existing
   social link wholesale (same naming rules as `add`). `--match` is a substring of the existing link's url; `--index`
   disambiguates when more than one matches.
@@ -402,7 +414,11 @@ colour-scheme preference, so pages show its dark theme to readers who prefer one
 icons -- stay as chosen in both themes. What sits on a chosen colour follows that colour instead of the reader's
 scheme (Bulma's `theme-light` on a light colour, `theme-dark` on a dark one), so a heading in a yellow notification
 stays dark, and a yellow navbar's menus stay light. A brand colour that is hard to see on the navbar can be overridden
-with `color` in `menu.json`.
+with `color` in `menu.json` or `--brand-color` when adding/updating the link. No brand colour is readable on
+every navbar: black logos (Threads, TikTok, Medium and email) disappear on a black navbar, while bright logos
+(such as Spotify and WhatsApp) need a darker override on a white navbar. Check the chosen colours together;
+use white (`ffffff`) on Black/Dark/Link navbars and black (`000000`) on the other default Bulma navbar colours.
+Custom stylesheets may need different overrides.
 
 A page's own content sits in Bulma columns, with its left and right notifications in a two-column Bulma grid below it,
 read row by row; on a phone they stack in that same order. Side by side the tiles grow to end with a taller side
@@ -750,6 +766,9 @@ No Node.js or browser is needed to generate a site.
 Icons -- on menu entries (`icon` in `menu.json` and `page.json`), social links, breadcrumbs and the side menu -- are
 [Material Design Icons](https://pictogrammers.com/library/mdi/) names (`home`, `github`, `rss`, ...), drawn inline as
 SVG in the colour of the surrounding text, and `list` is short for `format-list-bulleted`. Pages load no icon font.
+The bundled set also includes `bluesky`, `threads`, `tiktok`, `discord`, `codeberg`, `medium`, `telegram` and
+`signal-messenger` from [Simple Icons](https://github.com/simple-icons/simple-icons) (CC0; see
+[icon sources](assets/mdi/README.md)). `signal` itself remains MDI's signal-strength icon.
 `check` warns about a name that isn't in the set,
 suggesting close ones when there are any; that icon is then left out, with no gap where it would have been. Content that uses the font's own classes (`<span class="mdi mdi-github">`) needs its
 stylesheet in `cssFiles`.

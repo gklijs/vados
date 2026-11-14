@@ -1,10 +1,11 @@
-//! Material Design Icons, inlined as SVG wherever vados shows an icon, so a
+//! Bundled icons, inlined as SVG wherever vados shows an icon, so a
 //! page loads no icon font. See `vados.allium`'s `IconsAreInlined`.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-/// Every icon's SVG path from `@mdi/svg`, as `name path` lines, then the
+/// SVG paths from `@mdi/svg` and extra social logos from Simple Icons, as
+/// `name path` lines, then the
 /// aliases of renamed icons as `alias =name`. See `assets/mdi/README.md`.
 const PATHS: &str = include_str!("../assets/mdi/paths.txt");
 
@@ -37,7 +38,7 @@ fn paths() -> &'static HashMap<&'static str, &'static str> {
     })
 }
 
-/// Whether `name` is a Material Design Icons name vados can show. Accepts
+/// Whether `name` is a bundled icon vados can show. Accepts
 /// the name with or without the `mdi-` prefix the icon font used.
 pub(crate) fn is_known_icon(name: &str) -> bool {
     paths().contains_key(bare_name(name))

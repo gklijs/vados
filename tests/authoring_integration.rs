@@ -26,6 +26,101 @@ use vados::init::{self, ProjectBasics};
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
 #[test]
+fn social_cli_recognises_new_providers_and_keeps_existing_custom_links() {
+    use serde_json::{json, Value};
+    let project = TestProject::new("social_providers");
+    let path = PathBuf::from(&project.source).join("menu.json");
+    let cases = [
+        (
+            "bluesky",
+            "you.bsky.social",
+            "https://bsky.app/profile/you.bsky.social",
+        ),
+        ("instagram", "you", "https://www.instagram.com/you"),
+        ("threads", "you", "https://www.threads.com/@you"),
+        ("tiktok", "you", "https://www.tiktok.com/@you"),
+        ("twitch", "you", "https://www.twitch.tv/you"),
+        ("discord", "12345", "https://discord.com/users/12345"),
+        ("reddit", "you", "https://www.reddit.com/user/you"),
+        ("gitlab", "you", "https://gitlab.com/you"),
+        ("codeberg", "you", "https://codeberg.org/you"),
+        (
+            "stackoverflow",
+            "12345",
+            "https://stackoverflow.com/users/12345",
+        ),
+        ("medium", "you", "https://medium.com/@you"),
+        ("spotify", "you", "https://open.spotify.com/user/you"),
+        ("soundcloud", "you", "https://soundcloud.com/you"),
+        ("vimeo", "you", "https://vimeo.com/you"),
+        ("pinterest", "you", "https://www.pinterest.com/you"),
+        ("telegram", "you", "https://t.me/you"),
+        ("whatsapp", "31612345678", "https://wa.me/31612345678"),
+        ("signal", "token", "https://signal.me/#eu/token"),
+        ("email", "you@example.com", "mailto:you@example.com"),
+    ];
+    let mut menu: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    // A menu authored before these hosts were recognised.
+    menu["socials"] = Value::Array(cases.iter().enumerate().map(|(i, (_, _, url))|
+        json!({"url":url,"icon":"home","color":"#abcdef","label":format!("Custom {i}")})
+    ).collect());
+    fs::write(&path, serde_json::to_vec(&menu).unwrap()).unwrap();
+    let original = fs::read(&path).unwrap();
+    let dest = project.dir.join("public");
+    generate(&project.source, &project.img_source, dest.to_str().unwrap()).unwrap();
+    let html = fs::read_to_string(dest.join("index.html")).unwrap();
+    let page = scraper::Html::parse_document(&html);
+    let links = scraper::Selector::parse("#nav-socials a").unwrap();
+    for (i, link) in page.select(&links).enumerate() {
+        assert_eq!(
+            link.value().attr("aria-label"),
+            Some(format!("Custom {i}").as_str())
+        );
+        assert_eq!(link.value().attr("rel"), Some("me noopener"));
+        assert!(link.inner_html().contains("#abcdef"));
+        assert!(link.inner_html().contains("<svg"));
+    }
+    assert_eq!(page.select(&links).count(), cases.len());
+    assert!(!html.contains("fediverse:creator"));
+    assert_eq!(fs::read(&path).unwrap(), original);
+    menu["socials"] = json!([]);
+    fs::write(&path, serde_json::to_vec(&menu).unwrap()).unwrap();
+    let run = |args: &[&str]| {
+        let output = std::process::Command::new(env!("CARGO_BIN_EXE_vados"))
+            .args(["social", "add", "--source", &project.source])
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    };
+    // Exercise both CLI input forms for every new provider.
+    for (provider, handle, url) in cases {
+        run(&["--provider", provider, "--handle", handle]);
+        let authored: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(authored["socials"][0]["url"], url);
+        menu["socials"] = json!([]);
+        fs::write(&path, serde_json::to_vec(&menu).unwrap()).unwrap();
+        run(&["--url", url, "--brand-color", "#ffffff"]);
+        let authored: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(authored["socials"][0]["color"], "ffffff");
+        let report = check(&project.source, &project.img_source);
+        assert!(
+            !report.findings.iter().any(|f| matches!(
+                f.kind,
+                FindingKind::UnrecognisedSocialLinkIncomplete | FindingKind::UnknownIcon
+            )),
+            "{:?}",
+            report.findings
+        );
+        fs::write(&path, serde_json::to_vec(&menu).unwrap()).unwrap();
+    }
+}
+
+#[test]
 fn menu_cli_updates_reorders_removes_and_preserves_unrelated_configuration() {
     use serde_json::{json, Value};
     let project = TestProject::new("menu_editing");

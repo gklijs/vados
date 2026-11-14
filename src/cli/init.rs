@@ -46,7 +46,16 @@ pub fn run_init() -> ExitCode {
     println!("\nSocial links -- leave any of these blank to skip it.");
     let mut socials: Vec<SocialHandle> = Vec::new();
     for provider in RecognizedSocialProvider::all() {
-        if let Some(handle) = prompt_optional(&format!("{} handle", provider.label())) {
+        let input = match provider {
+            RecognizedSocialProvider::Discord
+            | RecognizedSocialProvider::StackOverflow
+            | RecognizedSocialProvider::Spotify => "user ID",
+            RecognizedSocialProvider::WhatsApp => "phone number (international digits only)",
+            RecognizedSocialProvider::Signal => "share-link token (after #eu/)",
+            RecognizedSocialProvider::Email => "address",
+            _ => "handle (without a leading @)",
+        };
+        if let Some(handle) = prompt_optional(&format!("{} {input}", provider.label())) {
             socials.push(SocialHandle { provider, handle });
         }
     }

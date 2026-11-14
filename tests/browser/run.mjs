@@ -122,10 +122,21 @@ function allPastAgendaSite() {
   });
 }
 
+// New provider defaults are brand colours; the documented monochrome override
+// is how authors keep those icons readable on every standard navbar colour.
+const socialAddresses = [
+  "https://bsky.app/profile/you", "https://instagram.com/you", "https://threads.com/@you",
+  "https://tiktok.com/@you", "https://twitch.tv/you", "https://discord.com/users/123",
+  "https://reddit.com/user/you", "https://gitlab.com/you", "https://codeberg.org/you",
+  "https://stackoverflow.com/users/123", "https://medium.com/@you", "https://open.spotify.com/user/you",
+  "https://soundcloud.com/you", "https://vimeo.com/you", "https://pinterest.com/you",
+  "https://t.me/you", "https://wa.me/31612345678", "https://signal.me/#eu/token", "mailto:you@example.com",
+];
+
 function colourSite(color) {
   return generate(`colour-${color}`, {
     "main.json": mainJson({ navbarColor: color }),
-    "menu.json": { mainMenu: [{ url: "/sec", title: null, icon: null }, { url: "/other", title: null, icon: null }], socials: [] },
+    "menu.json": { mainMenu: [{ url: "/sec", title: null, icon: null }, { url: "/other", title: null, icon: null }], socials: socialAddresses.map((url) => ({ url, color: ["Black", "Dark", "Link"].includes(color) ? "ffffff" : "000000" })) },
     "page.json": { title: "Home", content: "<p>x</p>" },
     "sec/page.json": { title: "Sec", content: "<p>x</p>" },
     "sec/kid/page.json": { title: "Kid", content: "<p>x</p>" },
@@ -312,6 +323,12 @@ async function checkContrast(browser) {
           active: color(document.querySelector(".navbar-link.is-active")),
           child: color(child),
           childBackground: rgb(getComputedStyle(child).backgroundColor),
+          socials: [...document.querySelectorAll("#nav-socials a")].map((link) => ({
+            label: link.getAttribute("aria-label"),
+            colour: color(link.querySelector(".icon")),
+            hasSvg: !!link.querySelector("svg path"),
+            rel: link.getAttribute("rel"),
+          })),
         };
       });
       const label = `${color} navbar in ${colorScheme}`;
@@ -321,6 +338,12 @@ async function checkContrast(browser) {
         ["active child", contrast(colours.child, colours.childBackground)],
       ]) {
         check(`${label}: ${name} reaches 4.5:1`, ratio >= 4.5, ratio.toFixed(2));
+      }
+      check(`${label}: every new social provider renders`, colours.socials.length === socialAddresses.length);
+      for (const social of colours.socials) {
+        const ratio = contrast(social.colour, colours.bar);
+        check(`${label}: ${social.label} override reaches 3:1`, ratio >= 3, ratio.toFixed(2));
+        check(`${label}: ${social.label} has an SVG and rel=me`, social.hasSvg && social.rel === "me noopener");
       }
       await context.close();
     }

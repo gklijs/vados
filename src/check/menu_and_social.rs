@@ -33,9 +33,9 @@ pub(super) fn check_menu(
         .map(|i| (&i.url, &i.icon))
         .chain(menu_config.socials.iter().map(|s| (&s.url, &s.icon)));
     for (url, icon) in menu_icons {
-        // A recognised provider's icon is its own, whatever menu.json says.
+        // Only the original five providers override explicit icons.
         let shown = !menu_config.socials.iter().any(|s| &s.url == url)
-            || !is_recognized_social_provider(url);
+            || !crate::structure::classify_social_provider(url).prefers_canonical_metadata();
         if let Some(icon) = icon.as_ref().filter(|i| shown && !is_known_icon(i)) {
             findings.push(Finding {
                 kind: FindingKind::UnknownIcon,
@@ -61,6 +61,20 @@ pub(super) fn check_menu(
 mod tests {
     use crate::check::test_support::*;
     use crate::check::{FindingKind, Severity};
+
+    #[test]
+    fn a_new_providers_explicit_unknown_icon_is_reported() {
+        let site = TestSite::new("new_social_custom_icon");
+        site.write_source("main.json", VALID_MAIN_JSON);
+        site.write_source("page.json", VALID_PAGE_JSON);
+        site.write_source("menu.json", r#"{"mainMenu":[],"socials":[{"url":"https://bsky.app/profile/you","icon":"no-such-icon","color":"123456","label":"Custom"}]}"#);
+        let report = site.check();
+        assert_eq!(count_kind(&report, FindingKind::UnknownIcon), 1);
+        assert_eq!(
+            count_kind(&report, FindingKind::UnrecognisedSocialLinkIncomplete),
+            0
+        );
+    }
 
     #[test]
     fn unresolved_internal_menu_link_is_a_warning() {

@@ -4,6 +4,10 @@
 
 ### Added
 
+- Recognise 19 more social providers, including Bluesky, Instagram, Threads, TikTok and email (#63).
+  URLs fill missing metadata; handles work in the CLI and init wizard. Existing custom links to the new
+  providers keep their explicit icon, colour and accessible name. Missing logos are bundled from Simple Icons.
+
 - `menu remove-item` and `menu update-item` select entries by URL substring and optional match index (#60).
   Updates keep omitted fields, can clear titles and icons, and can reorder entries with `--position`.
 

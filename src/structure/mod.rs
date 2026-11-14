@@ -18,11 +18,11 @@ use std::sync::Arc;
 
 mod social;
 
-pub(crate) use social::is_recognized_social_provider;
 pub use social::{
     canonical_brand_color, canonical_icon, canonical_label, classify_social_provider,
     normalize_brand_color, RecognizedSocialProvider, SocialItem, SocialProviderKind,
 };
+pub(crate) use social::{is_recognized_social_provider, resolve_metadata};
 
 /// The path one level up from `path`, or `None` for the root itself. Public
 /// (rather than crate-private) because the content-authoring commands need

@@ -179,10 +179,18 @@ event is available, including embed, registration button and CSP checks.
   and the scaffolded Netlify command against that archive with `curl` and
   `npm` stubbed. Formatting, Clippy (default and no default features), full
   suite and the 1.88.0 check pass.
-- [ ] Maintainer commits, pushes, PR, CI.
+- [x] Merged as PR #71; build, browser and minimum-Rust-version checks pass
+  in GitHub CI.
+- [x] #65 complete: README installation guidance and the scaffolded README
+  state Linux/WSL support; the spec records the platform assumption;
+  `.gitattributes` keeps LF normalization for Windows-side WSL checkouts;
+  release targets are Linux only. The optional native-Windows note was
+  deliberately omitted (documentation only, as decided above).
 - [ ] Pre-release tag (for example `v0.6.0-rc.1`, with that version in
   `Cargo.toml`) to run the workflow for real, including the aarch64 build.
 - [ ] One real Netlify deploy of a site scaffolded by a released version.
+  These two release/deploy checks remain follow-up validation for #58; no
+  release workflow run exists yet as of 2026-11-14.
 
 ## Decisions for #59
 
@@ -252,3 +260,44 @@ event is available, including embed, registration button and CSP checks.
   image attachments.
 - [ ] Page deletion with child-page and incoming-link safeguards.
 - [ ] Follow-up methods in vados-swamp (separate repository).
+
+## Decisions for #63
+
+- Include all 19 candidates: Bluesky, Instagram, Threads, TikTok, Twitch,
+  Discord, Reddit, GitLab, Codeberg, Stack Overflow, Medium, Spotify,
+  SoundCloud, Vimeo, Pinterest, Telegram, WhatsApp, Signal and email.
+- Recognise exact HTTP(S) hosts, optionally prefixed by `www.`, and nonempty
+  `mailto:` addresses. Shared `/@user` paths do not identify providers.
+  Handle expansion uses user IDs for Discord/Stack Overflow/Spotify,
+  international digits for WhatsApp, a share-link token for Signal and an
+  address for email. Threads writes threads.com and also accepts threads.net.
+- Existing custom links to newly recognised providers keep explicit icons,
+  colours and labels; missing metadata gets defaults. The original five
+  providers keep their canonical-icon/label precedence. All providers keep
+  explicit colour overrides. Mastodon/fediverse creator inference is unchanged.
+- Eight missing logos come from Simple Icons 16.0.0 (CC0), with pinned source
+  and licence in `assets/mdi`. Use `signal-messenger` so MDI's signal-strength
+  icon remains intact. Brand colours come from the same pinned release.
+- Contrast uses the existing explicit-colour mechanism. All 19 defaults were
+  compared against all ten stock Bulma navbar colours (3:1 for icons); every
+  default needs an override on some backgrounds. White on Black/Dark/Link
+  and black on the other stock navbars gives at least 5.14:1. README explains
+  this; browser tests cover those overrides in both colour schemes. Custom
+  stylesheets still need their own contrast check.
+
+## Progress for #63
+
+- [x] Shared provider table, host recognition, CLI values and init wizard list;
+  custom-link compatibility and check's effective-icon diagnostics.
+- [x] Bundled logos and provenance, README, schema descriptions, CHANGELOG and
+  provider rules in `vados.allium`.
+- [x] Local social/icon/check tests, all-provider CLI integration test, init
+  tests and schema integration tests pass. Brand palette calculations pass.
+- [x] Formatting and Clippy (default and no default features), existing
+  real-site generation regression tests; browser JavaScript syntax check.
+- [ ] Maintainer commit and push, focused PR; full suite, browser contrast
+  checks and minimum-Rust-version checks in GitHub CI.
+- [ ] Follow-up in vados-swamp: `vados.ts` has the old provider list in its
+  provider schema description and `social_add` description. Its input is a
+  string, so the new names work once the installed vados includes #63;
+  update those descriptions separately.
