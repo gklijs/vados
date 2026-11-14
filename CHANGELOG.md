@@ -4,6 +4,9 @@
 
 ### Added
 
+- `menu remove-item` and `menu update-item` select entries by URL substring and optional match index (#60).
+  Updates keep omitted fields, can clear titles and icons, and can reorder entries with `--position`.
+
 - Ready-made Linux binaries for each release (#58), for x86_64 and aarch64, statically linked and with a checksum,
   built and published by a workflow when a version tag is pushed. `cargo binstall vados` finds them.
 

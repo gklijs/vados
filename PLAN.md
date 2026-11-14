@@ -224,3 +224,31 @@ event is available, including embed, registration button and CSP checks.
 - [ ] Dependabot's first pull requests open after merge and pass CI.
 - [ ] Not done here: the release archive doesn't include `assets/mdi/LICENSE`
   although the binary embeds the icons; consider adding it.
+
+## Decisions for #60
+
+- Land menu editing first, then feature removal, then page deletion with its
+  own link and child-page safeguards, as specified in the order above.
+- `menu remove-item` and `menu update-item` use URL-substring `--match` and
+  zero-based `--index` among matches, like the social commands.
+- Updates keep omitted fields. `--clear-title` and `--clear-icon` explicitly
+  clear them; external links must still have a title. `--position` is the
+  zero-based final position in the full menu. Duplicate URLs, invalid
+  positions, missing/ambiguous matches and requests with no changes reject
+  before writing. Internal forward references remain allowed.
+
+## Progress for #60
+
+- [x] Menu remove/update commands, partial field updates and reordering;
+  README, CHANGELOG and `vados.allium` updated.
+- [x] Focused CLI integration test and seven menu unit tests pass. Coverage
+  includes ambiguous/indexed selection, invalid edits leaving bytes unchanged,
+  moving in both directions, clearing fields, add/remove restoration,
+  preservation of socials and `$schema`, and unknown-key rewrite protection.
+- [x] Formatting and Clippy with default and no default features.
+- [ ] Maintainer commit and push, focused PR; full suite, browser and
+  minimum-Rust-version checks in CI.
+- [ ] Feature removal: Luma events, feeds, agendas, search, page event and
+  image attachments.
+- [ ] Page deletion with child-page and incoming-link safeguards.
+- [ ] Follow-up methods in vados-swamp (separate repository).

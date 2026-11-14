@@ -1508,11 +1508,8 @@ entity FooterUpdateRun {
 -- One run of `menu add-item`: appends one entry to menu.json's main menu.
 -- Single-phase like SocialLinkChangeRun: nothing about a menu entry is
 -- expensive enough to check that it is worth protecting the maintainer from
--- a prompt sequence first. Deliberately add-only -- there is no
--- `menu remove-item`/`menu update-item` yet, the same way PageCreationRun and
--- ImageRegistrationRun have no delete/rename counterpart either (see this
--- file's own Excludes section); this is the open question it closes, and it
--- opens a narrower one of its own at the bottom of this file.
+-- a prompt sequence first. Existing entries can be edited or removed by
+-- MenuLinkChangeRun.
 entity MenuLinkAdditionRun {
     source_location: String
     given_url: String
@@ -2923,6 +2920,53 @@ rule ApplyMenuLinkAddition {
                 title: run.given_title,
                 icon: run.given_icon
             )
+}
+
+-- Editing and removing main menu entries ---------------------------------
+
+entity MenuLinkChangeRun {
+    source_location: String
+    kind: update | remove
+    given_match: String
+    given_index: Integer?
+    given_url: String?
+    given_title: String?
+    given_icon: String?
+    clear_title: Boolean
+    clear_icon: Boolean
+    given_position: Integer?
+    status: requested | rejected | changed
+
+    transitions status {
+        requested -> rejected
+        requested -> changed
+        terminal: rejected, changed
+    }
+}
+
+rule ApplyMenuLinkChange {
+    when: run: MenuLinkChangeRun.created
+    requires: run.status = requested
+    ensures:
+        if menu_change_rejection(run) != null:
+            run.status = rejected
+        else:
+            run.status = changed
+            MenuLinkChanged(run: run)
+
+    @guidance
+        -- remove-item and update-item select by URL substring. Index is
+        -- zero-based among matches; no matches, an ambiguous match without
+        -- an index, and negative/out-of-range indices are rejected.
+        -- Updates retain omitted fields. Clear flags remove a title/icon
+        -- and conflict with supplying the corresponding field. Position
+        -- is the zero-based final position in the whole menu, strictly less
+        -- than its length. An update with no supplied change is rejected.
+        -- Validate the resulting entry: an external URL needs a title and
+        -- no other entry may have its URL. Internal forward references are
+        -- allowed. Removal deletes only the selected menu entry.
+        -- Validate before writing; rejections leave bytes unchanged. Keep
+        -- socials and $schema. Unknown keys prevent either rewrite.
 }
 
 -- Linking a Luma event to a page -----------------------------------------
@@ -4356,11 +4400,6 @@ open question "If pages ever come from anywhere but directories, does check need
 -- those by hand afterward. Social links are no longer part of this question
 -- -- the wizard gathers those now -- but main-menu entries still are not.
 open question "Should a later version of init let the wizard add initial main-menu entries, rather than starting empty?"
-
--- `menu add-item` is deliberately add-only, the same way PageCreationRun and
--- ImageRegistrationRun have no delete/rename counterpart: an entry, once
--- added, can only be changed or removed by hand-editing menu.json.
-open question "Should a later version add `menu update-item`/`menu remove-item` alongside `menu add-item`?"
 
 -- Only single events are linked. Luma also offers an embeddable calendar
 -- (every upcoming event of an organiser), which would suit an "events"

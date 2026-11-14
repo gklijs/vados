@@ -25,6 +25,175 @@ use vados::init::{self, ProjectBasics};
 
 static NEXT_ID: AtomicUsize = AtomicUsize::new(0);
 
+#[test]
+fn menu_cli_updates_reorders_removes_and_preserves_unrelated_configuration() {
+    use serde_json::{json, Value};
+    let project = TestProject::new("menu_editing");
+    social::add_social_link(
+        &project.source,
+        GivenSocialLink {
+            handle: Some((RecognizedSocialProvider::Github, "example".to_string())),
+            url: None,
+            icon: None,
+            brand_color: None,
+            label: None,
+        },
+    )
+    .unwrap()
+    .unwrap();
+    let path = PathBuf::from(&project.source).join("menu.json");
+    let run = |command: &str, args: &[&str]| {
+        std::process::Command::new(env!("CARGO_BIN_EXE_vados"))
+            .args(["menu", command, "--source", &project.source])
+            .args(args)
+            .output()
+            .unwrap()
+    };
+    let read = || serde_json::from_slice::<Value>(&fs::read(&path).unwrap()).unwrap();
+    let original = read();
+    assert!(run(
+        "add-item",
+        &["--url", "/blog/a", "--title", "A", "--icon", "home"]
+    )
+    .status
+    .success());
+    assert!(run("add-item", &["--url", "/blog/b"]).status.success());
+    assert!(run("add-item", &["--url", "/other"]).status.success());
+
+    for (args, message) in [
+        (vec!["--match", "/blog", "--title", "New"], "use --index"),
+        (vec!["--match", "/missing", "--title", "New"], "no matching"),
+        (
+            vec!["--match", "/blog", "--index=-1", "--title", "New"],
+            "--index",
+        ),
+        (
+            vec!["--match", "/blog", "--index", "2", "--title", "New"],
+            "--index",
+        ),
+        (vec!["--match", "/blog/a", "--position", "3"], "--position"),
+        (vec!["--match", "/blog/a", "--url", "/other"], "already in"),
+        (
+            vec!["--match", "/blog/b", "--url", "https://example.com"],
+            "needs a title",
+        ),
+        (vec!["--match", "/blog/a"], "to update"),
+        (
+            vec!["--match", "/blog/a", "--title", "New", "--clear-title"],
+            "cannot be used",
+        ),
+    ] {
+        let before = fs::read(&path).unwrap();
+        let output = run("update-item", &args);
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains(message),
+            "{:?}",
+            output
+        );
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+    assert!(run(
+        "update-item",
+        &[
+            "--match",
+            "/blog",
+            "--index",
+            "0",
+            "--position",
+            "2",
+            "--title",
+            "Renamed"
+        ]
+    )
+    .status
+    .success());
+    let menu = read();
+    assert_eq!(
+        menu["mainMenu"][2],
+        json!({"url":"/blog/a", "title":"Renamed", "icon":"home"})
+    );
+    assert_eq!(menu["mainMenu"][0]["url"], "/blog/b");
+    assert!(run(
+        "update-item",
+        &[
+            "--match",
+            "/blog/a",
+            "--clear-title",
+            "--clear-icon",
+            "--position",
+            "0"
+        ]
+    )
+    .status
+    .success());
+    assert_eq!(
+        read()["mainMenu"][0],
+        json!({"url":"/blog/a", "title":null, "icon":null})
+    );
+
+    let before = fs::read(&path).unwrap();
+    let output = run("remove-item", &["--match", "/blog"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("use --index"));
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert!(run("remove-item", &["--match", "/blog", "--index", "1"])
+        .status
+        .success());
+    assert!(run("remove-item", &["--match", "/blog/a"]).status.success());
+    let before = fs::read(&path).unwrap();
+    let output = run("remove-item", &["--match", "/blog/a"]);
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("nothing to change"));
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert!(run("remove-item", &["--match", "/other"]).status.success());
+    assert_eq!(read(), original);
+
+    assert!(run(
+        "add-item",
+        &["--url", "https://example.com", "--title", "Example"]
+    )
+    .status
+    .success());
+    let before = fs::read(&path).unwrap();
+    assert!(
+        !run("update-item", &["--match", "example.com", "--clear-title"])
+            .status
+            .success()
+    );
+    assert_eq!(fs::read(&path).unwrap(), before);
+    assert!(run(
+        "update-item",
+        &[
+            "--match",
+            "example.com",
+            "--url",
+            "/",
+            "--clear-title",
+            "--icon",
+            "home"
+        ]
+    )
+    .status
+    .success());
+    assert_eq!(
+        read()["mainMenu"][0],
+        json!({"url":"/", "title":null, "icon":"home"})
+    );
+
+    // Unknown nested data must never be lost in an authoring rewrite.
+    let mut unknown = original.clone();
+    unknown["mainMenu"] = json!([{"url":"/", "custom":true}]);
+    fs::write(&path, serde_json::to_vec(&unknown).unwrap()).unwrap();
+    for command in ["remove-item", "update-item"] {
+        let before = fs::read(&path).unwrap();
+        let output = run(command, &["--match", "/"]);
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("custom"));
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
+}
+
 struct TestProject {
     dir: PathBuf,
     source: String,
