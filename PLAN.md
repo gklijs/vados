@@ -301,3 +301,17 @@ event is available, including embed, registration button and CSP checks.
   provider schema description and `social_add` description. Its input is a
   string, so the new names work once the installed vados includes #63;
   update those descriptions separately.
+
+## Progress for #61
+
+- [x] Rewrote the introduction and feature links, shortened the name story and
+  removed the externally hosted wiki image. Updated package description/keywords.
+- [x] Added a table per configuration file, including nested keys, types, defaults
+  and explanatory section links. A test compares each table against schemas
+  generated from the accepted configuration structs.
+- [x] Added the four current swamp_sites examples alongside the bass site.
+- [x] Kept Unreleased open and documented Markdown alternates.
+- [x] Schema/reference unit tests, README/schema integration tests, formatting
+  and Clippy (`--all-targets -- -D warnings`) pass locally.
+- [ ] Maintainer commit and push, focused PR; full suite, browser and minimum-Rust
+  checks pending in CI.

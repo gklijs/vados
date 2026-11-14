@@ -1,20 +1,24 @@
 # Vados
 
-![Vados after destroying the planet](https://static.wikia.nocookie.net/dragonball/images/d/d0/U61.jpg)
-source: [Dragon Ball Wiki](https://dragonball.fandom.com/wiki/Vados#Golden_Frieza_Saga)
-
 ## Introduction
 
-This project will make it possible to quickly generate html files based on some file structure. It's main use case is to
-make it simple to have a blog/log which can be easily maintained, having most of the content in markdown files. I create
-this mainly to scratch my own itch and for learning. The scope can easily grow out of control, so I probably only add
-things I would use myself. At this point it's much WIP, where braking changes can be expected. The name is based on that
-it assumes [Bulma](https://bulma.io/) is assumed for the css. The generator is likely fast, and Bulma is also a
-character in
-[Dragon Ball Z](https://en.wikipedia.org/wiki/Dragon_Ball_Z). So I looked
-for [fast Dragon Ball Z characters](https://www.cbr.com/dragon-ball-fastest-characters-ranked/) and thus ended up with
-[Vados](https://dragonball.fandom.com/wiki/Vados). As it turns out she can also easily destroy and recreate planets,
-which is kind of what this project does as well.
+vados is a static site generator for people who want to maintain a personal site,
+blog or event calendar with Markdown content and small JSON configuration files.
+It builds HTML pages from a directory tree, styled with [Bulma](https://bulma.io/).
+
+Sites get responsive WebP images, accessible navigation, link-preview metadata and
+a dark mode that follows the reader's preference. Image descriptions are required;
+keyboard navigation and screen-reader behaviour are covered by browser tests.
+
+- [Get started](#getting-started) with an interactive scaffold and authoring commands.
+- Publish [dated posts](#blogs-and-dated-pages), [Atom feeds](#feeds) and [site search](#site-search).
+- Share [events and calendars](#events), or embed [Luma events](#luma-events).
+- Generate [Markdown versions](#markdown-versions), [highlight code](#code-blocks) and render [diagrams](#diagrams).
+- [Check configuration and links](#checking-links) before publishing.
+- Find every setting in the [configuration reference](#configuration-reference).
+
+The name nods to Dragon Ball: Bulma supplies the styling, and Vados can destroy
+and recreate worlds, much as a generator rebuilds a site.
 
 ## Installation
 
@@ -231,6 +235,153 @@ that includes them.
 the vados version that ran. The other authoring commands keep it when they rewrite a file. Add it by hand to files
 created before, and change the version in it after upgrading vados, so new keys aren't flagged. vados itself ignores
 `$schema`: `check` and `generate` don't need it, and `check` keeps its own findings and messages.
+
+## Configuration reference
+
+Paths below are relative to the source tree, except `images.json`, which lives in
+an image-tree directory. Dotted keys describe nested objects; `[]` means each array
+entry. Required nested keys apply only when their enclosing object is supplied.
+“Absent” means no value or feature is supplied. Optional fields represented as nullable values in the schemas also accept `null`
+(the defaulted `jsFiles` and `cssFiles` arrays do not).
+The tables describe behaviour when a key is omitted, rather than values written by
+`init`. Follow the section links for examples and constraints; the [schemas](#editor-support)
+provide enum values and editor validation. Unknown keys produce `check` warnings
+and block authoring rewrites that would lose them.
+
+### `main.json`
+
+| Key | Type | Default when omitted | Explanation |
+| --- | --- | --- | --- |
+| `$schema` | string | Absent | The JSON Schema this file follows, so editors can complete and check it. vados itself ignores it. [Details](#editor-support). |
+| `author` | object | Site title | Who writes the site, named in structured data and feeds. The site title when absent. [Details](#search-engines-and-browser-tabs). |
+| `author.name` | string | Required | The author's name. [Details](#search-engines-and-browser-tabs). |
+| `author.url` | string | Absent | The author's own page, when it isn't the site's home page. [Details](#search-engines-and-browser-tabs). |
+| `backgroundClass` | string | `has-background-light-soft` | The CSS class(es) on the page's background; `has-background-light-soft` when absent. [Details](#bulma-and-dark-mode). |
+| `codeHighlight` | boolean | `true` (with highlight feature) | Whether fenced Markdown code blocks that name a language are highlighted. On when absent. [Details](#code-blocks). |
+| `colorScheme` | `light`, `dark` | Reader preference | Pins every page to Bulma's light or dark theme. Without it, pages follow the reader's colour-scheme preference. [Details](#bulma-and-dark-mode). |
+| `cssFiles` | array of strings | `[]` | Extra stylesheets every page loads, as URLs or paths from the site root. They must use Bulma 1.0 or later. [Details](#bulma-and-dark-mode). |
+| `defaultImage` | string | Absent | An image reference, like a page's `image` (`/team/alice`), shown in link previews of pages without a hero image of their own. [Details](#search-engines-and-browser-tabs). |
+| `description` | string | Absent | A short description of the site for search engines and link previews, used on every page without a `summary` of its own. [Details](#search-engines-and-browser-tabs). |
+| `favicon` | string | Absent | A file in the source root, such as `favicon.svg`, `favicon.png` or `favicon.ico`, published at the site root as every page's icon. [Details](#search-engines-and-browser-tabs). |
+| `fediverseCreator` | string | From Mastodon social link | Your fediverse handle, `@user@instance`, which Mastodon shows as the author of link previews. Taken from a Mastodon social link when absent. [Details](#search-engines-and-browser-tabs). |
+| `footerContent` | string | Required | The footer on every page: inline HTML, or the name of a `.md` or `.html` file in the source root. [Details](#project-layout). |
+| `includeDefaultCss` | boolean | `true` | Whether pages also load Bulma from jsDelivr. On when absent; turn it off when `cssFiles` holds a compiled Bulma of your own. [Details](#bulma-and-dark-mode). |
+| `includeDefaultJs` | boolean | `true` | Whether pages also load vados's own script, which runs the navbar's dropdowns and burger menu. On when absent. [Details](#project-layout). |
+| `jsFiles` | array of strings | `[]` | Extra scripts every page loads, as URLs or paths from the site root. [Details](#project-layout). |
+| `language` | string | `en` | The site's language as a BCP 47 tag, such as `en`, `nl` or `nl-BE`; `en` when absent. It sets each page's `lang` and the language of the text vados adds itself. [Details](#search-engines-and-browser-tabs). |
+| `markdown` | boolean | `false` | Publishes a Markdown version of every page next to its HTML, such as `/blog/post.md`. Off when absent. [Details](#markdown-versions). |
+| `menuDropdownLimit` | unsigned integer | `12` | How many children a main menu dropdown lists before ending in a link to the section; 12 when absent. [Details](#the-navbar). |
+| `mermaid` | boolean | `true` | Whether fenced `mermaid` blocks become diagrams in the reader's browser. On when absent. [Details](#diagrams). |
+| `mermaidScript` | string | jsDelivr Mermaid module | Where pages with a diagram load Mermaid from: an http(s) module URL, or a path from the site root to a file in `staticDir`. jsDelivr when absent. [Details](#diagrams). |
+| `navbarColor` | `White`, `Black`, `Light`, `Dark`, `Primary`, `Link`, `Info`, `Success`, `Warning`, `Danger` | `Warning` | The navbar's Bulma colour; `Warning` when absent. [Details](#the-navbar). |
+| `navbarTheme` | `light`, `dark` | Navbar colour brightness | Which Bulma theme sits on the navbar, for a stylesheet that recolours `navbarColor` to the opposite brightness. Without it, the colour's default brightness decides. [Details](#the-navbar). |
+| `search` | boolean / object | Disabled | Publishes a site search at `/search`: `true`, or which pages to search. [Details](#site-search). |
+| `search.depth` | unsigned integer | Unlimited | How many levels below `from` to look; any depth when absent. [Details](#site-search). |
+| `search.from` | string / array of strings | Every page | Only pages below this path, or these paths. Every page when absent. [Details](#site-search). |
+| `search.includeUnlisted` | boolean | `false` | Also search pages with `"listed": false`. [Details](#site-search). |
+| `search.menu` | boolean | `true` | Whether the main menu gets an entry for the search. On when absent. [Details](#site-search). |
+| `siteTitle` | string | Required | The site's name: the home page's title, and part of every other page's `<title>`. [Details](#search-engines-and-browser-tabs). |
+| `siteUrl` | string | Absent | Where the site is published, such as `https://example.com`. Feeds, the sitemap, calendar files and link-preview images need it. [Details](#search-engines-and-browser-tabs). |
+| `spareTile` | object | Absent | A block of links for the cells the shorter column of tiles leaves empty, such as an archive or a way to subscribe. [Details](#the-navbar). |
+| `spareTile.links` | array of objects | Required | Links shown in the spare tile. [Details](#the-navbar). |
+| `spareTile.links[].title` | string | Required | The link's text. [Details](#the-navbar). |
+| `spareTile.links[].url` | string | Required | A page's path, such as `/topics`, or a full URL. [Details](#the-navbar). |
+| `spareTile.title` | string | Absent | The block's heading. [Details](#the-navbar). |
+| `staticDir` | string | Absent | A directory, relative to the source root, whose files are published as they are at the site root: `robots.txt`, `_headers`, downloads. [Details](#static-files-and-unlisted-pages). |
+| `stretchSideNotification` | boolean | `false` | Whether the last side notification grows to end where the page's content does. Off when absent. [Details](#project-layout). |
+| `titleSeparator` | string | ` · ` | What goes between a page's title and the site title in `<title>`; ` · ` when absent. [Details](#search-engines-and-browser-tabs). |
+
+### `menu.json`
+
+| Key | Type | Default when omitted | Explanation |
+| --- | --- | --- | --- |
+| `$schema` | string | Absent | The JSON Schema this file follows, so editors can complete and check it. vados itself ignores it. [Details](#editor-support). |
+| `mainMenu` | array of objects | Required | The navbar's entries, in order. [Details](#the-navbar). |
+| `mainMenu[].icon` | string | Page icon | A Material Design Icons name, such as `home`; the page's own icon when absent. [Details](#the-navbar). |
+| `mainMenu[].title` | string | Page title; required for external URL | The entry's text. Required for a full URL; a page's own title when absent. [Details](#the-navbar). |
+| `mainMenu[].url` | string | Required | A page's path, such as `/blog`, or a full URL. [Details](#the-navbar). |
+| `socials` | array of objects | Required | Links to your profiles on other sites, in order. [Details](#the-navbar). |
+| `socials[].color` | string | Provider default; required for custom URL | The icon's colour, in hex with or without `#`, such as `6364FF`. Required for a site vados doesn't recognise; it also overrides a recognised site's own colour. [Details](#the-navbar). |
+| `socials[].icon` | string | Provider default; required for custom URL | A bundled icon name (Material Design Icons plus extra social logos). Required for a site vados doesn't recognise. [Details](#the-navbar). |
+| `socials[].label` | string | Provider default; required for custom URL | What screen readers announce for the link, which has no visible text. Required for a site vados doesn't recognise. [Details](#the-navbar). |
+| `socials[].url` | string | Required | The profile address or mailto: email link. Common providers are recognised by host (with or without www.); see the README for the supported list. [Details](#the-navbar). |
+
+### `page.json`
+
+| Key | Type | Default when omitted | Explanation |
+| --- | --- | --- | --- |
+| `$schema` | string | Absent | The JSON Schema this file follows, so editors can complete and check it. vados itself ignores it. [Details](#editor-support). |
+| `agenda` | boolean / object | Disabled | Lists events from elsewhere on this page, soonest first: `true` for those below it, or which pages to take them from. [Details](#events). |
+| `agenda.depth` | unsigned integer | Unlimited | How many levels below `from` to look; any depth when absent. [Details](#events). |
+| `agenda.from` | string / array of strings | Current page | Events on pages below this path, or these paths. The pages below this one when absent. [Details](#events). |
+| `agenda.includeUnlisted` | boolean | `false` | Also list events on pages with `"listed": false`. [Details](#events). |
+| `childOrder` | `order`, `dateDesc`, `dateAsc` | `order` | How this page's children are ordered in menus and tiles; `order` when absent. [Details](#blogs-and-dated-pages). |
+| `content` | string | Required | The page's content: inline HTML, or the name of a `.md` or `.html` file in the page's directory. [Details](#blogs-and-dated-pages). |
+| `date` | string | Absent | When the page was published: `YYYY-MM-DD`, optionally with a time, such as `2026-10-22T09:30`. [Details](#blogs-and-dated-pages). |
+| `event` | object | Absent | Makes the page an event. [Details](#events). |
+| `event.address` | string | Absent | The venue's address. [Details](#events). |
+| `event.attendance` | `online`, `inPerson`, `mixed` | Not confirmed | How people attend. [Details](#events). |
+| `event.cost` | string | Absent | What it costs, as the organiser states it. Leaving it out means unknown, never free. [Details](#events). |
+| `event.end` | string | Absent | When it ends, in the same form as `start`. [Details](#events). |
+| `event.organiser` | string | Absent | Who organises it. [Details](#events). |
+| `event.registrationUrl` | string | Absent | Where to register, as an http(s) URL. [Details](#events). |
+| `event.sequence` | unsigned integer | `0` | Raise it whenever the event changes, so calendar subscribers take the change. `vados page set-event` does so for you. [Details](#events). |
+| `event.start` | string | Required | When it starts, with the UTC offset `timeZone` shows at that moment: `2026-11-05T14:00:00-05:00`. [Details](#events). |
+| `event.status` | `scheduled`, `cancelled`, `postponed`, `rescheduled` | Not confirmed | Whether it goes ahead. [Details](#events). |
+| `event.timeZone` | string | Required | The IANA time zone it happens in, such as `America/New_York`. [Details](#events). |
+| `event.venue` | string | Absent | Where it happens: the venue's name. [Details](#events). |
+| `event.virtualUrl` | string | Absent | Where to attend online, as an http(s) URL. Never taken from `registrationUrl`. [Details](#events). |
+| `feed` | boolean / object | Disabled | Publishes an Atom feed of the page's dated children at the page's path plus `/feed.xml`: `true`, or the feed's settings. Needs main.json's `siteUrl`. [Details](#feeds). |
+| `feed.content` | `full`, `summary` | `full` | What an entry carries; the page's full content when absent. [Details](#feeds). |
+| `feed.depth` | unsigned integer | Direct children without from; unlimited with from | How many levels below `from` to look: any depth when `from` is given, only direct children when it isn't. [Details](#feeds). |
+| `feed.from` | string / array of strings | Absent | Takes entries from below this path, or these paths, instead of the page's own direct children. [Details](#feeds). |
+| `feed.includeUnlisted` | boolean | `false` | Also takes pages with `"listed": false`, which feeds otherwise leave out. [Details](#feeds). |
+| `feed.limit` | unsigned integer | `20` | How many entries the feed holds; 20 when absent. [Details](#feeds). |
+| `feed.title` | string | Site title plus page title | The feed's title; the site title plus the page's when absent. [Details](#feeds). |
+| `icon` | string | Absent | A Material Design Icons name, such as `home` or `rss`, shown with the page in menus. [Details](#blogs-and-dated-pages). |
+| `image` | string | Absent | The page's hero image, as an image reference: the image's directory in the image tree and its file name without extension, such as `/team/alice`. [Details](#blogs-and-dated-pages). |
+| `latest` | object | Absent | Shows the newest dated pages from elsewhere in the site as tiles. [Details](#feeds). |
+| `latest.depth` | unsigned integer | Unlimited | How many levels below a section to look; any depth when absent. [Details](#feeds). |
+| `latest.from` | object | Required | A section's path, such as `/blog`, or a list of them. [Details](#feeds). |
+| `latest.limit` | unsigned integer | `4` | How many pages to show; 4 when absent. [Details](#feeds). |
+| `leftNotifications` | array of objects | Absent | Tiles in the left column below the page's content. [Details](#blogs-and-dated-pages). |
+| `leftNotifications[].color` | `White`, `Black`, `Light`, `Dark`, `Primary`, `Link`, `Info`, `Success`, `Warning`, `Danger` | `Info` or `Link`, by tile | The tile's Bulma colour; `Info` or `Link` when absent, depending on the tile. [Details](#blogs-and-dated-pages). |
+| `leftNotifications[].content` | string | Required | The tile's text: inline HTML, or the name of a `.md` or `.html` file in the page's directory. [Details](#blogs-and-dated-pages). |
+| `leftNotifications[].image` | string | Absent | An image reference, such as `/team/alice`, shown in the tile. [Details](#blogs-and-dated-pages). |
+| `leftNotifications[].title` | string | Absent | The tile's heading. [Details](#blogs-and-dated-pages). |
+| `leftNotifications[].url` | string | Absent | Where the tile links to: a page's path or a full URL. [Details](#blogs-and-dated-pages). |
+| `listed` | boolean | `true` | `false` publishes the page but keeps it out of menus, side tiles, feeds, the site search and the sitemap. [Details](#static-files-and-unlisted-pages). |
+| `lumaEvents` | array of objects | Absent | Events hosted on Luma, shown after the page's content. [Details](#luma-events). |
+| `lumaEvents[].buttonLabel` | string | Localized “Register” | The register button's text; "Register" in the site's language when absent. [Details](#luma-events). |
+| `lumaEvents[].display` | `eventPage`, `registerButton`, `both` | `eventPage` | How the event is shown; `eventPage` when absent. [Details](#luma-events). |
+| `lumaEvents[].end` | string | Absent | When it ends, in the same form as `start`. [Details](#luma-events). |
+| `lumaEvents[].eventId` | string | Required | Luma's event ID, `evt-...`, shown in the event's embed options on Luma. [Details](#luma-events). |
+| `lumaEvents[].start` | string | Absent | When it starts, for agendas and calendars, in the same form as an event's `start`. Nothing is fetched from Luma. [Details](#luma-events). |
+| `lumaEvents[].timeZone` | string | Absent | The IANA time zone it happens in, such as `Europe/Amsterdam`. [Details](#luma-events). |
+| `lumaEvents[].title` | string | Required | The text of the link to the event on Luma, and the embedded event page's accessible name. Required. [Details](#luma-events). |
+| `noindex` | boolean | `false` | Keeps the page out of search results, the site search and the sitemap, while it stays listed in menus. [Details](#blogs-and-dated-pages). |
+| `order` | unsigned integer | `4294967295` (after explicit orders) | Where the page comes among its siblings when they are ordered by `order`: lower first, then by title. [Details](#blogs-and-dated-pages). |
+| `rightNotifications` | array of objects | Absent | Tiles in the right column below the page's content. [Details](#blogs-and-dated-pages). |
+| `rightNotifications[].color` | `White`, `Black`, `Light`, `Dark`, `Primary`, `Link`, `Info`, `Success`, `Warning`, `Danger` | `Info` or `Link`, by tile | The tile's Bulma colour; `Info` or `Link` when absent, depending on the tile. [Details](#blogs-and-dated-pages). |
+| `rightNotifications[].content` | string | Required | The tile's text: inline HTML, or the name of a `.md` or `.html` file in the page's directory. [Details](#blogs-and-dated-pages). |
+| `rightNotifications[].image` | string | Absent | An image reference, such as `/team/alice`, shown in the tile. [Details](#blogs-and-dated-pages). |
+| `rightNotifications[].title` | string | Absent | The tile's heading. [Details](#blogs-and-dated-pages). |
+| `rightNotifications[].url` | string | Absent | Where the tile links to: a page's path or a full URL. [Details](#blogs-and-dated-pages). |
+| `subTitle` | string | Absent | A line shown under the title. [Details](#blogs-and-dated-pages). |
+| `summary` | string | Absent | A short description of the page for search engines, link previews, feeds and the tiles advertising it. [Details](#blogs-and-dated-pages). |
+| `title` | string | Required | The page's title: its heading, and its name in menus and tiles. [Details](#blogs-and-dated-pages). |
+| `updated` | string | Absent | When the page last changed meaningfully, in the same form as `date`. [Details](#blogs-and-dated-pages). |
+
+### `images.json`
+
+| Key | Type | Default when omitted | Explanation |
+| --- | --- | --- | --- |
+| `$schema` | string | Absent | The JSON Schema this file follows, so editors can complete and check it. vados itself ignores it. [Details](#editor-support). |
+| `list` | array of objects | Required | The images, each published as responsive WebP variants. [Details](#project-layout). |
+| `list[].altText` | string | Required | What the image shows, for readers who can't see it. Required. [Details](#project-layout). |
+| `list[].fileName` | string | Required | The image file, in the same directory as this images.json. [Details](#project-layout). |
+| `list[].title` | string | Absent | The image's caption. [Details](#project-layout). |
+| `title` | string | Absent | A title for the directory's images. [Details](#project-layout). |
 
 ## Luma events
 
@@ -821,9 +972,18 @@ a manual `cargo publish`.
 
 ## Examples
 
-A website where I share my adventures mastering bass playing serves as example. The site itself is hosted
-via [Netlify](https://www.netlify.com/) and can be found [here](https://bass.gklijs.tech). The source code for the
-website can be found on [Github](https://github.com/gklijs/vados_bass)
+These sites use vados:
+
+- [Neurodiversity news](https://neurodiversity.gklijs.tech) and
+  [Neurodiversiteit nieuws](https://neurodiversiteit.gklijs.tech).
+- [Basic income news](https://basic-income.gklijs.tech) and
+  [Basisinkomen nieuws](https://basisinkomen.gklijs.tech).
+
+These four news sites are deployed to Cloudflare Pages; their content, themes and
+build scripts are in [swamp_sites](https://github.com/gklijs/swamp_sites).
+
+[Bass adventures](https://bass.gklijs.tech) is a personal learning log hosted on
+Netlify, with source in [vados_bass](https://github.com/gklijs/vados_bass).
 
 ## License
 

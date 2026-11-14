@@ -95,6 +95,80 @@ mod tests {
         );
     }
 
+    // Follow references and union branches so nested accepted keys are covered too.
+    fn configuration_paths(
+        node: &Value,
+        root: &Value,
+        prefix: &str,
+        paths: &mut std::collections::BTreeSet<String>,
+    ) {
+        if let Some(reference) = node["$ref"].as_str() {
+            configuration_paths(
+                root.pointer(reference.trim_start_matches('#')).unwrap(),
+                root,
+                prefix,
+                paths,
+            );
+        }
+        if let Some(properties) = node["properties"].as_object() {
+            for (key, child) in properties {
+                let path = format!("{prefix}{key}");
+                paths.insert(path.clone());
+                configuration_paths(child, root, &format!("{path}."), paths);
+            }
+        }
+        if let Some(items) = node.get("items") {
+            configuration_paths(
+                items,
+                root,
+                &format!("{}[].", prefix.trim_end_matches('.')),
+                paths,
+            );
+        }
+        for branch in ["anyOf", "oneOf", "allOf"] {
+            if let Some(children) = node[branch].as_array() {
+                for child in children {
+                    configuration_paths(child, root, prefix, paths);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn readme_configuration_reference_covers_accepted_keys() {
+        let readme =
+            fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("README.md"))
+                .unwrap();
+        let reference = readme
+            .split("## Configuration reference\n")
+            .nth(1)
+            .unwrap()
+            .split("## Luma events")
+            .next()
+            .unwrap();
+        for (file, generated) in schemas() {
+            let root: Value = serde_json::from_str(&generated).unwrap();
+            let mut expected = std::collections::BTreeSet::new();
+            configuration_paths(&root, &root, "", &mut expected);
+            let heading = format!("### `{file}`\n");
+            let table = reference
+                .split(&heading)
+                .nth(1)
+                .unwrap()
+                .split("### ")
+                .next()
+                .unwrap();
+            let actual = table
+                .lines()
+                .filter_map(|line| {
+                    line.strip_prefix("| `")
+                        .and_then(|row| row.split_once("` |").map(|(key, _)| key.to_owned()))
+                })
+                .collect();
+            assert_eq!(expected, actual, "configuration reference for {file}");
+        }
+    }
+
     #[test]
     fn the_schema_url_names_this_version_and_the_schema_file() {
         assert_eq!(

@@ -4,6 +4,9 @@
 
 ### Added
 
+- Optional Markdown versions alongside HTML pages (`"markdown": true` in `main.json`),
+  with alternate links and content including events, agendas and dated listings (#61).
+
 - Recognise 19 more social providers, including Bluesky, Instagram, Threads, TikTok and email (#63).
   URLs fill missing metadata; handles work in the CLI and init wizard. Existing custom links to the new
   providers keep their explicit icon, colour and accessible name. Missing logos are bundled from Simple Icons.
