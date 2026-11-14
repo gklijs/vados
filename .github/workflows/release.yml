@@ -52,6 +52,8 @@ jobs:
           name="vados-$VERSION-$TARGET"
           mkdir "$name"
           cp "target/$TARGET/release/vados" README.md CHANGELOG.md LICENSE-MIT "$name/"
+          mkdir -p "$name/assets/mdi"
+          cp assets/mdi/README.md assets/mdi/LICENSE assets/mdi/LICENSE-SIMPLE-ICONS "$name/assets/mdi/"
           tar -czf "$name.tar.gz" "$name"
           sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
           echo "NAME=$name" >> "$GITHUB_ENV"
@@ -63,6 +65,9 @@ jobs:
           cd smoke
           sha256sum -c "$NAME.tar.gz.sha256"
           tar -xzf "$NAME.tar.gz"
+          for notice in README.md LICENSE LICENSE-SIMPLE-ICONS; do
+            cmp "../assets/mdi/$notice" "$NAME/assets/mdi/$notice"
+          done
           file "$NAME/vados"
           file "$NAME/vados" | grep -q "static"
           "$NAME/vados" --help

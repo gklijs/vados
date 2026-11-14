@@ -1,5 +1,34 @@
 # Open issue implementation plan
 
+## 0.6.0-rc.1 preparation
+
+- [x] Set the package and lockfile version to `0.6.0-rc.1`; moved the pending
+  changelog into its dated release section, leaving `Unreleased` for new work.
+- [x] Release archives include MDI/Simple Icons licences and provenance;
+  the archive smoke test compares each notice against the repository copy.
+- [x] Offline release build, 11 focused schema/scaffold tests, formatting,
+  Clippy with default and no default features, workflow YAML parsing and
+  local host archive/notes smoke checks pass.
+- [ ] Maintainer commit/push and candidate CI: full suite, browser, minimum
+  Rust version and dependency audit. Commits, pushes and tagging remain manual.
+- [ ] After candidate CI passes, maintainer tags `v0.6.0-rc.1`; inspect both
+  musl archive jobs and the GitHub prerelease, verify hosted schemas, and run
+  a real Netlify deploy using a scaffold created by the released RC.
+- Prepared PR and release handoff: `docs/rc1-release.md`.
+
+## Release dry run (2026-11-14)
+
+- [x] Current candidate `8ca3065` built offline in release mode and exercised
+  against a temporary snapshot of all four local swamp_sites sites, including
+  their current uncommitted news updates. No deployment or source changes.
+- [x] All four complete site builds and final generated-link checks pass with
+  zero errors/warnings; serial, parallel and cached output hashes match.
+- [x] Ten site regression scripts pass, including rendered metadata checks.
+- [ ] Archive-navigation regression script and Chromium accessibility review
+  need CI: sandbox restrictions blocked subprocess capture and local HTTP
+  binding, respectively. Release/deployment checks remain outstanding.
+- Details and measured times: `docs/release-dry-run.md`.
+
 Keep issues as separate acceptance checklists and use focused changes. Related
 issues share design decisions; they do not all need to land together. Commits
 and pushes remain with the maintainer.
@@ -230,8 +259,8 @@ event is available, including embed, registration button and CSP checks.
 - [ ] CI time before and after the cache (the second run on `main` after merge
   is the first to restore), noted in the PR.
 - [ ] Dependabot's first pull requests open after merge and pass CI.
-- [ ] Not done here: the release archive doesn't include `assets/mdi/LICENSE`
-  although the binary embeds the icons; consider adding it.
+- [x] RC preparation adds the bundled icon licences and provenance to release
+  archives, with archive smoke-test comparisons.
 
 ## Decisions for #60
 

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.6.0-rc.1 - 2026-11-14
+
 ### Added
 
 - Parallel image processing, page rendering and HTML minification (#57), with `generate --jobs N`
@@ -39,6 +41,7 @@
   `netlify.toml`, so a new release can't break a deploy.
 
 - The release binary is stripped, which makes it smaller.
+- Release archives include the bundled icon licences and provenance.
 
 - vados states that it supports Linux, including WSL on Windows (#65). Other platforms are untested.
 
